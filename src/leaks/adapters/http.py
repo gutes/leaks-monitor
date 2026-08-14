@@ -40,6 +40,7 @@ class FeedHttpClient:
         sleep: Callable[[float], None] = time.sleep,
         emit: Callable[[RunEvent], None] | None = None,
         source: str | None = None,
+        before_request: Callable[[], None] | None = None,
     ) -> None:
         self._timeout = timeout
         self._max_retries = max_retries
@@ -50,6 +51,10 @@ class FeedHttpClient:
         # funciona igual (los tests lo usan así).
         self._emit = emit
         self._source = source
+        # Gancho de control de OPSEC: se ejecuta ANTES de cada request y puede
+        # abortarlo. La IP de salida puede cambiar a mitad de una corrida (una
+        # VPN que se reconecta), así que chequear solo al principio no alcanza.
+        self._before_request = before_request
         self._owns_client = client is None
         self._client = client or httpx.Client(
             timeout=timeout,
@@ -84,6 +89,11 @@ class FeedHttpClient:
     # -- Interno -------------------------------------------------------------
 
     def _get(self, url: str, params: dict[str, Any] | None) -> httpx.Response:
+        # Última barrera antes de tocar la red. Si el gancho lanza, no sale
+        # ni un byte.
+        if self._before_request is not None:
+            self._before_request()
+
         ultimo_error: Exception | None = None
 
         for intento in range(self._max_retries + 1):
@@ -212,6 +222,7 @@ def build_client(
     rate_limit_delay: float,
     emit: Callable[[RunEvent], None] | None = None,
     source: str | None = None,
+    before_request: Callable[[], None] | None = None,
 ) -> FeedHttpClient:
     """Constructor usado por el registro de feeds."""
     return FeedHttpClient(
@@ -222,4 +233,5 @@ def build_client(
         rate_limit_delay=rate_limit_delay,
         emit=emit,
         source=source,
+        before_request=before_request,
     )

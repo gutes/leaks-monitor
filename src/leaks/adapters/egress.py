@@ -106,14 +106,23 @@ class EgressResolver:
         self._ttl = timedelta(seconds=cache_ttl_seconds)
         self._cached: EgressInfo | None = None
 
-    def resolve(self, *, force: bool = False) -> EgressInfo | None:
-        """IP de salida, del cache o consultando. `None` si nadie contestó."""
+    def resolve(
+        self, *, force: bool = False, max_age_seconds: float | None = None
+    ) -> EgressInfo | None:
+        """IP de salida, del cache o consultando. `None` si nadie contestó.
+
+        `max_age_seconds` permite exigir una lectura más fresca que el TTL
+        general. Lo usa el control de OPSEC: para decidir si se puede consultar
+        una fuente, una lectura de hace cinco minutos no sirve — la VPN se pudo
+        haber caído en el medio.
+        """
         ahora = datetime.now(UTC)
+        tolerancia = self._ttl if max_age_seconds is None else timedelta(seconds=max_age_seconds)
         if (
             not force
             and self._cached is not None
             and self._cached.checked_at is not None
-            and ahora - self._cached.checked_at < self._ttl
+            and ahora - self._cached.checked_at < tolerancia
         ):
             return self._cached
 

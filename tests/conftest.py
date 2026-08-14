@@ -14,6 +14,7 @@ import pytest
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from leaks.adapters.egress import EgressInfo
 from leaks.config import PROJECT_ROOT, Settings
 from leaks.domain.models import (
     ArMatchReason,
@@ -22,6 +23,7 @@ from leaks.domain.models import (
     NormalizedItem,
     Severity,
 )
+from leaks.pipeline.egress_guard import EgressDecision
 from leaks.relevance.watchlist import Watchlist, load_watchlist
 from leaks.storage.dedup import compute_dedup_hash
 from leaks.storage.models import Base
@@ -123,3 +125,28 @@ def make_normalized(
 def read_fixture(name: str) -> str:
     """Lee una respuesta capturada de un feed."""
     return (FIXTURES_DIR / name).read_text(encoding="utf-8")
+
+
+class GuardPermisivo:
+    """Guard de test que siempre deja pasar.
+
+    Los tests **no tocan la red**: sin esto, el middleware de bloqueo resolvería
+    la IP de salida contra un servicio externo en cada petición.
+    """
+
+    def evaluate(self, *, force: bool = False) -> EgressDecision:
+        return EgressDecision(True, "control desactivado en tests")
+
+
+class GuardBloqueante:
+    """Guard de test que bloquea, para ejercitar el corte de la API."""
+
+    def __init__(self, country: str = "AR") -> None:
+        self._country = country
+
+    def evaluate(self, *, force: bool = False) -> EgressDecision:
+        return EgressDecision(
+            False,
+            f"BLOQUEADO: el tráfico sale desde {self._country}.",
+            EgressInfo(ip="200.1.2.3", country=self._country, checked_at=datetime.now(UTC)),
+        )

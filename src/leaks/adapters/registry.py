@@ -197,6 +197,7 @@ def build_adapter(
     spec: FeedSpec,
     settings: Settings,
     emit: Callable[[RunEvent], None] | None = None,
+    before_request: Callable[[], None] | None = None,
 ) -> tuple[FeedAdapter, FeedHttpClient]:
     """Instancia el adapter con el cliente HTTP que le corresponde.
 
@@ -213,5 +214,6 @@ def build_adapter(
         rate_limit_delay=settings.http_rate_limit_delay_seconds,
         emit=emit,
         source=spec.name,
+        before_request=before_request,
     )
     return spec.factory(settings, client), client

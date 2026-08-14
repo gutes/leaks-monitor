@@ -631,3 +631,16 @@ body.is-blocked { overflow: hidden; }
 }
 
 .pii-switch input:disabled + .pii-track { opacity: 0.45; cursor: not-allowed; }
+
+.btn-retry {
+  margin-top: 4px;
+  padding: 9px 20px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-color: var(--critical);
+  color: var(--critical);
+}
+
+.btn-retry:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--critical) 12%, transparent);
+}

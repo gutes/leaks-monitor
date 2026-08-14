@@ -21,7 +21,7 @@ from leaks.config import Settings
 from leaks.domain.models import ArMatchReason, Severity
 from leaks.storage.event_sink import SqlAlchemyEventSink
 from leaks.storage.repository import SqlAlchemyFindingRepository
-from tests.conftest import make_finding
+from tests.conftest import GuardBloqueante, GuardPermisivo, make_finding
 
 
 @pytest.fixture
@@ -66,7 +66,9 @@ def poblado(repository: SqlAlchemyFindingRepository) -> None:
 
 @pytest.fixture
 def client(settings: Settings, poblado: None) -> Iterator[TestClient]:
-    with TestClient(create_app(settings)) as c:
+    # Guard permisivo: sin él, el middleware de bloqueo saldría a la red en
+    # cada petición y la suite dejaría de ser offline.
+    with TestClient(create_app(settings, egress_guard=GuardPermisivo())) as c:  # type: ignore[arg-type]
         yield c
 
 
@@ -116,7 +118,7 @@ class TestFindings:
     def test_el_limit_tiene_tope(self, settings: Settings, poblado: None) -> None:
         """Todo listado tiene tope, también cuando el cliente pide más."""
         acotado = settings.model_copy(update={"api_max_page_size": 2})
-        with TestClient(create_app(acotado)) as client:
+        with TestClient(create_app(acotado, egress_guard=GuardPermisivo())) as client:  # type: ignore[arg-type]
             assert client.get("/api/findings", params={"limit": 9999}).json()["limit"] == 2
 
     def test_limit_invalido_es_rechazado(self, client: TestClient) -> None:
@@ -209,7 +211,7 @@ class TestFrontend:
         inexistente. Ahora es configuración explícita.
         """
         sin_ui = settings.model_copy(update={"frontend_dir": tmp_path / "no-existe"})
-        with TestClient(create_app(sin_ui)) as client:
+        with TestClient(create_app(sin_ui, egress_guard=GuardPermisivo())) as client:  # type: ignore[arg-type]
             assert client.get("/api/health").status_code == 200
             assert client.get("/").status_code == 404
 
@@ -220,7 +222,11 @@ class TestFrontend:
         ui.mkdir()
         (ui / "index.html").write_text("<h1>otra ui</h1>", encoding="utf-8")
 
-        with TestClient(create_app(settings.model_copy(update={"frontend_dir": ui}))) as client:
+        with TestClient(
+            create_app(
+                settings.model_copy(update={"frontend_dir": ui}), egress_guard=GuardPermisivo()
+            )  # type: ignore[arg-type]
+        ) as client:
             assert "otra ui" in client.get("/").text
 
 
@@ -341,8 +347,58 @@ class TestEstadoDePii:
 
     def test_sobrevive_a_una_app_nueva(self, settings: Settings, poblado: None) -> None:
         """Persistido en la base, no en memoria del proceso."""
-        with TestClient(create_app(settings)) as primero:
+        with TestClient(create_app(settings, egress_guard=GuardPermisivo())) as primero:  # type: ignore[arg-type]
             primero.patch("/api/settings/pii-sources", json={"enabled": True})
 
-        with TestClient(create_app(settings)) as segundo:
+        with TestClient(create_app(settings, egress_guard=GuardPermisivo())) as segundo:  # type: ignore[arg-type]
             assert segundo.get("/api/health").json()["pii_sources_enabled"] is True
+
+
+class TestBloqueoDeLaApi:
+    """Estando bloqueado, la API entera deja de responder.
+
+    El modal del frontend es la capa visible; esta es la que manda. Una pestaña
+    vieja o un `curl` no pueden seguir operando porque el navegador no vea el
+    modal.
+    """
+
+    @pytest.fixture
+    def bloqueado(self, settings: Settings, poblado: None) -> Iterator[TestClient]:
+        with TestClient(create_app(settings, egress_guard=GuardBloqueante())) as c:  # type: ignore[arg-type]
+            yield c
+
+    @pytest.mark.parametrize(
+        ("metodo", "ruta"),
+        [
+            ("get", "/api/findings"),
+            ("get", "/api/stats"),
+            ("get", "/api/sources"),
+            ("get", "/api/filters"),
+            ("get", "/api/events"),
+            ("get", "/api/watchlist"),
+            ("get", "/api/rules"),
+            ("post", "/api/runs"),
+        ],
+    )
+    def test_todo_devuelve_403(self, bloqueado: TestClient, metodo: str, ruta: str) -> None:
+        respuesta = getattr(bloqueado, metodo)(ruta)
+        assert respuesta.status_code == 403
+        assert respuesta.json()["egress_blocked"] is True
+
+    def test_no_se_puede_escribir_la_watchlist(self, bloqueado: TestClient) -> None:
+        respuesta = bloqueado.post(
+            "/api/watchlist", json={"kind": "domain", "value": "x.gob.ar", "sector": "x"}
+        )
+        assert respuesta.status_code == 403
+
+    def test_egress_sigue_abierto(self, bloqueado: TestClient) -> None:
+        """Si se cerrara, el modal quedaría trabado para siempre."""
+        respuesta = bloqueado.get("/api/egress")
+        assert respuesta.status_code == 200
+        assert respuesta.json()["blocked"] is True
+        assert "AR" in respuesta.json()["block_reason"]
+
+    def test_el_motivo_llega_al_frontend(self, bloqueado: TestClient) -> None:
+        detalle = bloqueado.get("/api/findings").json()
+        assert detalle["country"] == "AR"
+        assert "BLOQUEADO" in detalle["detail"]

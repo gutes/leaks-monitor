@@ -577,6 +577,24 @@ function applyBlock(info) {
 
 // El modal no se cierra con ESC. Se captura en fase de captura para ganarle a
 // cualquier otro handler.
+// Botón "Reintentar ahora": fuerza el re-chequeo sin esperar los 10 s.
+$("blocker-retry-btn").addEventListener("click", async () => {
+  const boton = $("blocker-retry-btn");
+  const nota = $("blocker-retry");
+  boton.disabled = true;
+  boton.textContent = "Verificando…";
+  nota.textContent = "Consultando la IP de salida…";
+
+  await loadEgress(true);
+
+  boton.disabled = false;
+  boton.textContent = "Reintentar ahora";
+  // Si sigue bloqueado, `applyBlock` dejó el motivo actualizado arriba.
+  nota.textContent = state.blocked
+    ? `Sigue bloqueado — último intento ${new Date().toLocaleTimeString()}`
+    : "Desbloqueado.";
+});
+
 document.addEventListener(
   "keydown",
   (e) => {
@@ -596,11 +614,13 @@ document.addEventListener(
  * Es un control de operación: antes de consultar feeds de este rubro conviene
  * confirmar que se está saliendo por la VPN que uno cree.
  */
-async function loadEgress() {
+async function loadEgress(force = false) {
   const badge = $("egress-badge");
   const texto = $("egress-text");
 
-  const info = await api("/api/egress");
+  // `force` no es un override: obliga a volver a preguntar la IP. Solo
+  // desbloquea si realmente cambió.
+  const info = await api("/api/egress", force ? { force: "true" } : {});
 
   // El veredicto de bloqueo se aplica siempre, incluso si la consulta falló:
   // sin respuesta no se puede afirmar que la salida sea segura.

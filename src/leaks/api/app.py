@@ -17,8 +17,8 @@ import logging
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from leaks.adapters.egress import EgressResolver
@@ -35,6 +35,7 @@ from leaks.api.schemas import (
     HealthOut,
     RuleOut,
     RulesOut,
+    RunStateOut,
     SourceOut,
     SourceRunOut,
     StatsOut,
@@ -43,8 +44,10 @@ from leaks.api.schemas import (
     WatchlistEntryOut,
     WatchlistOut,
 )
+from leaks.bootstrap import build_application
 from leaks.config import Settings, get_settings
 from leaks.domain.models import ArMatchReason
+from leaks.pipeline.coordinator import RunCoordinator
 from leaks.pipeline.egress_guard import EgressGuard
 from leaks.storage.queries import FindingFilters, FindingQueryService
 from leaks.storage.session import create_db_engine, create_session_factory
@@ -55,6 +58,13 @@ from leaks.storage.watchlist_repository import (
 )
 
 logger = logging.getLogger(__name__)
+
+#: Rutas que siguen respondiendo con el bloqueo de OPSEC activo.
+#:
+#: Son las que hacen falta para *salir* del bloqueo: si se cerrara
+#: `/api/egress`, el frontend no tendría cómo enterarse de que ya se puede
+#: volver a operar, y el modal quedaría trabado para siempre.
+_RUTAS_SIEMPRE_ABIERTAS = ("/api/egress", "/api/health")
 
 
 def _queries_dep(request: Request) -> FindingQueryService:
@@ -98,11 +108,18 @@ WatchlistRepo = Annotated[WatchlistRepository, Depends(_watchlist_dep)]
 Store = Annotated[SettingsStore, Depends(_settings_store_dep)]
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None, egress_guard: EgressGuard | None = None
+) -> FastAPI:
     """Fábrica de la app.
 
     Recibe `settings` inyectados para que los tests levanten la API contra una
     base temporal sin tocar variables de entorno globales.
+
+    `egress_guard` se inyecta **solo en tests**: el middleware de bloqueo
+    consulta la IP de salida en cada petición, y sin inyectarlo la suite saldría
+    a la red. En producción siempre se construye acá adentro, con la
+    configuración del proceso.
     """
     config = settings or get_settings()
     engine = create_db_engine(config.database_url)
@@ -120,6 +137,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.queries = queries
     app.state.watchlist_repo = WatchlistRepository(session_factory)
     app.state.settings_store = SettingsStore(session_factory)
+    # Coordinador de corridas manuales. Comparte la configuración del proceso,
+    # así que el control de IP de salida se le aplica igual que al scheduler.
+    app.state.runs = RunCoordinator(build_application(config).runner)
 
     # Resolver de IP de salida: vive en el estado de la app para que el cache
     # sobreviva entre requests.
@@ -135,11 +155,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         providers=config.egress_providers,
         cache_ttl_seconds=config.egress_cache_seconds,
     )
-    app.state.egress_guard = EgressGuard(
+    app.state.egress_guard = egress_guard or EgressGuard(
         app.state.egress if config.egress_check_enabled else None,
         blocked_countries=config.egress_blocked_countries,
         block_on_unknown=config.egress_block_on_unknown,
     )
+
+    # -- Bloqueo de OPSEC a nivel API ---------------------------------------
+    #
+    # El modal del frontend es la capa visible; esta es la que manda. Estando
+    # bloqueado, la API entera deja de responder: una pestaña vieja, un `curl`
+    # o un script no pueden seguir operando porque el navegador no vea el modal.
+    #
+    # Quedan abiertas solo las rutas que hacen falta para *salir* del bloqueo:
+    # la que informa la IP de salida y la de salud. Si se cerrara `/api/egress`,
+    # el frontend no tendría cómo enterarse de que ya se puede volver.
+    @app.middleware("http")
+    async def bloquear_si_la_salida_no_esta_permitida(request: Request, call_next: Any) -> Any:
+        ruta = request.url.path
+        if ruta.startswith("/api/") and not ruta.startswith(_RUTAS_SIEMPRE_ABIERTAS):
+            decision = request.app.state.egress_guard.evaluate()
+            if not decision.allowed:
+                return JSONResponse(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    content={
+                        "detail": decision.reason,
+                        "egress_blocked": True,
+                        "country": decision.country,
+                    },
+                )
+        return await call_next(request)
 
     # -- Hallazgos ----------------------------------------------------------
 
@@ -326,6 +371,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             editing_allowed=config.allow_rule_editing,
         )
 
+    # -- Corridas manuales ----------------------------------------------------
+
+    @app.post("/api/runs", response_model=RunStateOut, tags=["runs"])
+    def trigger_run(request: Request, response: Response) -> RunStateOut:
+        """Dispara una corrida del pipeline y vuelve enseguida.
+
+        La corrida sigue en segundo plano; el avance se ve en la consola de
+        actividad, que ya se refresca sola.
+
+        No chequea la IP de salida acá a propósito: lo hace el runner, que es la
+        única puerta. Disparar a mano no puede saltear el bloqueo.
+        """
+        coordinador: RunCoordinator = request.app.state.runs
+        if not coordinador.trigger():
+            # Dos corridas en paralelo sobre la misma SQLite se pisan los
+            # cursores y duplican los requests a los feeds.
+            response.status_code = status.HTTP_409_CONFLICT
+            return RunStateOut.model_validate(coordinador.state.as_dict())
+
+        response.status_code = status.HTTP_202_ACCEPTED
+        return RunStateOut.model_validate(coordinador.state.as_dict())
+
+    @app.get("/api/runs/current", response_model=RunStateOut, tags=["runs"])
+    def current_run(request: Request) -> RunStateOut:
+        """Estado de la corrida manual: si está corriendo y cómo terminó."""
+        coordinador: RunCoordinator = request.app.state.runs
+        return RunStateOut.model_validate(coordinador.state.as_dict())
+
     # -- IP de salida ---------------------------------------------------------
 
     @app.get("/api/egress", response_model=EgressOut, tags=["sources"])
@@ -338,13 +411,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not config.egress_check_enabled:
             return EgressOut(enabled=False)
 
-        resolver = request.app.state.egress
-        if force:
-            resolver.resolve(force=True)
-
         # El veredicto lo da el mismo guard que usa el pipeline: una sola
         # fuente de verdad para el bloqueo, no dos criterios que se pisen.
-        decision = request.app.state.egress_guard.evaluate()
+        # `force` no es un override: vuelve a preguntar, y solo desbloquea si
+        # la IP realmente cambió.
+        decision = request.app.state.egress_guard.evaluate(force=force)
         datos = decision.info.as_dict() if decision.info else {}
         return EgressOut(
             enabled=True,

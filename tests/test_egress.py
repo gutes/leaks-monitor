@@ -10,13 +10,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import httpx
+import pytest
 import respx
 
 from leaks.adapters.egress import EgressInfo, EgressResolver
 from leaks.adapters.http import FeedHttpClient
 from leaks.config import Settings
 from leaks.domain.models import EventKind, SourceRunStatus
-from leaks.pipeline.egress_guard import EgressGuard
+from leaks.pipeline.egress_guard import EgressBlockedError, EgressGuard
 from leaks.pipeline.runner import PipelineRunner
 from leaks.relevance.watchlist import Watchlist
 from leaks.storage.repository import SqlAlchemyFindingRepository
@@ -30,7 +31,9 @@ class ResolverFalso:
         self._info = info
         self.llamadas = 0
 
-    def resolve(self, *, force: bool = False) -> EgressInfo | None:
+    def resolve(
+        self, *, force: bool = False, max_age_seconds: float | None = None
+    ) -> EgressInfo | None:
         self.llamadas += 1
         return self._info
 
@@ -65,7 +68,9 @@ class TestGuard:
 
     def test_resolver_que_explota_bloquea(self) -> None:
         class ResolverRoto:
-            def resolve(self, *, force: bool = False) -> EgressInfo | None:
+            def resolve(
+                self, *, force: bool = False, max_age_seconds: float | None = None
+            ) -> EgressInfo | None:
                 raise RuntimeError("sin red")
 
         decision = EgressGuard(ResolverRoto()).evaluate()  # type: ignore[arg-type]
@@ -274,3 +279,128 @@ class TestListasPorEntorno:
             )
         finally:
             del os.environ["LEAKS_DARKFORUMS_BASE_URLS"]
+
+
+class TestElBloqueoNoPuedeFallar:
+    """El control tiene que aguantar configuración hostil y cache rancio.
+
+    Cada test de acá corresponde a un agujero concreto que existía y se cerró.
+    """
+
+    def test_argentina_no_se_puede_sacar_de_la_lista(self) -> None:
+        """Agujero: vaciar la lista por entorno desactivaba el control entero."""
+        guard = EgressGuard(ResolverFalso(info("AR")), blocked_countries=())  # type: ignore[arg-type]
+        assert guard.evaluate().allowed is False
+
+    def test_configurar_otro_pais_no_desbloquea_argentina(self) -> None:
+        """La configuración solo puede AGREGAR países, nunca sacar AR."""
+        guard = EgressGuard(ResolverFalso(info("AR")), blocked_countries=("BR",))  # type: ignore[arg-type]
+        assert guard.evaluate().allowed is False
+
+    def test_se_pueden_sumar_paises(self) -> None:
+        guard = EgressGuard(ResolverFalso(info("BR")), blocked_countries=("BR",))  # type: ignore[arg-type]
+        assert guard.evaluate().allowed is False
+
+    def test_no_confia_en_una_lectura_vieja(self) -> None:
+        """Agujero: con el cache de 5 min, una VPN caída pasaba desapercibida.
+
+        Si la lectura es más vieja que `max_age`, hay que volver a preguntar.
+        """
+        vistos: list[float | None] = []
+
+        class ResolverQueRegistra:
+            def resolve(
+                self, *, force: bool = False, max_age_seconds: float | None = None
+            ) -> EgressInfo | None:
+                vistos.append(max_age_seconds)
+                return info("CL")
+
+        EgressGuard(ResolverQueRegistra(), max_age_seconds=30).evaluate()  # type: ignore[arg-type]
+
+        assert vistos == [30], "el guard tiene que exigir frescura, no aceptar el cache general"
+
+    def test_el_boton_reintentar_fuerza_la_consulta(self) -> None:
+        forzados: list[bool] = []
+
+        class ResolverQueRegistra:
+            def resolve(
+                self, *, force: bool = False, max_age_seconds: float | None = None
+            ) -> EgressInfo | None:
+                forzados.append(force)
+                return info("AR")
+
+        guard = EgressGuard(ResolverQueRegistra())  # type: ignore[arg-type]
+        guard.evaluate(force=True)
+
+        assert forzados == [True]
+
+    def test_reintentar_no_es_un_override(self) -> None:
+        """Forzar vuelve a preguntar; si sigue saliendo por AR, sigue bloqueado."""
+        guard = EgressGuard(ResolverFalso(info("AR")))  # type: ignore[arg-type]
+        assert guard.evaluate(force=True).allowed is False
+
+
+class TestVpnQueSeCaeAMitadDeLaCorrida:
+    """Regresión de una falla observada en vivo.
+
+    Con el chequeo únicamente al arrancar, una corrida que empezaba con la VPN
+    conectada seguía consultando feeds después de que la salida pasara a ser
+    argentina. Se vio de verdad: el pipeline trajo 398 items mientras la IP de
+    salida ya era de AR.
+
+    Ahora la verificación va **antes de cada request HTTP**, así que la
+    exposición se corta en el instante en que la salida deja de estar
+    permitida.
+    """
+
+    class ResolverQueCambia:
+        """Devuelve CL las primeras `n` veces y AR a partir de ahí."""
+
+        def __init__(self, permitidas: int) -> None:
+            self._restantes = permitidas
+            self.consultas = 0
+
+        def resolve(
+            self, *, force: bool = False, max_age_seconds: float | None = None
+        ) -> EgressInfo:
+            self.consultas += 1
+            if self._restantes > 0:
+                self._restantes -= 1
+                return info("CL")
+            return info("AR")
+
+    @respx.mock
+    def test_el_cliente_http_corta_al_cambiar_la_salida(self) -> None:
+        resolver = self.ResolverQueCambia(permitidas=1)
+        guard = EgressGuard(resolver)  # type: ignore[arg-type]
+
+        ruta = respx.get("https://feed.test/api").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+
+        def barrera() -> None:
+            decision = guard.evaluate()
+            if not decision.allowed:
+                raise EgressBlockedError(decision.reason)
+
+        cliente = FeedHttpClient(
+            user_agent="test",
+            max_retries=0,
+            rate_limit_delay=0,
+            sleep=lambda _s: None,
+            before_request=barrera,
+        )
+
+        # El primer request pasa: la salida todavía es CL.
+        cliente.get_json("https://feed.test/api")
+        assert ruta.call_count == 1
+
+        # La VPN se cayó: el segundo no debe salir.
+        with pytest.raises(EgressBlockedError):
+            cliente.get_json("https://feed.test/api")
+        assert ruta.call_count == 1, "no puede haber salido un segundo request"
+
+    def test_sin_barrera_el_cliente_funciona_igual(self) -> None:
+        """La barrera es opcional: los tests de adapters no la necesitan."""
+        cliente = FeedHttpClient(user_agent="test", sleep=lambda _s: None)
+        assert cliente._before_request is None

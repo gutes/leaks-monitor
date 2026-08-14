@@ -5,6 +5,42 @@ cobertura, imagen Docker verificada, 214 hallazgos argentinos reales en la base.
 
 ---
 
+## 0. Lo último que se hizo (2026-08-14, sesión 2)
+
+**El control de IP de salida se endureció.** Se encontró en vivo que el pipeline
+consultaba feeds con la salida en AR: el chequeo era solo al arrancar la
+corrida, y la IP puede cambiar en el medio. Agujeros cerrados, cada uno con su
+test:
+
+1. **Barrera antes de cada request HTTP** (`FeedHttpClient.before_request`). No
+   sale un byte a un feed sin una lectura fresca que lo autorice.
+2. **AR no se puede sacar de la lista** (`ALWAYS_BLOCKED` en `egress_guard.py`).
+   La configuración solo puede AGREGAR países.
+3. **Lectura fresca obligatoria** (60 s). Antes el cache de 5 min podía tapar
+   una VPN caída.
+4. **La API entera devuelve 403** estando bloqueada, salvo `/api/egress` y
+   `/api/health` (si se cerraran, el modal quedaría trabado para siempre).
+5. **Corte a mitad de corrida**: si la salida se bloquea, no se sigue con las
+   fuentes que faltan.
+
+**Ojo con el ruteo:** se observó que el contenedor sale por la VPN (CL) mientras
+el shell del host salía por AR (Red Científica). Hay ruteo dividido: verificar
+por dónde sale **cada** proceso, no alcanza con mirar el navegador.
+
+**Otras cosas de esta sesión:** botón "Reintentar ahora" en el modal (fuerza el
+re-chequeo, no es override); endpoint `POST /api/runs` + `RunCoordinator` para
+disparar corridas a mano; pastilla de PII arreglada (mostraba la variable de
+entorno en vez del estado persistido); redacción de `email:password` en títulos
+(la contraseña sobrevivía a la redacción).
+
+**Pendiente inmediato al retomar:** el botón "Actualizar" del frontend
+**todavía no fue reconectado** al nuevo endpoint `POST /api/runs`. Hoy solo
+relee la base y no da feedback visual, que es la queja original. Falta:
+agregar el botón "Correr ahora", el estado de "corriendo…" y un timestamp de
+última actualización.
+
+---
+
 ## 1. Decisiones que esperan confirmación del líder técnico
 
 Las tomé yo para no bloquear. Todas son reversibles.

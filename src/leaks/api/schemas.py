@@ -230,3 +230,16 @@ class RulesOut(BaseModel):
     pii_storage_available: bool = False
     #: Si esta instancia permite editar reglas y watchlist.
     editing_allowed: bool = True
+
+
+class RunStateOut(BaseModel):
+    """Estado de la corrida disparada a mano."""
+
+    running: bool = False
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    last_error: str | None = None
+    #: Hallazgos nuevos de la última corrida manual.
+    last_total_new: int | None = None
+    #: Motivo si el control de IP de salida la bloqueó.
+    last_blocked_reason: str | None = None
