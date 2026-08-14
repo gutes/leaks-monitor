@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- CSP: sin CDNs ni inline. Todo lo que carga la página sale de este mismo
+       origen; el contenido de los feeds es hostil por definición. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'" />
+  <title>Monitoreo de leaks — Argentina</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>🛡️</text></svg>" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <!--
+    Bloqueo de OPSEC. Se muestra si la IP de salida es de un país bloqueado
+    (Argentina) o si no se pudo determinar. No tiene botón de cerrar ni acepta
+    ESC: el control no se puede overridear desde acá.
+
+    Esto es la capa visible; el bloqueo real está en el pipeline (ver
+    src/leaks/pipeline/egress_guard.py), porque el scheduler corre en otro
+    proceso y no le importa lo que muestre el navegador.
+  -->
+  <div id="egress-block" class="blocker" role="alertdialog" aria-modal="true"
+       aria-labelledby="blocker-title" aria-describedby="blocker-reason" hidden>
+    <div class="blocker-card">
+      <div class="blocker-icon" aria-hidden="true">⛔</div>
+      <h2 id="blocker-title">Operación bloqueada</h2>
+      <p id="blocker-reason" class="blocker-reason">Verificando la IP de salida…</p>
+      <dl class="blocker-detail">
+        <div><dt>IP de salida</dt><dd id="blocker-ip">—</dd></div>
+        <div><dt>País</dt><dd id="blocker-country">—</dd></div>
+        <div><dt>Proveedor</dt><dd id="blocker-org">—</dd></div>
+      </dl>
+      <p class="blocker-help">
+        No se consultó ninguna fuente. Conectate a la VPN y esperá: esta pantalla
+        se libera sola en cuanto la salida deje de ser desde un país bloqueado.
+      </p>
+      <p class="blocker-note">Este control no se puede desactivar desde la interfaz.</p>
+      <p class="blocker-retry" id="blocker-retry">Reintentando…</p>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">🛡️</span>
+      <div>
+        <h1>Monitoreo de leaks — Argentina</h1>
+        <p class="subtitle">Hallazgos de fuentes públicas con relevancia argentina · solo lectura</p>
+      </div>
+    </div>
+    <div class="badges">
+      <span id="egress-badge" class="badge badge-egress" title="IP pública desde la que sale el tráfico. Verificá que sea la de tu VPN.">
+        <span class="egress-flag" aria-hidden="true">🌐</span>
+        <span id="egress-text">Resolviendo IP de salida…</span>
+      </span>
+      <!-- Pastilla + interruptor como un solo control: el estado que muestra
+           es el que se va a aplicar, no una variable de entorno distinta. -->
+      <span class="pii-control" id="pii-control">
+        <span id="pii-badge" class="badge badge-muted">PII: —</span>
+        <label class="pii-switch" id="pii-switch" title="Habilitar las fuentes que devuelven PII">
+          <input type="checkbox" id="pii-sources" />
+          <span class="pii-track" aria-hidden="true"><span class="pii-thumb"></span></span>
+        </label>
+      </span>
+      <button id="refresh" class="btn" type="button">Actualizar</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="stats" id="stats" aria-label="Totales"></section>
+
+    <!-- Colapsable nativo: <details> no necesita JS para abrir y cerrar.
+         El resumen se ve igual estando cerrado, así que ocupa una línea sin
+         esconder si hay una fuente caída. -->
+    <details class="panel panel-collapsible" id="sources-panel">
+      <summary>
+        <span class="summary-title">Salud de las fuentes</span>
+        <span id="sources-summary" class="summary-pills"></span>
+      </summary>
+      <p class="hint">Una fuente caída no interrumpe la corrida: queda registrada acá.</p>
+      <div id="sources" class="sources"></div>
+    </details>
+
+    <section class="panel">
+      <h2>Hallazgos</h2>
+      <form class="filters" id="filters" autocomplete="off">
+        <label>Buscar
+          <input type="search" id="f-q" name="q" placeholder="víctima o dominio" maxlength="200" />
+        </label>
+        <label>Fuente
+          <select id="f-source" name="source"><option value="">Todas</option></select>
+        </label>
+        <label>Sector
+          <select id="f-sector" name="sector"><option value="">Todos</option></select>
+        </label>
+        <label>Severidad
+          <select id="f-severity" name="severity"><option value="">Todas</option></select>
+        </label>
+        <label>Desde
+          <input type="date" id="f-since" name="since" />
+        </label>
+        <label>Hasta
+          <input type="date" id="f-until" name="until" />
+        </label>
+        <button class="btn btn-primary" type="submit">Filtrar</button>
+        <button class="btn" type="reset" id="clear">Limpiar</button>
+      </form>
+
+      <div id="active-filters" class="active-filters"></div>
+
+      <div class="table-wrap">
+        <table id="findings">
+          <thead>
+            <tr>
+              <th>Descubierto</th>
+              <th>Víctima</th>
+              <th>Sector</th>
+              <th>Actor</th>
+              <th>Fuente</th>
+              <th>Severidad</th>
+              <th>Por qué es AR</th>
+              <th>Ref.</th>
+            </tr>
+          </thead>
+          <tbody id="findings-body"></tbody>
+        </table>
+      </div>
+
+      <div class="pager">
+        <button class="btn" id="prev" type="button" disabled>← Anteriores</button>
+        <span id="page-info" class="hint">—</span>
+        <button class="btn" id="next" type="button" disabled>Siguientes →</button>
+      </div>
+    </section>
+    <section class="panel" id="rules-panel">
+      <h2>Reglas de relevancia argentina</h2>
+      <p class="hint">
+        Qué hace que un hallazgo se considere argentino. Los cambios aplican en la
+        próxima corrida, sin reiniciar nada.
+      </p>
+      <div id="rules" class="rules"></div>
+
+      <p class="hint" id="pii-toggle-note"></p>
+    </section>
+
+    <section class="panel" id="watchlist-panel">
+      <div class="console-head">
+        <div>
+          <h2>Watchlist monitoreada</h2>
+          <p class="hint">
+            Dominios y keywords bajo vigilancia. Un dominio cubre también sus subdominios.
+            Deshabilitar deja la entrada guardada pero sin matchear, hasta que la vuelvas a habilitar.
+          </p>
+        </div>
+        <div id="wl-counts" class="wl-counts"></div>
+      </div>
+
+      <form class="filters" id="wl-add" autocomplete="off">
+        <label>Tipo
+          <select id="wl-kind">
+            <option value="domain">Dominio</option>
+            <option value="keyword">Keyword</option>
+          </select>
+        </label>
+        <label>Valor
+          <input type="text" id="wl-value" placeholder="prevision-ejemplo.gob.ar o *.gba.gob.ar" maxlength="255" required />
+        </label>
+        <label>Sector
+          <input type="text" id="wl-sector" list="wl-sectors" placeholder="gobierno_nacional" maxlength="64" />
+          <datalist id="wl-sectors"></datalist>
+        </label>
+        <label class="switch">
+          <input type="checkbox" id="wl-critical" /> infra crítica
+        </label>
+        <button class="btn btn-primary" type="submit">Agregar</button>
+      </form>
+      <p id="wl-error" class="error"></p>
+
+      <div class="filters">
+        <label>Buscar
+          <input type="search" id="wl-q" placeholder="dominio o keyword" maxlength="200" />
+        </label>
+        <label>Tipo
+          <select id="wl-f-kind">
+            <option value="">Todos</option>
+            <option value="domain">Dominios</option>
+            <option value="keyword">Keywords</option>
+          </select>
+        </label>
+        <label>Estado
+          <select id="wl-f-enabled">
+            <option value="">Todos</option>
+            <option value="true">Habilitados</option>
+            <option value="false">Deshabilitados</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="table-wrap">
+        <table id="watchlist">
+          <thead>
+            <tr>
+              <th>Estado</th><th>Tipo</th><th>Valor</th><th>Sector</th>
+              <th>Crítico</th><th>Origen</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="wl-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel console-panel">
+      <div class="console-head">
+        <div>
+          <h2>Consola de actividad</h2>
+          <p class="hint">
+            A qué sitios les está pegando el pipeline, qué respondieron y cuánto tardaron.
+            Sin PII ni contenido de los feeds.
+          </p>
+        </div>
+        <div class="console-actions">
+          <span id="console-status" class="pill pill-skipped">en espera</span>
+          <label class="switch" title="Bajar solo al llegar líneas nuevas">
+            <input type="checkbox" id="console-follow" checked /> seguir
+          </label>
+          <button class="btn" id="console-clear" type="button">Limpiar</button>
+        </div>
+      </div>
+      <!-- role=log + aria-live: un lector de pantalla anuncia las líneas nuevas. -->
+      <div id="console" class="console" role="log" aria-live="polite" aria-label="Actividad del pipeline"></div>
+      <p class="hint" id="console-count">0 líneas</p>
+    </section>
+  </main>
+
+  <footer>
+    <p>
+      Prototipo OSINT sobre feeds públicos. Persiste solo metadata no sensible.
+      ransomware.live free tier: uso personal, no corporativo.
+      <a href="/api/docs">API</a>
+    </p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

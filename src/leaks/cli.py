@@ -1,0 +1,179 @@
+"""Interfaz de línea de comandos.
+
+Capa de entrada fina: parsea, delega en el composition root y traduce el
+resultado a un código de salida. Nada de lógica de negocio acá.
+
+Comandos:
+    leaks init-db     crea el schema
+    leaks run         una corrida (one-shot, para pruebas y para cron)
+    leaks schedule    corrida diaria a la hora configurada
+    leaks serve       API + frontend de solo lectura
+    leaks feeds       lista el registro de feeds y su política
+    leaks purge-pii   aplica la retención de la bóveda cifrada
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import sys
+from collections.abc import Sequence
+
+from leaks.adapters.registry import FEED_REGISTRY, resolve_enabled
+from leaks.bootstrap import build_application, configure_logging
+from leaks.config import get_settings
+from leaks.pipeline.runner import RunReport
+from leaks.pipeline.scheduler import run_forever
+
+logger = logging.getLogger("leaks.cli")
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="leaks",
+        description="Monitoreo de leaks con capa de relevancia argentina.",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    sub.add_parser("init-db", help="Crea las tablas si no existen.")
+    sub.add_parser("run", help="Corre el pipeline una vez y termina.")
+    sub.add_parser("schedule", help="Corre el pipeline todos los días a la hora configurada.")
+    sub.add_parser("feeds", help="Lista los feeds registrados y si corren.")
+    sub.add_parser("purge-pii", help="Borra los registros con PII vencidos.")
+
+    serve = sub.add_parser("serve", help="Levanta la API y el frontend de solo lectura.")
+    serve.add_argument("--host", default=None, help="Override de LEAKS_API_HOST.")
+    serve.add_argument("--port", type=int, default=None, help="Override de LEAKS_API_PORT.")
+    serve.add_argument("--reload", action="store_true", help="Autorecarga (desarrollo).")
+
+    return parser
+
+
+def _print_report(report: RunReport) -> None:
+    """Resumen legible de la corrida, fuente por fuente."""
+    duracion = (report.finished_at - report.started_at).total_seconds()
+
+    if report.blocked:
+        print("\n" + "=" * 72)
+        print("  CORRIDA BLOQUEADA — no se consultó ninguna fuente")
+        print(f"  {report.blocked_reason}")
+        print("=" * 72)
+        return
+
+    print(f"\nCorrida terminada en {duracion:.1f} s")
+    print(f"{'FUENTE':<20} {'ESTADO':<9} {'TRAÍDOS':>8} {'AR':>6} {'NUEVOS':>7}")
+    for r in report.results:
+        print(
+            f"{r.source:<20} {r.status:<9} {r.items_fetched:>8} "
+            f"{r.items_matched:>6} {r.items_persisted:>7}"
+        )
+        if r.error:
+            print(f"{'':<20} └─ {r.error}")
+    print(
+        f"\nTotal: {report.total_fetched} traídos, {report.total_matched} relevantes AR, "
+        f"{report.total_new} nuevos."
+    )
+    if report.pii_stored:
+        print(f"PII cifrada: {report.pii_stored} registros.")
+    if report.pii_purged:
+        print(f"PII vencida borrada: {report.pii_purged} registros.")
+    if report.failed_sources:
+        print(f"Fuentes caídas (el run siguió igual): {', '.join(report.failed_sources)}")
+
+
+def _cmd_feeds() -> int:
+    """Muestra el registro: qué corre, qué no y por qué."""
+    settings = get_settings()
+    motivos = {spec.name: motivo for spec, motivo in resolve_enabled(settings)}
+    print(f"{'FEED':<20} {'TIPO':<13} {'ESTADO'}")
+    for spec in FEED_REGISTRY:
+        motivo = motivos.get(spec.name, "no seleccionado en LEAKS_ENABLED_FEEDS")
+        estado = "corre" if spec.name in motivos and motivo is None else f"no corre — {motivo}"
+        print(f"{spec.name:<20} {spec.leak_type!s:<13} {estado}")
+        if spec.license_note:
+            print(f"{'':<20} licencia: {spec.license_note}")
+    return 0
+
+
+def _cmd_serve(host: str | None, port: int | None, reload: bool) -> int:
+    """Levanta uvicorn con la app de solo lectura."""
+    import uvicorn
+
+    settings = get_settings()
+
+    # El schema se crea acá y no en el primer request: sin tablas, TODOS los
+    # endpoints devuelven 500 y el frontend se ve vacío sin decir por qué.
+    build_application(settings).create_schema()
+
+    destino_host = host or settings.api_host
+    destino_port = port or settings.api_port
+    if destino_host not in ("127.0.0.1", "localhost"):
+        # No se bloquea: puede ser un despliegue detrás de un proxy que
+        # autentique. Pero que quede dicho, porque el default es sin auth.
+        logger.warning(
+            "Sirviendo en %s: la API no tiene autenticación. "
+            "Poné un proxy que autentique antes de exponerla.",
+            destino_host,
+        )
+    uvicorn.run(
+        "leaks.api.app:create_app",
+        factory=True,
+        host=destino_host,
+        port=destino_port,
+        reload=reload,
+    )
+    return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Punto de entrada. Devuelve el código de salida del proceso."""
+    args = _build_parser().parse_args(argv)
+    settings = get_settings()
+    configure_logging(settings.log_level)
+
+    if args.command == "feeds":
+        return _cmd_feeds()
+    if args.command == "serve":
+        return _cmd_serve(args.host, args.port, args.reload)
+
+    app = build_application(settings)
+
+    if args.command == "init-db":
+        app.create_schema()
+        print(f"Schema listo en {settings.database_url}")
+        return 0
+
+    if args.command == "purge-pii":
+        borrados = app.pii_vault.purge_expired()
+        eventos = app.event_sink.purge_expired()
+        print(f"Registros con PII vencidos borrados: {borrados}")
+        print(f"Eventos de actividad vencidos borrados: {eventos}")
+        return 0
+
+    if args.command == "run":
+        # Crear el schema acá hace que `leaks run` funcione de cero sin un
+        # paso previo: es el "corre con un comando" del enunciado.
+        app.create_schema()
+        reporte = app.runner.run()
+        _print_report(reporte)
+        # Fail-closed también en el exit code: si NINGUNA fuente respondió, el
+        # run fue un fracaso aunque no haya excepción, y el cron tiene que
+        # enterarse.
+        return 0 if reporte.ok else 1
+
+    if args.command == "schedule":
+        app.create_schema()
+        if settings.run_on_start:
+            # Sin esto el tablero queda vacío hasta la primera corrida
+            # programada, y parece roto cuando en realidad no arrancó todavía.
+            print("Corrida inicial (LEAKS_RUN_ON_START=true)…")
+            _print_report(app.runner.run())
+        print(f"Scheduler activo. Corrida diaria a las {settings.daily_run_at} (hora local).")
+        run_forever(app.runner.run, daily_at=settings.daily_run_at)
+        return 0
+
+    return 2  # pragma: no cover — argparse ya cubre los comandos desconocidos
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(main())

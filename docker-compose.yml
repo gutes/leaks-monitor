@@ -1,0 +1,60 @@
+# Prototipo completo con un comando: `docker compose up -d`.
+#
+# Dos servicios sobre la MISMA imagen (un solo build, como pide el CLAUDE.md):
+# uno sirve la UI, el otro corre el pipeline diario. Comparten el volumen de la
+# base.
+
+services:
+  api:
+    build: .
+    image: leaks-monitor:0.1.0
+    command: ["leaks", "serve"]
+    ports:
+      # Solo a loopback: la API no tiene autenticación (ver README).
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - leaks-data:/data
+    env_file:
+      - path: .env
+        required: false
+    restart: unless-stopped
+    # Endurecimiento básico: el proceso no necesita escribir fuera del volumen
+    # ni escalar privilegios.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+  scheduler:
+    build: .
+    image: leaks-monitor:0.1.0
+    command: ["leaks", "schedule"]
+    environment:
+      # Corrida apenas arranca: sin esto el tablero queda vacío hasta la hora
+      # programada y parece roto cuando en realidad todavía no corrió.
+      LEAKS_RUN_ON_START: "true"
+      LEAKS_DAILY_RUN_AT: "03:00"
+      # Control de OPSEC: el scheduler no consulta nada si la salida es AR.
+      LEAKS_EGRESS_BLOCKED_COUNTRIES: "AR"
+    volumes:
+      - leaks-data:/data
+    env_file:
+      - path: .env
+        required: false
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    # El healthcheck de la imagen consulta la API por HTTP; este servicio no
+    # sirve HTTP, así que siempre daría unhealthy y sería una alarma falsa.
+    # Que el proceso esté vivo lo gobierna `restart: unless-stopped`.
+    healthcheck:
+      disable: true
+    depends_on:
+      - api
+
+volumes:
+  leaks-data:

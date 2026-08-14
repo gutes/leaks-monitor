@@ -1,0 +1,72 @@
+[
+  {
+    "post_title": "aguas-ejemplo.com.ar",
+    "discovered": "2026-08-12 10:15:02.123456",
+    "description": "Agua y Saneamientos Argentinos. 1.2 TB of internal documents.",
+    "link": "/blog/post/aysacomar/",
+    "magnet": null,
+    "screen": "screenshots/safepay/aysacomar.png",
+    "misp_uuid": "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0",
+    "group_name": "safepay"
+  },
+  {
+    "post_title": "Columbia University Information (Dental)",
+    "discovered": "2026-08-14 18:34:36.997612",
+    "description": "Country: New York, US |\nWebsite: columbia.edu |\nRevenue: $6.6 Billion |\nIndustry: Colleges & Universities |\nEmployees: 20.000-25.000 |\nProperties: 296 GB (283,387 Files, 11,268 Folders)",
+    "link": "/project/40/",
+    "magnet": null,
+    "screen": "screenshots/global secret group/Columbia University Information (Dental).png",
+    "misp_uuid": "ada1c34a-3673-519d-8da5-96b5f7a109bb",
+    "group_name": "global secret group"
+  },
+  {
+    "post_title": "FiferFox Minecraft Server",
+    "discovered": "2026-08-14 16:43:25.326580",
+    "description": "Minecraft Server • 10000 • 3\r\n\r\nThis is a basic Minecraft Server.",
+    "link": null,
+    "magnet": null,
+    "screen": "screenshots/bluewhale/FiferFox Minecraft Server.png",
+    "misp_uuid": "dcfb13d9-3194-59ec-ac60-8d71967ef317",
+    "group_name": "bluewhale"
+  },
+  {
+    "post_title": "Satellite Developer Server",
+    "discovered": "2026-08-14 16:42:44.439512",
+    "description": "Developer • 20000 • 5\r\n\r\nA software developer at a company",
+    "link": null,
+    "magnet": null,
+    "screen": "screenshots/bluewhale/Satellite Developer Server.png",
+    "misp_uuid": "9435fa73-db4c-5906-8ec7-d77bfb3f4d60",
+    "group_name": "bluewhale"
+  },
+  {
+    "post_title": "Connell Enterprises LLC",
+    "discovered": "2026-08-14 16:30:06.084280",
+    "description": "He performs system administration for domain networks but is unable to ensure his own security. As a result, his data was compromised, and he was caught distributing pornographic content, storing over 200 terabytes of pornographic data on his network-attached storage (NAS). He administers pornographic websites and publishes content there, creates content featuring real people and sells it for money, and engages in blackmail by generating pornographic content using artificial intelligence. He finds victims and demands money from them. Various victims, including minors, as well as prominent public figures and political figures, including President Donald Trump, have been discovered in his computer files. Law enforcement is advised to pay attention to this individual as he is a sexual predator and distributor of pornography. You can view his directory structure, browser profiles, and saved HTML pages, where you can read his 4chan correspondence and much more.",
+    "link": "http://sq5gowklqcw4uqwzdsebnpxaynffzctjs6r5mmzzpn6jn76au7qwexid.onion/index.php?p=",
+    "magnet": null,
+    "screen": "screenshots/interlock/Connell Enterprises LLC.png",
+    "misp_uuid": "3965aa8d-10b7-5bc7-8769-415f9e55dcc8",
+    "group_name": "interlock"
+  },
+  {
+    "post_title": "cambrialawfirm.com",
+    "discovered": "2026-08-14 16:30:04.293575",
+    "description": "",
+    "link": "/blog/disclosures/6a7e49da9cd108bf269d76d0",
+    "magnet": null,
+    "screen": "screenshots/inc ransom/cambrialawfirmcom.png",
+    "misp_uuid": "510aebde-6241-5465-9a1d-fdcf17ea1d7f",
+    "group_name": "inc ransom"
+  },
+  {
+    "post_title": "https://pacific-construction.com/",
+    "discovered": "2026-08-14 16:30:03.344203",
+    "description": "",
+    "link": "/blog/disclosures/6a7e4ea49cd108bf269e158e",
+    "magnet": null,
+    "screen": "screenshots/inc ransom/pacific-constructioncom.png",
+    "misp_uuid": "91381a23-c0b0-5ce8-8079-227a0e13d903",
+    "group_name": "inc ransom"
+  }
+]

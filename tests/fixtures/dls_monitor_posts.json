@@ -1,0 +1,52 @@
+[
+  {
+    "post_title": "obrasocial-ejemplo.com.ar",
+    "group_name": "lockbit3",
+    "discovered": "2026-08-11 09:00:00.000000"
+  },
+  {
+    "post_title": "Instituto Nacional de Tecnología Agropecuaria",
+    "group_name": "medusa",
+    "discovered": "2026-08-12 11:30:00.000000"
+  },
+  {
+    "post_title": "Alya Construtora",
+    "group_name": "ransomhouse",
+    "discovered": "2026-08-07 14:33:59.577239"
+  },
+  {
+    "post_title": "[DISCLOSED]Nichirei",
+    "group_name": "ransomhouse",
+    "discovered": "2026-08-09 22:03:16.635283"
+  },
+  {
+    "post_title": "[DISCLOSED]City of McMinnville OR",
+    "group_name": "ransomhouse",
+    "discovered": "2026-08-10 18:13:42.508786"
+  },
+  {
+    "post_title": "[DISCLOSED]City of Beacon",
+    "group_name": "ransomhouse",
+    "discovered": "2026-08-12 13:17:28.596033"
+  },
+  {
+    "post_title": "SIA Medical Centre",
+    "group_name": "rhysida",
+    "discovered": "2026-08-13 18:22:43.875285"
+  },
+  {
+    "post_title": "[DISCLOSED]TECHVENTURES BANK S.A.",
+    "group_name": "ransomhouse",
+    "discovered": "2026-08-13 22:07:56.624989"
+  },
+  {
+    "post_title": "[DISCLOSED]PCL Holding",
+    "group_name": "ransomhouse",
+    "discovered": "2026-08-14 06:37:52.200402"
+  },
+  {
+    "post_title": "Pierce Township",
+    "group_name": "rhysida",
+    "discovered": "2026-08-14 10:22:54.237834"
+  }
+]

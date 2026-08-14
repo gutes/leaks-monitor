@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Fixture SINTÉTICA de un Atom de MyBB.
+
+  Reproduce la estructura exacta del feed real (namespaces, CDATA, autor
+  envuelto en HTML, fechas ISO con Z) pero con contenido inventado.
+
+  Es a propósito: la captura real traía nombres de víctimas y bloques de
+  descarga que apuntaban a los volcados. Versionar eso sería redistribuir
+  punteros a datos robados — justo lo que el proyecto se prohíbe. Además esta
+  versión cubre más: incluye un caso argentino y uno con PII en el título, que
+  la captura real no tenía.
+-->
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/">
+	<title type="html"><![CDATA[TestForum - All Forums]]></title>
+	<subtitle type="html"><![CDATA[TestForum - https://foro.test]]></subtitle>
+	<link rel="self" href="https://foro.test/syndication.php"/>
+	<id>https://foro.test/</id>
+	<link rel="alternate" type="text/html" href="https://foro.test/"/>
+	<updated>2026-08-14T21:00:00Z</updated>
+	<generator uri="https://mybb.com">MyBB</generator>
+	<entry xmlns="http://www.w3.org/2005/Atom">
+		<author>
+			<name type="html" xml:space="preserve"><![CDATA[<a href="https://foro.test/member.php?action=profile&uid=1001">actor_uno</a>]]></name>
+		</author>
+		<published>2026-08-14T20:51:38Z</published>
+		<updated>2026-08-14T20:51:38Z</updated>
+		<link rel="alternate" type="text/html" href="https://foro.test/Thread-DATABASE-Empresa-Ejemplo-SA" />
+		<id>https://foro.test/Thread-DATABASE-Empresa-Ejemplo-SA</id>
+		<title xml:space="preserve"><![CDATA[[1.2TB][2026] Empresa Ejemplo SA Database]]></title>
+		<content type="html" xml:space="preserve"><![CDATA[Site: <a href="https://www.ejemplo.test/">ejemplo.test</a> <br />
+Industry: Manufacturing<br />
+Location: Canada<br />
+Data Volume: 1.2 Tb<br />]]></content>
+	</entry>
+	<entry xmlns="http://www.w3.org/2005/Atom">
+		<author>
+			<name type="html" xml:space="preserve"><![CDATA[<a href="https://foro.test/member.php?action=profile&uid=1002">actor_dos</a>]]></name>
+		</author>
+		<published>2026-08-14T20:30:00Z</published>
+		<updated>2026-08-14T20:30:00Z</updated>
+		<link rel="alternate" type="text/html" href="https://foro.test/Thread-Organismo-AR" />
+		<id>https://foro.test/Thread-Organismo-AR</id>
+		<title xml:space="preserve"><![CDATA[[DATABASE] Organismo Nacional Argentino 2026]]></title>
+		<content type="html" xml:space="preserve"><![CDATA[Site: <a href="https://www.prevision-ejemplo.gob.ar/">prevision-ejemplo.gob.ar</a><br />
+Location: Argentina<br />
+Data Description: Registros internos.<br />]]></content>
+	</entry>
+	<entry xmlns="http://www.w3.org/2005/Atom">
+		<author>
+			<name type="html" xml:space="preserve"><![CDATA[<a href="https://foro.test/member.php?action=profile&uid=1003">actor_tres</a>]]></name>
+		</author>
+		<published>2026-08-14T20:10:00Z</published>
+		<updated>2026-08-14T20:10:00Z</updated>
+		<link rel="alternate" type="text/html" href="https://foro.test/Thread-Combolist" />
+		<id>https://foro.test/Thread-Combolist</id>
+		<title xml:space="preserve"><![CDATA[FRESH combo persona@ejemplo.test:clave123 mix 2026]]></title>
+		<content type="html" xml:space="preserve"><![CDATA[Email:Pass format<br />]]></content>
+	</entry>
+	<entry xmlns="http://www.w3.org/2005/Atom">
+		<author>
+			<name type="html" xml:space="preserve"><![CDATA[<a href="https://foro.test/member.php?action=profile&uid=1004">actor_cuatro</a>]]></name>
+		</author>
+		<published>2026-08-13T18:00:00Z</published>
+		<updated>2026-08-13T18:00:00Z</updated>
+		<link rel="alternate" type="text/html" href="https://foro.test/Thread-Servicios-Test" />
+		<id>https://foro.test/Thread-Servicios-Test</id>
+		<title xml:space="preserve"><![CDATA[[560GB][2026] Servicios Test Inc Database]]></title>
+		<content type="html" xml:space="preserve"><![CDATA[Industry: Technology<br />
+Location: United States<br />]]></content>
+	</entry>
+	<entry xmlns="http://www.w3.org/2005/Atom">
+		<author>
+			<name type="html" xml:space="preserve"><![CDATA[<a href="https://foro.test/member.php?action=profile&uid=1005">actor_cinco</a>]]></name>
+		</author>
+		<published>2026-08-13T09:00:00Z</published>
+		<updated>2026-08-13T09:00:00Z</updated>
+		<link rel="alternate" type="text/html" href="https://foro.test/Thread-Anuncio" />
+		<id>https://foro.test/Thread-Anuncio</id>
+		<title xml:space="preserve"><![CDATA[Anuncio del foro: reglas de la seccion]]></title>
+		<content type="html" xml:space="preserve"><![CDATA[Texto sin interes para el monitoreo.<br />]]></content>
+	</entry>
+	<entry xmlns="http://www.w3.org/2005/Atom">
+		<author>
+			<name type="html" xml:space="preserve"><![CDATA[<a href="https://foro.test/member.php?action=profile&uid=1006">actor_seis</a>]]></name>
+		</author>
+		<published>2026-08-12T11:45:00Z</published>
+		<updated>2026-08-12T11:45:00Z</updated>
+		<link rel="alternate" type="text/html" href="https://foro.test/Thread-Empresa-ComAr" />
+		<id>https://foro.test/Thread-Empresa-ComAr</id>
+		<title xml:space="preserve"><![CDATA[empresa.com.ar full dump 2026]]></title>
+		<content type="html" xml:space="preserve"><![CDATA[Site: empresa.com.ar<br />
+Location: Argentina<br />]]></content>
+	</entry>
+</feed>

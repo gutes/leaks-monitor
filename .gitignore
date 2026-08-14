@@ -1,0 +1,34 @@
+# Secretos y config local — NUNCA se commitean (regla no negociable #2)
+.env
+.env.*
+!.env.example
+
+# Base de datos y datos derivados del run
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+*.sqlite
+*.sqlite3
+
+# Entorno Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+uv.lock
+
+# Configuración local de la herramienta (permisos de esta máquina)
+.claude/settings.local.json
+
+# Herramientas
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Sistema
+.DS_Store
