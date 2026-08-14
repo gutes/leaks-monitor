@@ -48,7 +48,7 @@ Las tomé yo para no bloquear. Todas son reversibles.
 
 ## 5. Operación y seguridad
 
-- **No es un repositorio git.** Sin historial, sin commits. El workflow de CI existe pero **nunca se ejecutó**. (El líder técnico indicó que el CI no es prioridad por ahora.)
+- **El repositorio ya está inicializado** (`git init` + commit inicial en `main`). Falta remoto: el workflow de CI existe pero **nunca se ejecutó**. (El líder técnico indicó que el CI no es prioridad por ahora.)
 - **La API no tiene autenticación y ahora además escribe.** Sube la prioridad de poner un proxy que autentique si sale de loopback.
 - Sin rate limiting en la API. Sin backup de la base.
 - `dls-monitor` baja 2 MB completos en cada corrida: falta `ETag`/`If-Modified-Since`.
