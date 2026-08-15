@@ -40,6 +40,10 @@ class Settings(BaseSettings):
 
     # --- Persistencia ------------------------------------------------------
     database_url: str = "sqlite:///./data/leaks.db"
+    #: Dónde están las migraciones. Se configura porque instalado como wheel el
+    #: paquete no vive al lado del repo (mismo caso que `frontend_dir`).
+    alembic_dir: Path = PROJECT_ROOT / "alembic"
+    alembic_ini: Path = PROJECT_ROOT / "alembic.ini"
 
     # --- PII (fail-closed) -------------------------------------------------
     store_pii: bool = False

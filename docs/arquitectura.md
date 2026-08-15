@@ -122,6 +122,24 @@ peor intercambio posible.
 Retención: `LEAKS_EVENT_RETENTION_DAYS` (default 14), aplicada por
 `leaks purge-pii`. Es un panel de actividad, no un archivo histórico.
 
+### Puesta al día del esquema
+
+`create_all` crea las tablas que faltan pero **nunca agrega una columna a una
+tabla que ya existe**. Mientras el esquema no cambió eso alcanzó; al sumar una
+columna, los despliegues existentes seguían arrancando y fallaban en el primer
+`SELECT` que la tocaba.
+
+Ahora manda Alembic (`storage/schema.py`), con tres caminos:
+
+* **Base nueva** → `create_all` + `stamp head` (más rápido que encadenar todas
+  las migraciones).
+* **Base con `alembic_version`** → `upgrade head`.
+* **Base anterior a Alembic** → se agregan las columnas que falten (solo
+  aditivo y solo nullable) y se sella. Arreglo de una sola vez.
+
+Si las migraciones no están en la imagen, se degrada a reconciliar columnas y se
+avisa, en vez de reventar el arranque.
+
 ## Fase 2
 
 `FeedAdapter` y el registro ya contemplan GitHub secret scanning, Telegram y

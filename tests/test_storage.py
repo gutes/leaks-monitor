@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 from sqlalchemy import Engine, inspect, text
 
@@ -207,3 +208,68 @@ class TestSchema:
             de_migracion = {c["name"] for c in migrated.get_columns(table_name)}
             de_modelo = {c.name for c in table.columns}
             assert de_migracion == de_modelo, f"drift en la tabla {table_name}"
+
+
+class TestPuestaAlDiaDelEsquema:
+    """Regresión: una columna nueva rompía las instalaciones ya desplegadas.
+
+    `create_all` crea tablas que faltan pero **no** agrega columnas a tablas
+    existentes. El proceso arrancaba bien y fallaba en el primer `SELECT` que
+    tocaba la columna nueva.
+    """
+
+    def test_base_nueva_queda_sellada(self, tmp_path: Path) -> None:
+        from sqlalchemy import inspect
+
+        from leaks.storage.schema import ensure_schema
+        from leaks.storage.session import create_db_engine
+
+        url = f"sqlite:///{tmp_path / 'nueva.db'}"
+        engine = create_db_engine(url)
+        ensure_schema(engine, url)
+
+        tablas = set(inspect(engine).get_table_names())
+        assert "findings" in tablas
+        # Sellada: a partir de acá manda Alembic.
+        assert "alembic_version" in tablas
+
+    def test_base_vieja_recibe_las_columnas_que_faltan(self, tmp_path: Path) -> None:
+        """El caso real: base creada antes de Alembic, sin las columnas nuevas."""
+        import sqlite3
+
+        from sqlalchemy import inspect
+
+        from leaks.storage.schema import ensure_schema
+        from leaks.storage.session import create_db_engine
+
+        ruta = tmp_path / "vieja.db"
+        # Se simula una base vieja: la tabla sin las columnas agregadas después.
+        con = sqlite3.connect(ruta)
+        con.execute(
+            "CREATE TABLE findings ("
+            " id INTEGER PRIMARY KEY, dedup_hash VARCHAR(64) NOT NULL,"
+            " source VARCHAR(64) NOT NULL, leak_type VARCHAR(32) NOT NULL,"
+            " victim_name VARCHAR(512) NOT NULL, ar_match_reason JSON NOT NULL,"
+            " severity VARCHAR(16) NOT NULL, discovered_at DATETIME NOT NULL,"
+            " first_seen_at DATETIME NOT NULL, last_seen_at DATETIME NOT NULL)"
+        )
+        con.commit()
+        con.close()
+
+        url = f"sqlite:///{ruta}"
+        engine = create_db_engine(url)
+        ensure_schema(engine, url)
+
+        columnas = {c["name"] for c in inspect(engine).get_columns("findings")}
+        assert "alerted_at" in columnas, "la columna de alertas tiene que aparecer"
+        assert "download_links" in columnas, "la columna de enlaces tiene que aparecer"
+        assert "alembic_version" in set(inspect(engine).get_table_names())
+
+    def test_es_idempotente(self, tmp_path: Path) -> None:
+        from leaks.storage.schema import ensure_schema
+        from leaks.storage.session import create_db_engine
+
+        url = f"sqlite:///{tmp_path / 'repetida.db'}"
+        engine = create_db_engine(url)
+        ensure_schema(engine, url)
+        ensure_schema(engine, url)  # no debe lanzar

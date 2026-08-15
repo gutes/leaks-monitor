@@ -33,6 +33,7 @@ from leaks.domain.models import (
     SourceRunStatus,
 )
 from leaks.domain.ports import EventSink, FindingRepository
+from leaks.extraction.downloads import extract_download_links
 from leaks.pipeline.egress_guard import EgressDecision, EgressGuard
 from leaks.privacy.scrub import redact_pii, scrub_free_text
 from leaks.relevance.rules import evaluate
@@ -455,6 +456,22 @@ class PipelineRunner:
         # superficie riesgosa (foros) no se persiste texto libre en absoluto.
         descripcion = None if spec.high_pii_surface else scrub_free_text(item.description)
 
+        # Los enlaces se extraen del texto CRUDO, antes de que el scrubber lo
+        # descarte: en las fuentes de foro el cuerpo es justamente donde el
+        # publicador pega el magnet y la muestra. Se guarda la referencia, no
+        # el contenido.
+        # Se combinan los que ya trajo el adapter (que vio el HTML crudo) con
+        # los que aparezcan en el texto normalizado.
+        enlaces = tuple(
+            {
+                link.url: link
+                for link in (
+                    *item.download_links,
+                    *extract_download_links(item.description),
+                )
+            }.values()
+        )
+
         # El título de un thread de foro puede traer una muestra de los datos
         # robados. Se redacta en vez de descartarse: ver privacy/scrub.py.
         nombre = item.victim_name
@@ -462,9 +479,10 @@ class PipelineRunner:
             nombre = redact_pii(nombre) or nombre
 
         return Finding(
-            **item.model_dump(exclude={"description", "victim_name"}),
+            **item.model_dump(exclude={"description", "victim_name", "download_links"}),
             victim_name=nombre,
             description=descripcion,
+            download_links=enlaces,
             ar_match_reason=veredicto.reasons,
             ar_match_detail=veredicto.detail,
             severity=derive_severity(veredicto, item.leak_type),

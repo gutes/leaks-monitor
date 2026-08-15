@@ -24,9 +24,22 @@ target_metadata = Base.metadata
 
 
 def _database_url() -> str:
-    """Permite override por `-x db_url=...`; si no, la config del proyecto."""
+    """Resuelve contra qué base se migra.
+
+    En orden: `-x db_url=...` (para migrar una base puntual desde la línea de
+    comandos), la URL que puso quien invoca Alembic por código —así el arranque
+    de la app migra la base que realmente va a usar, no la del entorno— y por
+    último la configuración del proyecto.
+    """
     override = context.get_x_argument(as_dictionary=True).get("db_url")
-    return override or get_settings().database_url
+    if override:
+        return override
+
+    desde_config = config.get_main_option("sqlalchemy.url", "")
+    if desde_config:
+        return desde_config
+
+    return get_settings().database_url
 
 
 def run_migrations_offline() -> None:

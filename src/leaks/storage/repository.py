@@ -21,6 +21,7 @@ from leaks.domain.models import (
     Severity,
     SourceRunResult,
 )
+from leaks.extraction.downloads import DownloadLink
 from leaks.storage.models import FindingRow, SourceRunRow, SourceStateRow
 from leaks.storage.session import session_scope
 
@@ -54,18 +55,34 @@ class SqlAlchemyFindingRepository:
         inserted = 0
 
         with session_scope(self._session_factory) as session:
-            existing = set(
-                session.scalars(
-                    select(FindingRow.dedup_hash).where(FindingRow.dedup_hash.in_(list(unique)))
+            # Se traen los enlaces junto con el hash: hace falta saber si el
+            # hallazgo ya tenía. (Comparar `download_links IS NULL` en SQL no
+            # sirve: en una columna JSON, SQLAlchemy le da a NULL una
+            # semántica propia y la condición no matchea.)
+            existing = {
+                fila.dedup_hash: fila.download_links
+                for fila in session.execute(
+                    select(FindingRow.dedup_hash, FindingRow.download_links).where(
+                        FindingRow.dedup_hash.in_(list(unique))
+                    )
                 ).all()
-            )
+            }
 
             for dedup_hash, finding in unique.items():
                 if dedup_hash in existing:
+                    valores: dict[str, Any] = {"last_seen_at": now}
+                    # Un hallazgo ya conocido puede *adquirir* enlaces: el
+                    # cuerpo del post se edita después de publicado, y los
+                    # hallazgos anteriores a esta columna los tienen vacíos.
+                    # No se pisan los que ya estaban registrados.
+                    if finding.download_links and not existing[dedup_hash]:
+                        valores["download_links"] = [
+                            {"url": link.url, "kind": link.kind} for link in finding.download_links
+                        ]
                     session.execute(
                         update(FindingRow)
                         .where(FindingRow.dedup_hash == dedup_hash)
-                        .values(last_seen_at=now)
+                        .values(**valores)
                     )
                     continue
                 session.add(self._to_row(finding, now))
@@ -91,6 +108,8 @@ class SqlAlchemyFindingRepository:
             ar_match_detail=finding.ar_match_detail or None,
             severity=str(finding.severity),
             description=finding.description,
+            download_links=[{"url": link.url, "kind": link.kind} for link in finding.download_links]
+            or None,
             first_seen_at=now,
             last_seen_at=now,
         )
@@ -159,6 +178,10 @@ class SqlAlchemyFindingRepository:
             ar_match_detail=row.ar_match_detail or {},
             severity=Severity(row.severity),
             dedup_hash=row.dedup_hash,
+            download_links=tuple(
+                DownloadLink(url=d["url"], kind=d.get("kind", "unknown"))  # type: ignore[arg-type]
+                for d in (row.download_links or [])
+            ),
         )
 
     # -- Telemetría por fuente ----------------------------------------------

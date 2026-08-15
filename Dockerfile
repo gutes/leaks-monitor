@@ -31,6 +31,8 @@ ENV PATH="/opt/venv/bin:$PATH" \
     LEAKS_DATABASE_URL=sqlite:////data/leaks.db \
     LEAKS_WATCHLIST_PATH=/app/data/watchlist.yaml \
     LEAKS_FRONTEND_DIR=/app/frontend \
+    LEAKS_ALEMBIC_DIR=/app/alembic \
+    LEAKS_ALEMBIC_INI=/app/alembic.ini \
     LEAKS_API_HOST=0.0.0.0
 
 COPY --from=builder /opt/venv /opt/venv

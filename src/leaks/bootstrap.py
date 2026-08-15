@@ -24,10 +24,10 @@ from leaks.pipeline.runner import PipelineRunner
 from leaks.relevance.watchlist import Watchlist, get_watchlist
 from leaks.storage.crypto import build_cipher
 from leaks.storage.event_sink import SqlAlchemyEventSink
-from leaks.storage.models import Base
 from leaks.storage.pii_vault import PiiVault
 from leaks.storage.queries import FindingQueryService
 from leaks.storage.repository import SqlAlchemyFindingRepository
+from leaks.storage.schema import ensure_schema
 from leaks.storage.session import create_db_engine, create_session_factory
 from leaks.storage.settings_store import SettingsStore
 from leaks.storage.watchlist_repository import WatchlistRepository
@@ -54,15 +54,17 @@ class Application:
     runner: PipelineRunner
 
     def create_schema(self) -> None:
-        """Crea las tablas si faltan y siembra la watchlist.
+        """Deja la base al día y siembra la watchlist.
 
-        Alembic sigue siendo la fuente de verdad para migrar una base con
-        datos; esto es el atajo para arrancar de cero con un solo comando.
+        Corre las migraciones de Alembic: `create_all` a secas creaba las
+        tablas nuevas pero nunca agregaba una columna a una tabla existente,
+        así que un despliegue viejo arrancaba bien y fallaba en el primer
+        `SELECT`. Ver `storage/schema.py`.
 
         La siembra es idempotente y solo corre si la watchlist está vacía: no
         pisa lo que el investigador haya editado desde la UI.
         """
-        Base.metadata.create_all(self.engine)
+        ensure_schema(self.engine, self.settings.database_url, self.settings)
         sembradas = self.watchlist_repo.seed_from_yaml(self.settings.watchlist_path)
         if sembradas:
             logger.info("Watchlist inicial cargada: %d entradas", sembradas)

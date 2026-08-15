@@ -125,6 +125,7 @@
               <th>Severidad</th>
               <th>Por qué es AR</th>
               <th>Ref.</th>
+              <th title="Enlaces a los datos filtrados encontrados en la publicación">Datos</th>
             </tr>
           </thead>
           <tbody id="findings-body"></tbody>
@@ -264,6 +265,25 @@
     </section>
     </section>
   </main>
+
+  <!-- Pop-up de enlaces a los datos. Las URLs van como texto plano, NO como
+       enlaces: son punteros a volcados y a sitios de extorsión, y un click
+       accidental no puede ser lo que te lleve ahí. Se copian y se pegan. -->
+  <div id="dl-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="dl-title" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2 id="dl-title">Enlaces a los datos</h2>
+        <button type="button" class="btn" id="dl-close" aria-label="Cerrar">✕</button>
+      </div>
+      <p class="hint" id="dl-victim"></p>
+      <p class="modal-warn">
+        No son clickeables a propósito. Copiá y pegá si necesitás abrirlos, y tené
+        presente qué estás abriendo: apuntan a datos de terceros y a infraestructura
+        de quien los publicó.
+      </p>
+      <div id="dl-list" class="dl-list"></div>
+    </div>
+  </div>
 
   <footer>
     <p>

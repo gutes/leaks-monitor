@@ -18,6 +18,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from leaks.extraction.downloads import DownloadLink
+
 
 class LeakType(StrEnum):
     """Naturaleza del hallazgo."""
@@ -91,6 +93,9 @@ class NormalizedItem(BaseModel):
     published_at: datetime | None = None
     raw_ref: str | None = None
     description: str | None = None
+    #: Referencias a los datos filtrados (magnet, torrent, file hosts) y a las
+    #: muestras. Se guardan como referencia; nunca se descarga el contenido.
+    download_links: tuple[DownloadLink, ...] = ()
 
     @field_validator("discovered_at", "published_at")
     @classmethod

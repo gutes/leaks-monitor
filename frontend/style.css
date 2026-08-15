@@ -717,3 +717,107 @@ body.is-blocked { overflow: hidden; }
 /* El botón deshabilitado tiene que verse ocupado, no roto. */
 #run-now:disabled,
 #refresh:disabled { opacity: 0.7; cursor: progress; }
+
+/* ------------------------------------------- Enlaces a los datos filtrados */
+
+.dl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dl-btn:hover { border-color: var(--accent); color: var(--text); }
+
+/* Con enlace al volcado se destaca: es lo que el investigador busca. */
+.dl-btn-data {
+  border-color: var(--critical);
+  color: var(--critical);
+  background: color-mix(in srgb, var(--critical) 10%, transparent);
+}
+
+.dl-icon { font-size: 12px; }
+
+/* Modal informativo (distinto del bloqueo de OPSEC, que no se puede cerrar). */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(8, 10, 14, 0.72);
+}
+
+.modal[hidden] { display: none; }
+
+.modal-card {
+  max-width: 680px;
+  width: 100%;
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 22px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-head h2 { margin: 0; font-size: 17px; }
+
+.modal-warn {
+  margin: 12px 0 16px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--warn);
+  background: color-mix(in srgb, var(--warn) 9%, transparent);
+  border-radius: 0 8px 8px 0;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.dl-list { display: flex; flex-direction: column; gap: 10px; }
+
+.dl-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--bg);
+}
+
+.dl-item.dl-data { border-left: 3px solid var(--critical); }
+.dl-item.dl-sample { border-left: 3px solid var(--muted); }
+
+.dl-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.dl-copy { padding: 3px 10px; font-size: 11.5px; }
+
+/* La URL como texto seleccionable, nunca como enlace. */
+.dl-item code {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+  word-break: break-all;
+  user-select: all;
+  color: var(--text);
+}

@@ -62,6 +62,10 @@ class FindingRow(Base):
     # Texto libre: solo si sobrevivió al scrubber
     description: Mapped[str | None] = mapped_column(Text)
 
+    #: Enlaces a los datos filtrados y a las muestras: `[{url, kind}]`.
+    #: Son referencias, no datos: el prototipo nunca descarga el contenido.
+    download_links: Mapped[list[dict[str, str]] | None] = mapped_column(JSON)
+
     # Trazabilidad del run
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

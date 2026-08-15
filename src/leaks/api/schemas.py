@@ -33,6 +33,9 @@ class FindingOut(BaseModel):
     ar_match_detail: dict[str, list[str]] = Field(default_factory=dict)
     severity: str
     description: str | None = None
+    #: Referencias a los datos filtrados y a las muestras: `[{url, kind}]`.
+    #: El frontend las muestra NO clickeables, para copiar y pegar.
+    download_links: list[dict[str, str]] = Field(default_factory=list)
     first_seen_at: datetime
     last_seen_at: datetime
 

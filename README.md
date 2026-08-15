@@ -118,6 +118,25 @@ no dispara la consulta de hallazgos.
 El menú muestra un contador rojo sobre **Fuentes** si alguna se cayó, para que
 se note desde cualquier pantalla.
 
+### Enlaces a los datos filtrados
+
+La tabla de hallazgos tiene una última columna 📎 con los enlaces encontrados en
+la publicación: magnets, `.torrent`, file hosts (`mega.nz`, `gofile.io`, …) y
+las capturas de muestra. Se clasifican en **volcado** y **muestra**.
+
+**No son clickeables, a propósito.** El pop-up los muestra como texto para
+copiar y pegar, nunca como `<a>`: apuntan a datos de terceros y a
+infraestructura de quien los publicó, y un click accidental no puede ser lo que
+te lleve ahí.
+
+**El prototipo no descarga nada.** Guarda la referencia para que sepas dónde
+mirar; bajar el contenido es una decisión aparte, con sus implicancias legales
+y de custodia, y no la toma una herramienta automática.
+
+Los enlaces se extraen del **HTML crudo** del post —viven en atributos `href` y
+`src`, así que quitar las etiquetas se los lleva puestos— y se guardan aunque el
+cuerpo del post se descarte por contener PII.
+
 ### Alertas
 
 Al terminar cada corrida se avisa de los hallazgos **nuevos** que llegan al

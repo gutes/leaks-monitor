@@ -310,7 +310,82 @@ function renderRow(f) {
   }
   tr.append(ref);
 
+  // Columna de enlaces a los datos: un icono con el conteo, que abre el pop-up.
+  const datos = el("td");
+  const enlaces = f.download_links || [];
+  if (enlaces.length) {
+    const boton = el("button", "", "dl-btn");
+    boton.type = "button";
+    const conData = enlaces.filter((l) => l.kind === "data").length;
+    boton.append(el("span", "📎", "dl-icon"), el("span", String(enlaces.length)));
+    boton.title = `${enlaces.length} enlaces encontrados${conData ? ` (${conData} al volcado)` : ""}`;
+    if (conData) boton.classList.add("dl-btn-data");
+    boton.addEventListener("click", () => openDownloads(f));
+    datos.append(boton);
+  } else {
+    datos.append(el("span", "—", "hint"));
+  }
+  tr.append(datos);
+
   return tr;
+}
+
+/**
+ * Pop-up con los enlaces a los datos filtrados.
+ *
+ * Las URLs se insertan con `textContent` dentro de un <code>, NUNCA como <a>.
+ * Son punteros a volcados de datos y a infraestructura de quien los publicó:
+ * que abrirlos requiera copiar y pegar es la idea, no una limitación.
+ */
+function openDownloads(f) {
+  $("dl-victim").textContent = `${f.victim_name}${f.victim_domain ? ` · ${f.victim_domain}` : ""}`;
+
+  const lista = $("dl-list");
+  lista.replaceChildren();
+
+  const etiquetas = { data: "volcado", sample: "muestra", unknown: "sin clasificar" };
+
+  for (const link of f.download_links || []) {
+    const fila = el("div", "", `dl-item dl-${link.kind}`);
+
+    const cabecera = el("div", "", "dl-item-head");
+    cabecera.append(
+      el("span", etiquetas[link.kind] || link.kind, `pill pill-${link.kind === "data" ? "critical" : "low"}`),
+    );
+
+    const copiar = el("button", "Copiar", "btn dl-copy");
+    copiar.type = "button";
+    copiar.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(link.url);
+        copiar.textContent = "Copiado";
+      } catch {
+        // Sin permiso de portapapeles: se selecciona para copiar a mano.
+        const rango = document.createRange();
+        rango.selectNodeContents(fila.querySelector("code"));
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(rango);
+        copiar.textContent = "Seleccionado";
+      }
+      setTimeout(() => (copiar.textContent = "Copiar"), 1500);
+    });
+    cabecera.append(copiar);
+    fila.append(cabecera);
+
+    // textContent: la URL viene de un foro, es contenido hostil.
+    const code = document.createElement("code");
+    code.textContent = link.url;
+    fila.append(code);
+
+    lista.append(fila);
+  }
+
+  $("dl-modal").hidden = false;
+}
+
+function closeDownloads() {
+  $("dl-modal").hidden = true;
 }
 
 async function loadFindings() {
@@ -325,7 +400,7 @@ async function loadFindings() {
   if (!page) {
     const tr = document.createElement("tr");
     const td = el("td", "No se pudieron cargar los hallazgos.", "error");
-    td.colSpan = 8;
+    td.colSpan = 9;
     tr.append(td);
     body.append(tr);
     return;
@@ -335,7 +410,7 @@ async function loadFindings() {
   if (!page.items.length) {
     const tr = document.createElement("tr");
     const td = el("td", "Sin hallazgos para este filtro.", "empty");
-    td.colSpan = 8;
+    td.colSpan = 9;
     tr.append(td);
     body.append(tr);
   } else {
@@ -974,6 +1049,16 @@ $("prev").addEventListener("click", () => {
 $("next").addEventListener("click", () => {
   state.offset += PAGE_SIZE;
   loadFindings();
+});
+
+$("dl-close").addEventListener("click", closeDownloads);
+$("dl-modal").addEventListener("click", (e) => {
+  // Click fuera de la tarjeta cierra. Este modal sí se puede cerrar: no es el
+  // bloqueo de OPSEC, es informativo.
+  if (e.target === $("dl-modal")) closeDownloads();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !state.blocked) closeDownloads();
 });
 
 $("refresh").addEventListener("click", refreshNow);

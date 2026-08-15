@@ -37,6 +37,7 @@ from defusedxml import ElementTree as DefusedET
 from leaks.adapters.http import FeedHttpClient
 from leaks.adapters.parsing import parse_datetime
 from leaks.domain.models import LeakType, NormalizedItem, RawItem
+from leaks.extraction.downloads import extract_download_links
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,7 @@ class MyBBForumAdapter:
         for entrada in raiz.iter(f"{_ATOM}entry"):
             enlace = entrada.find(f"{_ATOM}link")
             autor = entrada.find(f"{_ATOM}author/{_ATOM}name")
+            contenido = entrada.find(f"{_ATOM}content")
             yield RawItem(
                 source=self.name,
                 payload={
@@ -124,6 +126,14 @@ class MyBBForumAdapter:
                     # el foro declara país y dominio afectado, pero también
                     # donde pega las muestras de datos robados.
                     "content": _texto(entrada.find(f"{_ATOM}content")),
+                    # El HTML sin tocar: los enlaces al volcado viven en los
+                    # atributos (`href`, `src`), y quitar las etiquetas se los
+                    # lleva puestos. Tampoco se persiste.
+                    "content_html": (
+                        contenido.text or ""
+                        if (contenido := entrada.find(f"{_ATOM}content")) is not None
+                        else ""
+                    ),
                 },
             )
 
@@ -155,6 +165,10 @@ class MyBBForumAdapter:
             discovered_at=publicado,
             published_at=publicado,
             raw_ref=payload.get("link"),
+            # Los enlaces salen del HTML crudo, no del texto plano.
+            download_links=extract_download_links(
+                payload.get("content_html"), payload.get("content")
+            ),
             # Se pasa el cuerpo para que la capa de relevancia lo mire. El
             # runner lo descarta antes de persistir porque la fuente está
             # marcada `high_pii_surface`.

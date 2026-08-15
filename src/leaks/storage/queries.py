@@ -128,6 +128,7 @@ class FindingQueryService:
             "ar_match_detail": row.ar_match_detail or {},
             "severity": row.severity,
             "description": row.description,
+            "download_links": row.download_links or [],
             "first_seen_at": _as_utc(row.first_seen_at),
             "last_seen_at": _as_utc(row.last_seen_at),
         }
