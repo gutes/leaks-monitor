@@ -306,16 +306,23 @@ class WatchlistRepository:
         with session_scope(self._session_factory) as session:
             return (session.scalar(select(func.count()).select_from(WatchlistEntryRow)) or 0) == 0
 
-    def seed_from_yaml(self, path: Path, *, force: bool = False) -> int:
+    def seed_from_yaml(
+        self, path: Path, *, force: bool = False, allow_updates: bool = False
+    ) -> int:
         """Importa el YAML semilla. No pisa nada salvo que se lo pidan.
 
         Devuelve cuántas entradas insertó. Es idempotente: correrlo dos veces
         no duplica.
+
+        Por defecto solo siembra una base vacía. `allow_updates=True` importa
+        además las entradas **nuevas** del YAML a una base ya poblada — lo usa
+        `leaks sync-watchlist`. Es explícito a propósito: hacerlo en cada
+        arranque resucitaría lo que el investigador borró a mano.
         """
         if not path.exists():
             logger.warning("No se encontró el YAML semilla en %s", path)
             return 0
-        if not force and not self.is_empty():
+        if not force and not allow_updates and not self.is_empty():
             return 0
 
         crudo = yaml.safe_load(path.read_text(encoding="utf-8")) or {}

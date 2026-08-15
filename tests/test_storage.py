@@ -273,3 +273,74 @@ class TestPuestaAlDiaDelEsquema:
         engine = create_db_engine(url)
         ensure_schema(engine, url)
         ensure_schema(engine, url)  # no debe lanzar
+
+
+class TestSincronizacionDeLaWatchlist:
+    """Importar novedades del YAML sin pisar lo que se editó desde la UI."""
+
+    def _repo(self, session_factory: object) -> object:
+        from leaks.storage.watchlist_repository import WatchlistRepository
+
+        return WatchlistRepository(session_factory)  # type: ignore[arg-type]
+
+    def _yaml(self, tmp_path: Path, dominios: list[str]) -> Path:
+        import yaml
+
+        ruta = tmp_path / "wl.yaml"
+        ruta.write_text(
+            yaml.safe_dump(
+                {
+                    "sectors": [
+                        {
+                            "name": "prueba",
+                            "label": "Prueba",
+                            "critical": False,
+                            "domains": dominios,
+                            "keywords": [],
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        return ruta
+
+    def test_por_defecto_no_toca_una_base_poblada(
+        self, session_factory: object, tmp_path: Path
+    ) -> None:
+        """Sembrar en cada arranque resucitaría lo que se borró a mano."""
+        repo = self._repo(session_factory)
+        repo.seed_from_yaml(self._yaml(tmp_path, ["uno.gob.ar"]))  # type: ignore[attr-defined]
+
+        # Un YAML con más entradas no entra si no se pide explícitamente.
+        agregadas = repo.seed_from_yaml(self._yaml(tmp_path, ["uno.gob.ar", "dos.gob.ar"]))  # type: ignore[attr-defined]
+        assert agregadas == 0
+
+    def test_con_allow_updates_importa_solo_lo_nuevo(
+        self, session_factory: object, tmp_path: Path
+    ) -> None:
+        repo = self._repo(session_factory)
+        repo.seed_from_yaml(self._yaml(tmp_path, ["uno.gob.ar"]))  # type: ignore[attr-defined]
+
+        agregadas = repo.seed_from_yaml(  # type: ignore[attr-defined]
+            self._yaml(tmp_path, ["uno.gob.ar", "dos.gob.ar", "tres.gob.ar"]),
+            allow_updates=True,
+        )
+        assert agregadas == 2
+        assert repo.counts()["total"] == 3  # type: ignore[attr-defined]
+
+    def test_no_revive_el_estado_deshabilitado(
+        self, session_factory: object, tmp_path: Path
+    ) -> None:
+        """Deshabilitar es una decisión del investigador: sincronizar la respeta."""
+        repo = self._repo(session_factory)
+        repo.seed_from_yaml(self._yaml(tmp_path, ["uno.gob.ar"]))  # type: ignore[attr-defined]
+
+        entrada = repo.list_entries()[0]  # type: ignore[attr-defined]
+        repo.set_enabled(entrada.id, False)  # type: ignore[attr-defined]
+
+        repo.seed_from_yaml(  # type: ignore[attr-defined]
+            self._yaml(tmp_path, ["uno.gob.ar", "dos.gob.ar"]), allow_updates=True
+        )
+        sigue = next(e for e in repo.list_entries() if e.value == "uno.gob.ar")  # type: ignore[attr-defined]
+        assert sigue.enabled is False, "no puede rehabilitarse solo"

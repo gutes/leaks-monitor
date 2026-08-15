@@ -10,6 +10,7 @@ Comandos:
     leaks serve       API + frontend de solo lectura
     leaks feeds       lista el registro de feeds y su política
     leaks purge-pii   aplica la retención de la bóveda cifrada
+    leaks sync-watchlist  importa las entradas nuevas del YAML semilla
 """
 
 from __future__ import annotations
@@ -40,6 +41,10 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("schedule", help="Corre el pipeline todos los días a la hora configurada.")
     sub.add_parser("feeds", help="Lista los feeds registrados y si corren.")
     sub.add_parser("purge-pii", help="Borra los registros con PII vencidos.")
+    sub.add_parser(
+        "sync-watchlist",
+        help="Importa a la base las entradas nuevas del YAML semilla (no borra ni pisa).",
+    )
 
     serve = sub.add_parser("serve", help="Levanta la API y el frontend de solo lectura.")
     serve.add_argument("--host", default=None, help="Override de LEAKS_API_HOST.")
@@ -141,6 +146,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "init-db":
         app.create_schema()
         print(f"Schema listo en {settings.database_url}")
+        return 0
+
+    if args.command == "sync-watchlist":
+        # Solo agrega lo que falta: no toca lo que se editó desde la UI ni
+        # revive lo que se borró... salvo que esté en el YAML, claro.
+        agregadas = app.watchlist_repo.seed_from_yaml(settings.watchlist_path, allow_updates=True)
+        conteos = app.watchlist_repo.counts()
+        print(f"Entradas nuevas importadas: {agregadas}")
+        print(
+            f"Watchlist: {conteos['total']} entradas "
+            f"({conteos['enabled']} activas, {conteos['domains']} dominios, "
+            f"{conteos['keywords']} keywords)"
+        )
         return 0
 
     if args.command == "purge-pii":

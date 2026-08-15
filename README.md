@@ -333,10 +333,28 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 línea. Las siglas de menos de 4 caracteres se descartan al cargar (`ARCA`
 pegaría dentro de "arcade").
 
-> ⚠️ La lista que viene es un **punto de partida SEED, no autoritativa ni
-> exhaustiva**. Antes de cualquier uso real hay que validarla y completarla
-> contra el inventario de activos / la designación de infraestructura crítica
-> del CNC.
+Cubre 11 sectores con ~173 dominios y ~111 keywords: gobierno nacional,
+provincias, municipios, banca, justicia y seguridad, ciencia y nuclear,
+universidades, salud y obras sociales, energía, telecomunicaciones y
+agua/transporte.
+
+Para traer a la base las entradas nuevas del YAML sin pisar lo editado desde la
+UI ni revivir lo que borraste:
+
+```bash
+leaks sync-watchlist          # o: docker compose exec api leaks sync-watchlist
+```
+
+Es explícito a propósito: hacerlo en cada arranque resucitaría lo que diste de
+baja a mano.
+
+> ⚠️ Sigue siendo un **punto de partida, no autoritativo ni exhaustivo**. Antes
+> de un uso real hay que validarlo contra el inventario de activos / la
+> designación de infraestructura crítica del CNC. Los dominios se agregaron por
+> conocimiento del sector público argentino, **sin poder verificarlos por DNS**:
+> el nodo de VPN usado no alcanza sitios `.ar`. Para una watchlist esa asimetría
+> juega a favor —un dominio de más nunca matchea, uno de menos es un leak
+> perdido— pero no equivale a estar validada.
 
 ---
 

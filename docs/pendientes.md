@@ -67,7 +67,7 @@ Las tomé yo para no bloquear. Todas son reversibles.
 | # | Pendiente | Detalle |
 |---|---|---|
 | 1 | **Alertas — no existe nada.** | El ejemplo del bootstrap termina en *"Alerta emitida"*. Hoy el hallazgo se persiste y se ve en el tablero, nada más. Sin email, sin webhook, sin Telegram. **Es lo único del spec original que falta entero.** |
-| 2 | **Watchlist SEED sin validar contra el inventario del CNC.** | Ya aparecieron 8 dominios estatales reales que matchean solo por `tld_ar`: `nuclear-ejemplo.gob.ar`, `cnv.gob.ar`, `provinciados-ejemplo.gob.ar`, `tigre.gob.ar`, `santarosa.gob.ar`, `iscamen.gov.ar`, `provincia-ejemplo.gob.ar`, `fm.gob.ar`. Falta todo el nivel provincial y municipal. Ahora se puede cargar desde la UI. |
+| 2 | **Watchlist ampliada, todavía sin validar contra el CNC.** | Pasó de 69 a 284 entradas (11 sectores: + provincias, municipios, universidades, salud, nuclear). Los 8 dominios estatales huérfanos quedaron cubiertos y 18 hallazgos existentes ganaron sector. **No se pudo verificar por DNS**: el nodo VPN no alcanza sitios `.ar`. Falta la validación contra el inventario del CNC. |
 | 3 | **Hudson Rock sin verificar.** | Adapter escrito contra la forma documentada, nunca probado: el endpoint no respondía (timeout 60 s). |
 | 4 | **Fase 2 sin implementar.** | GitHub secret scanning sobre orgs `.gob.ar`, Telegram (MTProto), paste sites. Los hooks están listos: es un adapter más una entrada en el registro. |
 
