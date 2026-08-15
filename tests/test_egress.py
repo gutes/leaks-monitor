@@ -404,3 +404,103 @@ class TestVpnQueSeCaeAMitadDeLaCorrida:
         """La barrera es opcional: los tests de adapters no la necesitan."""
         cliente = FeedHttpClient(user_agent="test", sleep=lambda _s: None)
         assert cliente._before_request is None
+
+
+class TestElRunnerCableaLaBarrera:
+    """El runner tiene que PASARLE la barrera al cliente HTTP.
+
+    Regresión de un agujero real: el mecanismo existía (`before_request` en el
+    cliente, parámetro en `build_adapter`) y había un test que lo ejercitaba…
+    armando la barrera a mano. El runner nunca la conectaba, así que una VPN
+    que se caía a mitad de corrida no se detectaba. El test daba confianza
+    falsa: probaba la pieza, no el cableado.
+    """
+
+    def _spec_que_captura_el_cliente(self, capturado: dict[str, object]) -> object:
+        from leaks.adapters.registry import FeedSpec
+        from leaks.domain.models import LeakType
+
+        def factory(_settings: object, client: object) -> object:
+            capturado["cliente"] = client
+            return FakeAdapter([payload_ar()])
+
+        return FeedSpec(name="fake-feed", leak_type=LeakType.RANSOMWARE, factory=factory)  # type: ignore[arg-type]
+
+    def test_el_cliente_recibe_la_barrera(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+    ) -> None:
+        capturado: dict[str, object] = {}
+        runner = PipelineRunner(
+            repository=repository,
+            watchlist=watchlist,
+            settings=settings,
+            egress_guard=EgressGuard(ResolverFalso(info("CL"))),  # type: ignore[arg-type]
+        )
+        runner.run([(self._spec_que_captura_el_cliente(capturado), None)])  # type: ignore[list-item]
+
+        cliente = capturado.get("cliente")
+        assert cliente is not None, "el runner tiene que construir un cliente"
+        assert cliente._before_request is not None, (  # type: ignore[attr-defined]
+            "el runner tiene que pasarle la barrera de IP de salida al cliente"
+        )
+
+    def test_la_barrera_del_runner_lanza_si_la_salida_se_bloquea(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+    ) -> None:
+        """La barrera que se le pasa al cliente tiene que cortar de verdad."""
+        capturado: dict[str, object] = {}
+        resolver = ResolverFalso(info("CL"))
+        runner = PipelineRunner(
+            repository=repository,
+            watchlist=watchlist,
+            settings=settings,
+            egress_guard=EgressGuard(resolver),  # type: ignore[arg-type]
+        )
+        runner.run([(self._spec_que_captura_el_cliente(capturado), None)])
+
+        cliente = capturado["cliente"]
+        # La VPN se cae después de que arrancó la corrida.
+        resolver._info = info("AR")  # type: ignore[attr-defined]
+
+        with pytest.raises(EgressBlockedError):
+            cliente._before_request()  # type: ignore[attr-defined]
+
+    def test_un_bloqueo_a_mitad_corta_las_fuentes_que_faltan(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+    ) -> None:
+        """La segunda fuente no se consulta si la primera se abortó."""
+
+        class AdapterQueSeBloquea(FakeAdapter):
+            def fetch(self, since: object) -> object:
+                raise EgressBlockedError("BLOQUEADO: la VPN se cayó")
+
+        segunda = FakeAdapter([payload_ar()])
+        segunda.name = "segunda-fuente"
+
+        runner = PipelineRunner(
+            repository=repository,
+            watchlist=watchlist,
+            settings=settings,
+            egress_guard=EgressGuard(ResolverFalso(info("CL"))),  # type: ignore[arg-type]
+        )
+        reporte = runner.run(
+            [
+                (spec_for(AdapterQueSeBloquea([])), None),
+                (spec_for(segunda), None),
+            ]
+        )
+
+        assert reporte.blocked is True
+        assert segunda.fetch_calls == 0, "la fuente siguiente no puede consultarse"
+        assert reporte.results[0].status is SourceRunStatus.BLOCKED
+        # Se corta: la segunda ni siquiera figura como salteada.
+        assert len(reporte.results) == 1

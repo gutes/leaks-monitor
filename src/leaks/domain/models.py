@@ -156,6 +156,7 @@ class EventKind(StrEnum):
     EGRESS = "egress"
     EGRESS_BLOCKED = "egress_blocked"
     ALERT = "alert"
+    SITE_CATALOG = "site_catalog"
 
 
 class RunEvent(BaseModel):

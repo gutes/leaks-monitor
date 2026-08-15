@@ -34,11 +34,12 @@ from leaks.domain.models import (
 )
 from leaks.domain.ports import EventSink, FindingRepository
 from leaks.extraction.downloads import extract_download_links
-from leaks.pipeline.egress_guard import EgressDecision, EgressGuard
+from leaks.pipeline.egress_guard import EgressBlockedError, EgressDecision, EgressGuard
 from leaks.privacy.scrub import redact_pii, scrub_free_text
 from leaks.relevance.rules import evaluate
 from leaks.relevance.severity import derive_severity
 from leaks.relevance.watchlist import Watchlist
+from leaks.sites.collector import SiteCatalogCollector
 from leaks.storage.dedup import compute_dedup_hash
 from leaks.storage.event_sink import NullEventSink
 from leaks.storage.pii_vault import PiiVault
@@ -61,6 +62,8 @@ class RunReport:
     blocked_reason: str | None = None
     #: Hallazgos avisados en esta corrida.
     alerts_sent: int = 0
+    #: Ubicaciones nuevas en el catálogo de sitios.
+    sites_new: int = 0
 
     @property
     def blocked(self) -> bool:
@@ -103,6 +106,7 @@ class PipelineRunner:
         watchlist: Watchlist,
         settings: Settings,
         alert_dispatcher: AlertDispatcher | None = None,
+        site_collector: SiteCatalogCollector | None = None,
         pii_vault: PiiVault | None = None,
         event_sink: EventSink | None = None,
         egress_guard: EgressGuard | None = None,
@@ -129,6 +133,7 @@ class PipelineRunner:
         # alternativo por el que un payload sensible llegue a la base.
         self._pii_vault = pii_vault
         self._alerts = alert_dispatcher
+        self._sites = site_collector
 
     def run(self, specs: Sequence[tuple[FeedSpec, str | None]] | None = None) -> RunReport:
         """Corre todos los feeds habilitados."""
@@ -174,6 +179,21 @@ class PipelineRunner:
             reporte.results.append(resultado)
             self._repository.record_run(resultado)
 
+            # Si la salida dejó de estar permitida a mitad de la corrida, no se
+            # sigue con las fuentes que faltan.
+            if resultado.status is SourceRunStatus.BLOCKED:
+                reporte.blocked_reason = resultado.error
+                self._emit(
+                    EventKind.EGRESS_BLOCKED,
+                    "Corrida interrumpida: la IP de salida dejó de estar permitida",
+                    level=EventLevel.ERROR,
+                )
+                break
+
+        # El catálogo de sitios antes de alertar: una mudanza de dominio es
+        # señal por sí sola y conviene tenerla registrada.
+        reporte.sites_new = self._collect_sites()
+
         # Alertas antes de la retención: avisar es lo urgente.
         reporte.alerts_sent = self._dispatch_alerts()
 
@@ -199,6 +219,39 @@ class PipelineRunner:
             duration_ms=int(duracion * 1000),
         )
         return reporte
+
+    # -- Catálogo de sitios ------------------------------------------------------
+
+    def _collect_sites(self) -> int:
+        """Consolida dónde vive cada sitio de leaks. Nunca lanza."""
+        if self._sites is None:
+            return 0
+        try:
+            resultado, fallidos = self._sites.collect()
+        except Exception as exc:
+            logger.warning("El catálogo de sitios falló: %s", type(exc).__name__)
+            self._emit(
+                EventKind.SITE_CATALOG,
+                f"Catálogo de sitios: falló ({type(exc).__name__})",
+                level=EventLevel.WARN,
+            )
+            return 0
+
+        detalle = f"{resultado.seen} ubicaciones, {resultado.new} nuevas"
+        if resultado.moved:
+            # Lo interesante: un grupo conocido estrenando dominio.
+            detalle += f" — mudanzas: {', '.join(resultado.moved[:3])}"
+            if len(resultado.moved) > 3:
+                detalle += f" y {len(resultado.moved) - 3} más"
+        if fallidos:
+            detalle += f" (registros caídos: {', '.join(fallidos)})"
+
+        self._emit(
+            EventKind.SITE_CATALOG,
+            f"Catálogo de sitios: {detalle}",
+            level=EventLevel.WARN if fallidos else EventLevel.INFO,
+        )
+        return resultado.new
 
     # -- Alertas ---------------------------------------------------------------
 
@@ -246,6 +299,21 @@ class PipelineRunner:
         return len(pendientes)
 
     # -- Bitácora ------------------------------------------------------------
+
+    def _assert_egress_allowed(self) -> None:
+        """Barrera previa a CADA request. Lanza si la salida no está permitida.
+
+        El chequeo al arrancar la corrida no alcanza: la IP de salida puede
+        cambiar en el medio (una VPN que se reconecta o se cae), y sin esto
+        todo lo que falte de esa corrida saldría por la IP nueva. Se pasa al
+        cliente HTTP, así que ninguna consulta a un feed puede salir sin una
+        lectura fresca que la autorice.
+        """
+        if self._egress_guard is None:
+            return
+        decision = self._egress_guard.evaluate()
+        if not decision.allowed:
+            raise EgressBlockedError(decision.reason)
 
     def _check_egress(self) -> EgressDecision:
         """Evalúa el control de IP de salida y lo deja registrado."""
@@ -343,7 +411,9 @@ class PipelineRunner:
         self._emit(EventKind.SOURCE_START, "Consultando la fuente…", source=spec.name)
 
         try:
-            adapter, cliente = build_adapter(spec, self._settings, self.emit_event)
+            adapter, cliente = build_adapter(
+                spec, self._settings, self.emit_event, self._assert_egress_allowed
+            )
             desde = self._repository.get_cursor(spec.name)
             hallazgos: list[Finding] = []
             # Se guarda el crudo junto al hallazgo solo para las fuentes que
@@ -392,6 +462,18 @@ class PipelineRunner:
                 f"{fetched} traídos, {matched} relevantes AR, {persisted} nuevos",
                 source=spec.name,
                 duration_ms=int((datetime.now(UTC) - inicio).total_seconds() * 1000),
+            )
+
+        except EgressBlockedError as exc:
+            # No es una falla del feed: es el control de OPSEC cortando.
+            estado = SourceRunStatus.BLOCKED
+            error = str(exc)[:500]
+            logger.error("feed %s abortado por el control de salida: %s", spec.name, error)
+            self._emit(
+                EventKind.EGRESS_BLOCKED,
+                f"{spec.name}: consulta abortada — {error}",
+                level=EventLevel.ERROR,
+                source=spec.name,
             )
 
         except Exception as exc:

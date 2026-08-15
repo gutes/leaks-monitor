@@ -153,6 +153,53 @@ class WatchlistEntryRow(Base):
     )
 
 
+class LeakSiteRow(Base):
+    """Dónde vive cada sitio de leaks, y desde cuándo.
+
+    Los grupos de ransomware rotan de dominio permanentemente (bloqueos,
+    incautaciones, mudanzas). Los feeds que ya consumimos publican ese catálogo
+    con su disponibilidad, así que acá se lo consolida en vez de rastrearlo por
+    nuestra cuenta.
+
+    Sirve para dos cosas:
+
+    * **No perder una fuente** cuando se muda.
+    * **Señal por sí sola**: un grupo que estrena dominio suele estar por
+      publicar.
+
+    Es un catálogo: se registra dónde está cada sitio, **no se lo visita**. Los
+    `.onion` de acá no se consultan desde el prototipo.
+    """
+
+    __tablename__ = "leak_sites"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    #: Nombre del grupo o mercado, normalizado en minúsculas.
+    group_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    #: `ransomware`, `market` o lo que declare el registro de origen.
+    kind: Mapped[str] = mapped_column(String(32), default="ransomware", nullable=False)
+    #: Dominio o dirección .onion.
+    fqdn: Mapped[str] = mapped_column(String(255), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(255))
+    #: Última disponibilidad informada por el registro de origen.
+    available: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    #: Qué registros lo reportaron: `["ransomware.live", "dls-monitor"]`.
+    sources: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    #: Cuándo lo vimos por primera vez. Un `first_seen_at` reciente es
+    #: exactamente la señal de "este grupo se acaba de mudar".
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    #: Última vez que se lo reportó disponible.
+    last_available_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        UniqueConstraint("group_name", "fqdn", name="uq_leak_sites_group_fqdn"),
+        Index("ix_leak_sites_group", "group_name"),
+        Index("ix_leak_sites_first_seen", "first_seen_at"),
+        Index("ix_leak_sites_available", "available"),
+    )
+
+
 class AppSettingRow(Base):
     """Configuración que se cambia en caliente desde la UI.
 
