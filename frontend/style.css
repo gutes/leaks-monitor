@@ -644,3 +644,59 @@ body.is-blocked { overflow: hidden; }
 .btn-retry:hover:not(:disabled) {
   background: color-mix(in srgb, var(--critical) 12%, transparent);
 }
+
+/* ------------------------------------------------------------ Navegación */
+
+.mainnav {
+  display: flex;
+  gap: 2px;
+  padding: 0 24px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.mainnav a {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 11px 16px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 550;
+  white-space: nowrap;
+  /* El borde va siempre, transparente, para que activar no mueva el texto. */
+  border-bottom: 2px solid transparent;
+}
+
+.mainnav a:hover { color: var(--text); }
+
+.mainnav a.is-active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--error);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+/* Una pantalla por vez. */
+.view { display: none; }
+.view.is-active { display: block; }
+
+/* En su propia pantalla la consola aprovecha el alto disponible. */
+.view[data-view="consola"] .console { height: min(62vh, 620px); }

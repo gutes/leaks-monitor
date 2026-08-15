@@ -135,6 +135,8 @@ def create_app(
     )
 
     app.state.queries = queries
+    # Se guarda para que los tests puedan sembrar contra la misma base.
+    app.state.session_factory = session_factory
     app.state.watchlist_repo = WatchlistRepository(session_factory)
     app.state.settings_store = SettingsStore(session_factory)
     # Coordinador de corridas manuales. Comparte la configuración del proceso,
@@ -262,13 +264,21 @@ def create_app(
         sector: str | None = None,
         enabled: bool | None = None,
         q: Annotated[str | None, Query(max_length=200)] = None,
+        limit: Annotated[int, Query(ge=1)] = 50,
+        offset: Annotated[int, Query(ge=0)] = 0,
     ) -> WatchlistOut:
         """Todo lo que se está monitoreando: dominios y keywords, con su estado."""
-        entradas = repo.list_entries(kind=kind, sector=sector, enabled=enabled, q=q)
+        acotado = min(limit, config.api_max_page_size)
+        entradas = repo.list_entries(
+            kind=kind, sector=sector, enabled=enabled, q=q, limit=acotado, offset=offset
+        )
         return WatchlistOut(
             items=[WatchlistEntryOut.model_validate(e.as_dict()) for e in entradas],
             counts=WatchlistCountsOut.model_validate(repo.counts()),
             sectors=list(repo.sectors()),
+            total=repo.count_entries(kind=kind, sector=sector, enabled=enabled, q=q),
+            limit=acotado,
+            offset=offset,
         )
 
     @app.post(

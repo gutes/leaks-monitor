@@ -187,11 +187,15 @@ class WatchlistCountsOut(BaseModel):
 
 
 class WatchlistOut(BaseModel):
-    """Listado completo con sus totales y los sectores disponibles."""
+    """Página del listado, con totales y los sectores disponibles."""
 
     items: list[WatchlistEntryOut] = Field(default_factory=list)
     counts: WatchlistCountsOut = Field(default_factory=WatchlistCountsOut)
     sectors: list[str] = Field(default_factory=list)
+    #: Total que coincide con el filtro (no el total de la watchlist).
+    total: int = 0
+    limit: int = 50
+    offset: int = 0
 
 
 class WatchlistEntryIn(BaseModel):

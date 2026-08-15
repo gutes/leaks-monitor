@@ -68,20 +68,19 @@
     </div>
   </header>
 
-  <main>
-    <section class="stats" id="stats" aria-label="Totales"></section>
+  <!-- Cada sección es una pantalla. El router va por hash (#/hallazgos), así el
+       enlace se puede compartir y el botón "atrás" del navegador funciona. -->
+  <nav class="mainnav" aria-label="Secciones">
+    <a href="#/hallazgos" data-view="hallazgos">Hallazgos</a>
+    <a href="#/watchlist" data-view="watchlist">Watchlist</a>
+    <a href="#/reglas" data-view="reglas">Reglas</a>
+    <a href="#/fuentes" data-view="fuentes">Fuentes<span id="nav-fuentes-badge"></span></a>
+    <a href="#/consola" data-view="consola">Consola</a>
+  </nav>
 
-    <!-- Colapsable nativo: <details> no necesita JS para abrir y cerrar.
-         El resumen se ve igual estando cerrado, así que ocupa una línea sin
-         esconder si hay una fuente caída. -->
-    <details class="panel panel-collapsible" id="sources-panel">
-      <summary>
-        <span class="summary-title">Salud de las fuentes</span>
-        <span id="sources-summary" class="summary-pills"></span>
-      </summary>
-      <p class="hint">Una fuente caída no interrumpe la corrida: queda registrada acá.</p>
-      <div id="sources" class="sources"></div>
-    </details>
+  <main>
+    <section class="view" data-view="hallazgos">
+    <section class="stats" id="stats" aria-label="Totales"></section>
 
     <section class="panel">
       <h2>Hallazgos</h2>
@@ -134,17 +133,9 @@
         <button class="btn" id="next" type="button" disabled>Siguientes →</button>
       </div>
     </section>
-    <section class="panel" id="rules-panel">
-      <h2>Reglas de relevancia argentina</h2>
-      <p class="hint">
-        Qué hace que un hallazgo se considere argentino. Los cambios aplican en la
-        próxima corrida, sin reiniciar nada.
-      </p>
-      <div id="rules" class="rules"></div>
-
-      <p class="hint" id="pii-toggle-note"></p>
     </section>
 
+    <section class="view" data-view="watchlist">
     <section class="panel" id="watchlist-panel">
       <div class="console-head">
         <div>
@@ -209,8 +200,43 @@
           <tbody id="wl-body"></tbody>
         </table>
       </div>
+
+      <div class="pager">
+        <button class="btn" id="wl-prev" type="button" disabled>← Anteriores</button>
+        <span id="wl-page-info" class="hint">—</span>
+        <button class="btn" id="wl-next" type="button" disabled>Siguientes →</button>
+      </div>
+    </section>
     </section>
 
+    <section class="view" data-view="reglas">
+    <section class="panel" id="rules-panel">
+      <h2>Reglas de relevancia argentina</h2>
+      <p class="hint">
+        Qué hace que un hallazgo se considere argentino. Los cambios aplican en la
+        próxima corrida, sin reiniciar nada.
+      </p>
+      <div id="rules" class="rules"></div>
+
+      <p class="hint" id="pii-toggle-note"></p>
+    </section>
+    </section>
+
+    <section class="view" data-view="fuentes">
+    <!-- Colapsable nativo: <details> no necesita JS para abrir y cerrar.
+         El resumen se ve igual estando cerrado, así que ocupa una línea sin
+         esconder si hay una fuente caída. -->
+    <details class="panel panel-collapsible" id="sources-panel" open>
+      <summary>
+        <span class="summary-title">Salud de las fuentes</span>
+        <span id="sources-summary" class="summary-pills"></span>
+      </summary>
+      <p class="hint">Una fuente caída no interrumpe la corrida: queda registrada acá.</p>
+      <div id="sources" class="sources"></div>
+    </details>
+    </section>
+
+    <section class="view" data-view="consola">
     <section class="panel console-panel">
       <div class="console-head">
         <div>
@@ -231,6 +257,7 @@
       <!-- role=log + aria-live: un lector de pantalla anuncia las líneas nuevas. -->
       <div id="console" class="console" role="log" aria-live="polite" aria-label="Actividad del pipeline"></div>
       <p class="hint" id="console-count">0 líneas</p>
+    </section>
     </section>
   </main>
 

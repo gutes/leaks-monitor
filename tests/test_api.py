@@ -402,3 +402,51 @@ class TestBloqueoDeLaApi:
         detalle = bloqueado.get("/api/findings").json()
         assert detalle["country"] == "AR"
         assert "BLOQUEADO" in detalle["detail"]
+
+
+class TestPaginacionDeWatchlist:
+    """Cada pantalla lista pagina; la watchlist crece y no entra en una vista."""
+
+    def test_devuelve_una_pagina_con_su_total(self, client: TestClient) -> None:
+        from leaks.storage.watchlist_repository import WatchlistRepository
+
+        repo = WatchlistRepository(client.app.state.session_factory)  # type: ignore[attr-defined]
+        for i in range(12):
+            repo.add(kind="domain", value=f"org{i}.gob.ar", sector="prueba")
+
+        datos = client.get("/api/watchlist", params={"limit": 5, "offset": 0}).json()
+        assert len(datos["items"]) == 5
+        assert datos["total"] == 12
+        assert datos["limit"] == 5
+        assert datos["offset"] == 0
+
+    def test_las_paginas_no_se_solapan(self, client: TestClient) -> None:
+        from leaks.storage.watchlist_repository import WatchlistRepository
+
+        repo = WatchlistRepository(client.app.state.session_factory)  # type: ignore[attr-defined]
+        for i in range(12):
+            repo.add(kind="domain", value=f"org{i}.gob.ar", sector="prueba")
+
+        primera = client.get("/api/watchlist", params={"limit": 5, "offset": 0}).json()
+        segunda = client.get("/api/watchlist", params={"limit": 5, "offset": 5}).json()
+
+        ids_primera = {i["id"] for i in primera["items"]}
+        ids_segunda = {i["id"] for i in segunda["items"]}
+        assert not ids_primera & ids_segunda
+
+    def test_el_total_respeta_el_filtro(self, client: TestClient) -> None:
+        """El total tiene que ser el del filtro, no el de la watchlist entera."""
+        from leaks.storage.watchlist_repository import WatchlistRepository
+
+        repo = WatchlistRepository(client.app.state.session_factory)  # type: ignore[attr-defined]
+        repo.add(kind="domain", value="unico.gob.ar", sector="prueba")
+        repo.add(kind="keyword", value="Palabra Larga", sector="prueba")
+
+        datos = client.get("/api/watchlist", params={"kind": "keyword"}).json()
+        assert datos["total"] == 1
+        assert len(datos["items"]) == 1
+
+    def test_el_limit_tiene_tope(self, settings: Settings, poblado: None) -> None:
+        acotado = settings.model_copy(update={"api_max_page_size": 3})
+        with TestClient(create_app(acotado, egress_guard=GuardPermisivo())) as client:  # type: ignore[arg-type]
+            assert client.get("/api/watchlist", params={"limit": 999}).json()["limit"] == 3

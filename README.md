@@ -99,6 +99,25 @@ Son **dos cosas distintas** y conviene no confundirlas:
   `LEAKS_PII_ENCRYPTION_KEY` en el entorno. Un interruptor de una UI sin
   autenticación no puede crear esa clave ni suplirla.
 
+### Navegación
+
+El tablero está partido en pantallas, accesibles desde el menú de arriba:
+
+| Pantalla | Qué tiene |
+|---|---|
+| **Hallazgos** | Totales, filtros y la tabla paginada de hallazgos argentinos |
+| **Watchlist** | Alta, baja y habilitado de lo que se monitorea, paginado |
+| **Reglas** | Las 5 reglas de relevancia con su interruptor |
+| **Fuentes** | Salud de cada feed y su última corrida |
+| **Consola** | Actividad del pipeline en vivo |
+
+El router va por hash (`#/watchlist`), así que el enlace se puede compartir y el
+botón "atrás" funciona. Cada pantalla trae sus datos al entrar: abrir "Reglas"
+no dispara la consulta de hallazgos.
+
+El menú muestra un contador rojo sobre **Fuentes** si alguna se cayó, para que
+se note desde cualquier pantalla.
+
 ### Consola de actividad
 
 Abajo del tablero hay una consola en vivo que muestra **a qué sitio le está

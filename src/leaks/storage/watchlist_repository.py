@@ -147,8 +147,14 @@ class WatchlistRepository:
         sector: str | None = None,
         enabled: bool | None = None,
         q: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[WatchlistEntry, ...]:
-        """Entradas filtradas, ordenadas por sector y valor."""
+        """Entradas filtradas, ordenadas por sector y valor.
+
+        Sin `limit` devuelve todo: es lo que necesita `build()` para armar la
+        watchlist efectiva. La UI sí pagina.
+        """
         with session_scope(self._session_factory) as session:
             stmt = select(WatchlistEntryRow)
             if kind:
@@ -163,12 +169,38 @@ class WatchlistRepository:
                     WatchlistEntryRow.value.ilike(patron, escape="\\")
                     | WatchlistEntryRow.label.ilike(patron, escape="\\")
                 )
-            filas = session.scalars(
-                stmt.order_by(
-                    WatchlistEntryRow.sector, WatchlistEntryRow.kind, WatchlistEntryRow.value
-                )
-            ).all()
+            stmt = stmt.order_by(
+                WatchlistEntryRow.sector, WatchlistEntryRow.kind, WatchlistEntryRow.value
+            )
+            if limit is not None:
+                stmt = stmt.limit(limit).offset(offset)
+            filas = session.scalars(stmt).all()
             return tuple(_to_entry(f) for f in filas)
+
+    def count_entries(
+        self,
+        *,
+        kind: str | None = None,
+        sector: str | None = None,
+        enabled: bool | None = None,
+        q: str | None = None,
+    ) -> int:
+        """Total que coincide con el filtro, para paginar en la UI."""
+        with session_scope(self._session_factory) as session:
+            stmt = select(func.count()).select_from(WatchlistEntryRow)
+            if kind:
+                stmt = stmt.where(WatchlistEntryRow.kind == kind)
+            if sector:
+                stmt = stmt.where(WatchlistEntryRow.sector == sector)
+            if enabled is not None:
+                stmt = stmt.where(WatchlistEntryRow.enabled == enabled)
+            if q:
+                patron = "%{}%".format(q.strip().replace("%", r"\%").replace("_", r"\_"))
+                stmt = stmt.where(
+                    WatchlistEntryRow.value.ilike(patron, escape="\\")
+                    | WatchlistEntryRow.label.ilike(patron, escape="\\")
+                )
+            return int(session.scalar(stmt) or 0)
 
     def counts(self) -> dict[str, int]:
         """Totales para el encabezado de la sección."""

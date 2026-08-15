@@ -11,6 +11,10 @@
  */
 
 const PAGE_SIZE = 50;
+/** Filas por página en la watchlist. */
+const WL_PAGE_SIZE = 50;
+/** Vistas válidas del router. La primera es el default. */
+const VIEWS = ["hallazgos", "watchlist", "reglas", "fuentes", "consola"];
 /** Cada cuánto se pregunta por actividad nueva. */
 const CONSOLE_POLL_MS = 2000;
 
@@ -24,6 +28,9 @@ const state = {
   filters: {},
   editingAllowed: true,
   sourcesAlerted: false,
+  view: "hallazgos",
+  wlOffset: 0,
+  wlTotal: 0,
   // Cursor de la consola: el id del último evento ya pintado.
   lastEventId: 0,
   consoleLines: 0,
@@ -214,6 +221,11 @@ function renderSourcesSummary(sources) {
   if (fallidas) cont.append(el("span", `${fallidas} caídas`, "pill pill-failed"));
   if (apagadas) cont.append(el("span", `${apagadas} apagadas`, "pill pill-skipped"));
 
+  // El menú avisa si hay fuentes caídas aunque estés en otra pantalla.
+  const navBadge = $("nav-fuentes-badge");
+  navBadge.textContent = fallidas ? String(fallidas) : "";
+  navBadge.className = fallidas ? "nav-badge" : "";
+
   const panel = $("sources-panel");
   if (fallidas && !state.sourcesAlerted) {
     // Se abre una sola vez por incidente: si el usuario lo cierra, se respeta.
@@ -334,6 +346,53 @@ async function loadFindings() {
   $("page-info").textContent = `${desde}–${hasta} de ${page.total}`;
   $("prev").disabled = state.offset === 0;
   $("next").disabled = hasta >= page.total;
+}
+
+/* ------------------------------------------------------------------ Router */
+
+/**
+ * Navegación por pantallas, con hash (`#/watchlist`).
+ *
+ * Se eligió hash y no History API porque la app se sirve como archivo estático:
+ * con rutas reales, recargar en `/watchlist` daría 404 salvo que el server
+ * reescriba todo a index.html.
+ *
+ * Cada vista carga sus datos al entrar, no todas juntas al arrancar: entrar a
+ * "Reglas" no tiene por qué disparar la consulta de hallazgos.
+ */
+function viewFromHash() {
+  const nombre = (window.location.hash || "").replace(/^#\/?/, "");
+  return VIEWS.includes(nombre) ? nombre : VIEWS[0];
+}
+
+function showView(nombre) {
+  state.view = nombre;
+
+  for (const seccion of document.querySelectorAll(".view")) {
+    seccion.classList.toggle("is-active", seccion.dataset.view === nombre);
+  }
+  for (const enlace of document.querySelectorAll(".mainnav a")) {
+    const activo = enlace.dataset.view === nombre;
+    enlace.classList.toggle("is-active", activo);
+    // aria-current: un lector de pantalla anuncia en qué sección está.
+    if (activo) enlace.setAttribute("aria-current", "page");
+    else enlace.removeAttribute("aria-current");
+  }
+
+  // Al cambiar de pantalla se vuelve arriba: si no, se entra a media página.
+  window.scrollTo({ top: 0 });
+  loadView(nombre);
+}
+
+/** Carga los datos de una vista. Barato de repetir: son consultas chicas. */
+function loadView(nombre) {
+  if (state.blocked) return;
+  if (nombre === "hallazgos") return Promise.all([loadStats(), loadFilterOptions(), loadFindings()]);
+  if (nombre === "watchlist") return loadWatchlist();
+  if (nombre === "reglas") return loadRules();
+  if (nombre === "fuentes") return loadSources();
+  if (nombre === "consola") return pollEvents();
+  return Promise.resolve();
 }
 
 /* ------------------------------------------------ Reglas y watchlist (CRUD) */
@@ -460,7 +519,11 @@ function wlFilters() {
 }
 
 async function loadWatchlist() {
-  const datos = await api("/api/watchlist", wlFilters());
+  const datos = await api("/api/watchlist", {
+    ...wlFilters(),
+    limit: WL_PAGE_SIZE,
+    offset: state.wlOffset,
+  });
   const body = $("wl-body");
   body.replaceChildren();
   if (!datos) return;
@@ -477,6 +540,9 @@ async function loadWatchlist() {
   const lista = $("wl-sectors");
   lista.replaceChildren();
   for (const sector of datos.sectors) lista.append(el("option", sector));
+
+  state.wlTotal = datos.total;
+  renderWlPager();
 
   if (!datos.items.length) {
     const tr = document.createElement("tr");
@@ -533,6 +599,15 @@ async function loadWatchlist() {
 
     body.append(tr);
   }
+}
+
+/** Controles de paginación de la watchlist. */
+function renderWlPager() {
+  const desde = state.wlTotal === 0 ? 0 : state.wlOffset + 1;
+  const hasta = Math.min(state.wlOffset + WL_PAGE_SIZE, state.wlTotal);
+  $("wl-page-info").textContent = `${desde}–${hasta} de ${state.wlTotal}`;
+  $("wl-prev").disabled = state.wlOffset === 0;
+  $("wl-next").disabled = hasta >= state.wlTotal;
 }
 
 /* --------------------------------------------------------- Bloqueo de OPSEC */
@@ -769,14 +844,9 @@ function readFilters() {
 /** Refresca los paneles de datos (no la consola, que va por su cuenta). */
 async function refreshData() {
   if (state.blocked) return;
-  await Promise.all([
-    loadStats(),
-    loadSources(),
-    loadFilterOptions(),
-    loadFindings(),
-    loadRules(),
-    loadWatchlist(),
-  ]);
+  // Siempre: las fuentes alimentan el badge del menú y el control de PII.
+  // Lo demás, solo la pantalla en la que estés.
+  await Promise.all([loadSources(), loadRules(), loadView(state.view)]);
 }
 
 async function refreshAll() {
@@ -829,12 +899,28 @@ $("wl-add").addEventListener("submit", async (e) => {
     return;
   }
   $("wl-value").value = "";
+  state.wlOffset = 0;
   loadWatchlist();
 });
 
 for (const id of ["wl-q", "wl-f-kind", "wl-f-enabled"]) {
-  $(id).addEventListener("input", loadWatchlist);
+  $(id).addEventListener("input", () => {
+    // Cambiar el filtro vuelve a la primera página: quedarse en la 3 de un
+    // resultado que ahora tiene 1 sola muestra una tabla vacía sin motivo.
+    state.wlOffset = 0;
+    loadWatchlist();
+  });
 }
+
+$("wl-prev").addEventListener("click", () => {
+  state.wlOffset = Math.max(0, state.wlOffset - WL_PAGE_SIZE);
+  loadWatchlist();
+});
+
+$("wl-next").addEventListener("click", () => {
+  state.wlOffset += WL_PAGE_SIZE;
+  loadWatchlist();
+});
 
 $("console-clear").addEventListener("click", () => {
   // Limpia la vista, no la bitácora: `lastEventId` no se toca, así que no
@@ -851,8 +937,14 @@ sourcesPanel.addEventListener("toggle", () => {
   localStorage.setItem("sources-open", sourcesPanel.open ? "1" : "0");
 });
 
+window.addEventListener("hashchange", () => showView(viewFromHash()));
+
+// Arranque: se pinta la vista del hash y se traen los datos comunes.
+showView(viewFromHash());
 refreshAll();
-// La consola se actualiza sola; el resto del tablero, cuando termina una corrida.
+
+// La consola se actualiza sola aunque estés en otra pantalla: así no se pierde
+// actividad mientras mirás otra sección.
 setInterval(pollEvents, CONSOLE_POLL_MS);
 // La IP de salida se revisa siempre: es lo que libera el bloqueo cuando se
 // conecta la VPN, y lo que lo activa si la VPN se cae a mitad de sesión.
