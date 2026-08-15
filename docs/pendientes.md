@@ -105,7 +105,7 @@ Las tomé yo para no bloquear. Todas son reversibles.
 
 ## 6. Testing
 
-- **El frontend no tiene tests.** Subió de prioridad: ya no es una tabla, tiene el bloqueo de OPSEC, la consola, el CRUD de watchlist y el control de PII. Toda esa lógica está sin cobertura automatizada.
+- ~~El frontend no tiene tests~~ ✅ 14 tests sobre un DOM mínimo propio (`tests/frontend/`), integrados al `check` y al CI. Encontraron 3 bugs reales: un `for...of` sobre datos no iterables que cortaba la carga entera, `.filter` sobre una respuesta con otra forma que **crasheaba el proceso**, y los `.onion` que sí se estaban enlazando pese a lo documentado.
 - Sin test de `alembic downgrade`.
 
 ---

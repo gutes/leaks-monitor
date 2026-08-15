@@ -380,6 +380,13 @@ con `textContent` (nunca `innerHTML`), los `href` se validan por esquema (un
 Ningún test toca la red: los adapters corren contra fixtures capturadas en
 `tests/fixtures/`. El CI corre en cada push y es determinístico y offline.
 
+El **frontend también tiene tests** (`node --test "tests/frontend/*.test.mjs"`):
+corren sobre un DOM mínimo propio, sin navegador y sin dependencias de npm.
+Verifican el cableado y las reglas de seguridad de la UI — que ninguna URL de
+descarga termine siendo clickeable, que el bloqueo de OPSEC corte la actividad,
+que cada pantalla pida solo lo suyo y que una respuesta con forma inesperada no
+tumbe la página.
+
 Estructura:
 
 ```

@@ -41,7 +41,14 @@ const state = {
 
 const $ = (id) => document.getElementById(id);
 
-/** GET a la API. Devuelve null si falla, para que un panel roto no rompa la página. */
+/**
+ * GET a la API. Devuelve `null` si falla, para que un panel roto no rompa la
+ * página.
+ *
+ * Los consumidores además tratan como opcional cada colección que reciben: una
+ * respuesta con otra forma no puede rechazar una promesa y cortar la carga del
+ * resto del tablero.
+ */
 async function api(path, params = {}) {
   const url = new URL(path, window.location.origin);
   for (const [k, v] of Object.entries(params)) {
@@ -75,7 +82,12 @@ function safeHref(value) {
   if (!value) return null;
   try {
     const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    // Un .onion llega como http:// y pasaría el filtro de esquema. No se
+    // enlaza: es el sitio de extorsión, y llegar ahí no puede ser el resultado
+    // de un click distraído (además, el navegador no lo va a resolver).
+    if (url.hostname.endsWith(".onion")) return null;
+    return url.href;
   } catch {
     return null;
   }
@@ -135,14 +147,17 @@ async function loadSources() {
 
   const cont = $("sources");
   cont.replaceChildren();
-  if (!sources) {
+  // `Array.isArray` y no solo `!sources`: una respuesta con otra forma haría
+  // explotar el `.filter` de abajo, y un rechazo sin capturar corta la carga
+  // del resto del tablero.
+  if (!Array.isArray(sources)) {
     cont.append(el("p", "No se pudo consultar el estado de las fuentes.", "error"));
     return;
   }
 
   renderSourcesSummary(sources);
 
-  for (const s of sources) {
+  for (const s of sources || []) {
     const run = s.last_run;
     const estado = run ? run.status : s.enabled ? "sin correr" : "deshabilitada";
     const card = el("div", "", `source source-${estado}`);
@@ -241,7 +256,11 @@ function renderSourcesSummary(sources) {
 async function loadFilterOptions() {
   const opts = await api("/api/filters");
   if (!opts) return;
-  const mapa = { "f-source": opts.sources, "f-sector": opts.sectors, "f-severity": opts.severities };
+  const mapa = {
+    "f-source": opts.sources,
+    "f-sector": opts.sectors,
+    "f-severity": opts.severities,
+  };
   for (const [id, valores] of Object.entries(mapa)) {
     const select = $(id);
     const actual = select.value;
@@ -407,14 +426,14 @@ async function loadFindings() {
   }
 
   state.total = page.total;
-  if (!page.items.length) {
+  if (!(page.items || []).length) {
     const tr = document.createElement("tr");
     const td = el("td", "Sin hallazgos para este filtro.", "empty");
     td.colSpan = 9;
     tr.append(td);
     body.append(tr);
   } else {
-    for (const f of page.items) body.append(renderRow(f));
+    for (const f of page.items || []) body.append(renderRow(f));
   }
 
   const desde = page.total === 0 ? 0 : state.offset + 1;
@@ -592,7 +611,7 @@ async function loadRules() {
 
   state.editingAllowed = datos.editing_allowed;
 
-  for (const regla of datos.rules) {
+  for (const regla of datos.rules || []) {
     const fila = el("div", "", `rule ${regla.enabled ? "" : "rule-off"}`);
 
     const label = el("label", "", "switch switch-lg");
@@ -710,12 +729,12 @@ async function loadWatchlist() {
   // Autocompletado de sectores en el alta.
   const lista = $("wl-sectors");
   lista.replaceChildren();
-  for (const sector of datos.sectors) lista.append(el("option", sector));
+  for (const sector of datos.sectors || []) lista.append(el("option", sector));
 
   state.wlTotal = datos.total;
   renderWlPager();
 
-  if (!datos.items.length) {
+  if (!(datos.items || []).length) {
     const tr = document.createElement("tr");
     const td = el("td", "Sin entradas para este filtro.", "empty");
     td.colSpan = 7;
@@ -724,7 +743,7 @@ async function loadWatchlist() {
     return;
   }
 
-  for (const e of datos.items) {
+  for (const e of datos.items || []) {
     const tr = document.createElement("tr");
     if (!e.enabled) tr.className = "row-off";
 
@@ -958,7 +977,7 @@ async function pollEvents() {
     return;
   }
 
-  if (page.items.length) {
+  if ((page.items || []).length) {
     const consola = $("console");
     // La consola crece hacia arriba: lo más reciente queda primero. El ancla
     // pasa a ser el tope, no el final.
@@ -968,7 +987,7 @@ async function pollEvents() {
     // La API devuelve ascendente por id; se invierte para que dentro del lote
     // el más nuevo quede arriba, y el lote entero se antepone.
     const lote = document.createDocumentFragment();
-    for (const ev of [...page.items].reverse()) lote.append(renderEvent(ev));
+    for (const ev of [...(page.items || [])].reverse()) lote.append(renderEvent(ev));
     consola.prepend(lote);
 
     state.lastEventId = page.last_id;
@@ -985,7 +1004,7 @@ async function pollEvents() {
     }
 
     // Si el pipeline terminó una corrida, los paneles quedaron viejos.
-    if (page.items.some((e) => e.kind === "run_done")) {
+    if ((page.items || []).some((e) => e.kind === "run_done")) {
       refreshData();
     }
   }
@@ -1122,8 +1141,13 @@ sourcesPanel.addEventListener("toggle", () => {
 window.addEventListener("hashchange", () => showView(viewFromHash()));
 
 // Arranque: se pinta la vista del hash y se traen los datos comunes.
-showView(viewFromHash());
-refreshAll();
+// La IP de salida se resuelve ANTES de pintar nada: si arranca bloqueado, no
+// tiene que salir ni un pedido de datos. (Antes se pintaba la vista primero y
+// recién después se sabía que estaba bloqueado.)
+loadEgress().then(() => {
+  showView(viewFromHash());
+  refreshAll();
+});
 
 // Si el scheduler o alguien más dejó una corrida en curso, se engancha.
 api("/api/runs/current").then((estado) => {

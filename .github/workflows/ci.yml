@@ -49,6 +49,11 @@ jobs:
       - name: Tests
         run: pytest --cov=leaks --cov-report=term-missing --cov-fail-under=80
 
+      # El frontend tiene su propia suite: corre sobre un DOM mínimo, sin
+      # navegador y sin dependencias de npm.
+      - name: Tests del frontend
+        run: node --test "tests/frontend/*.test.mjs"
+
       # -- Etapa 3: seguridad (bloquea) -------------------------------------
       - name: SAST (bandit)
         run: bandit -c pyproject.toml -r src

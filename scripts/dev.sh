@@ -20,6 +20,11 @@ case "${1:-help}" in
     "$VENV/bin/mypy"
     "$VENV/bin/pytest" -q
     "$VENV/bin/bandit" -c pyproject.toml -r src -q
+    if command -v node >/dev/null; then
+      node --test "tests/frontend/*.test.mjs"
+    else
+      echo "node no está: se saltean los tests del frontend"
+    fi
     echo "Todo en verde."
     ;;
   run)     "$VENV/bin/leaks" run ;;
@@ -29,7 +34,7 @@ case "${1:-help}" in
     cat <<'HELP'
 Comandos:
   setup   crea el venv, instala y prepara el .env
-  check   lint + formato + tipos + tests + SAST (lo mismo que el CI)
+  check   lint + formato + tipos + tests (backend y frontend) + SAST
   run     una corrida del pipeline
   serve   levanta la API y el frontend
   feeds   lista los feeds registrados
