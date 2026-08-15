@@ -1,11 +1,25 @@
 # Pendientes y decisiones abiertas
 
-Estado al **2026-08-14**. El prototipo corre end-to-end: 224 tests, 89% de
-cobertura, imagen Docker verificada, 214 hallazgos argentinos reales en la base.
+Estado al **2026-08-15**. El prototipo corre end-to-end: 250 tests, 90,7% de
+cobertura, imagen Docker verificada, 216 hallazgos argentinos reales en la base,
+3 commits en `main`.
 
 ---
 
-## 0. Lo último que se hizo (2026-08-14, sesión 2)
+## 0. Lo último que se hizo
+
+### Sesión 3 (2026-08-15)
+
+- **El tablero se partió en 5 pantallas** con menú (router por hash), cada una
+  con su carga perezosa. La watchlist se pagina de verdad (`limit`/`offset` en
+  el endpoint, total del filtro).
+
+**Pendiente inmediato:** el botón **"Actualizar" sigue sin conectar** a
+`POST /api/runs`, que ya existe y funciona. Hoy solo relee la base y no da
+ninguna señal — que es la queja original. Falta: botón "Correr ahora", estado
+"corriendo…", y timestamp de última actualización.
+
+### Sesión 2 (2026-08-14)
 
 **El control de IP de salida se endureció.** Se encontró en vivo que el pipeline
 consultaba feeds con la salida en AR: el chequeo era solo al arrancar la
@@ -32,12 +46,6 @@ re-chequeo, no es override); endpoint `POST /api/runs` + `RunCoordinator` para
 disparar corridas a mano; pastilla de PII arreglada (mostraba la variable de
 entorno en vez del estado persistido); redacción de `email:password` en títulos
 (la contraseña sobrevivía a la redacción).
-
-**Pendiente inmediato al retomar:** el botón "Actualizar" del frontend
-**todavía no fue reconectado** al nuevo endpoint `POST /api/runs`. Hoy solo
-relee la base y no da feedback visual, que es la queja original. Falta:
-agregar el botón "Correr ahora", el estado de "corriendo…" y un timestamp de
-última actualización.
 
 ---
 
@@ -75,10 +83,13 @@ Las tomé yo para no bloquear. Todas son reversibles.
 
 ## 4. Producto / UX
 
+- **Conectar "Actualizar" a `POST /api/runs`** (ver sección 0). Es lo más chico
+  y lo más visible.
 - Export CSV/JSON.
 - Vista de detalle por hallazgo.
 - Filtro por `ar_match_reason` en la UI (el dato está, falta el selector).
 - Timeline o gráfico de evolución.
+- ~~Partir el tablero en pantallas~~ ✅ hecho en la sesión 3.
 
 ---
 
@@ -110,6 +121,7 @@ Las tomé yo para no bloquear. Todas son reversibles.
 
 ## Prioridad sugerida
 
+0. **Conectar "Actualizar"** — media hora, y cierra la queja que quedó abierta.
 1. **Alertas** — lo único del spec original que falta entero.
 2. **Completar la watchlist** — hoy se está perdiendo señal o degradando severidad; ya se puede cargar desde la UI.
 3. **Tests del frontend** — es donde vive ahora la lógica sin cobertura.
