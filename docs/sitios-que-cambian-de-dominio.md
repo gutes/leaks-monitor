@@ -72,6 +72,27 @@ días de un foro.
 
 ---
 
+## Cómo se sabe si un sitio está en línea
+
+**No lo verificamos nosotros.** El prototipo no se conecta a ninguna de esas
+direcciones: no usa Tor y no tiene por qué hacerlo. El campo `available` sale
+tal cual de los registros, que sí corren scrapers sobre Tor.
+
+Tres consecuencias que conviene tener presentes:
+
+1. **"En línea" ≠ "operativo".** Un caso real del propio dls-monitor:
+   `available: true` con `title: "This site has been seized"`. El sitio responde,
+   pero lo que responde es el cartel de incautación.
+2. **La frescura depende del registro.** dls-monitor publica `lastscrape` y
+   `updated`; ransomware.live no manda ninguna marca de tiempo. Se guarda lo que
+   haya en `checked_at` y, cuando no hay, la UI dice *sin fecha de revisión* en
+   vez de aparentar que el dato es de ahora. En la primera pasada real: 74 de
+   979 ubicaciones traían fecha.
+3. **Verificar por nuestra cuenta implicaría salir por Tor** a infraestructura
+   de grupos de extorsión, desde la IP del investigador. Es exactamente lo que
+   el resto del diseño evita, así que la respuesta correcta es delegar la
+   verificación y ser explícitos sobre su origen.
+
 ## Recomendación
 
 Implementar (1) —el catálogo de sitios de ransomware— porque es barato, usa lo

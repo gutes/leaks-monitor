@@ -191,6 +191,11 @@ class LeakSiteRow(Base):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     #: Última vez que se lo reportó disponible.
     last_available_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: Cuándo lo revisó el registro de origen, **según el registro**.
+    #: Nosotros no verificamos ninguna de estas direcciones: no nos conectamos
+    #: a `.onion`. dls-monitor publica `lastscrape`; ransomware.live no manda
+    #: marca de tiempo, así que ahí queda en `NULL` y la UI lo dice.
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         UniqueConstraint("group_name", "fqdn", name="uq_leak_sites_group_fqdn"),

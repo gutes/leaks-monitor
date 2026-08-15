@@ -858,3 +858,7 @@ body.is-blocked { overflow: hidden; }
 }
 
 .moves-item code { color: var(--muted); }
+
+/* Una mudanza de un grupo que ya golpeó en Argentina se lee primero. */
+.moves-ar { border-left: 2px solid var(--critical); padding-left: 6px; }
+.moves-item .pill { font-size: 10px; padding: 1px 6px; }

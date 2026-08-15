@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import httpx
 import pytest
 import respx
@@ -189,3 +191,136 @@ class TestColector:
         resultado, fallidos = SiteCatalogCollector(repo, lambda: client).collect()
         assert resultado.new == 0
         assert len(fallidos) == 3
+
+
+class TestCruceConHallazgosArgentinos:
+    """Que un grupo cualquiera se mude es dato; que se mude uno que ya golpeó
+    acá es una alerta. Ese es el cruce."""
+
+    def test_cuenta_los_hallazgos_por_actor(
+        self, repo: LeakSiteRepository, repository: object
+    ) -> None:
+        from tests.conftest import make_finding
+
+        repository.upsert_many(  # type: ignore[attr-defined]
+            [
+                make_finding(victim_name="Uno", victim_domain="uno.gob.ar", actor="LockBit"),
+                make_finding(victim_name="Dos", victim_domain="dos.gob.ar", actor="lockbit"),
+                make_finding(victim_name="Tres", victim_domain="tres.gob.ar", actor="Akira"),
+            ]
+        )
+        impacto = repo.ar_impact_by_group()
+
+        # Se normaliza a minúsculas: los feeds escriben el nombre como quieren.
+        assert impacto["lockbit"] == 2
+        assert impacto["akira"] == 1
+
+    def test_una_mudanza_de_grupo_con_impacto_ar_se_distingue(
+        self, repo: LeakSiteRepository, repository: object
+    ) -> None:
+        from tests.conftest import make_finding
+
+        repository.upsert_many(  # type: ignore[attr-defined]
+            [make_finding(victim_domain="x.gob.ar", actor="lockbit")]
+        )
+        # Se conocen dos grupos; solo uno tiene hallazgos argentinos.
+        repo.upsert_locations(
+            [
+                SiteLocation(group_name="lockbit", fqdn="vieja.onion", source="x"),
+                SiteLocation(group_name="otrogrupo", fqdn="vieja2.onion", source="x"),
+            ]
+        )
+
+        resultado = repo.upsert_locations(
+            [
+                SiteLocation(group_name="lockbit", fqdn="nueva.onion", source="x"),
+                SiteLocation(group_name="otrogrupo", fqdn="nueva2.onion", source="x"),
+            ]
+        )
+
+        assert len(resultado.moved) == 2, "las dos son mudanzas"
+        assert len(resultado.moved_ar) == 1, "solo una afecta a Argentina"
+        assert "lockbit" in resultado.moved_ar[0]
+
+    def test_el_listado_anota_el_impacto(
+        self, repo: LeakSiteRepository, repository: object
+    ) -> None:
+        from tests.conftest import make_finding
+
+        repository.upsert_many(  # type: ignore[attr-defined]
+            [make_finding(victim_domain="x.gob.ar", actor="lockbit")]
+        )
+        repo.upsert_locations(
+            [
+                SiteLocation(group_name="lockbit", fqdn="a.onion", source="x"),
+                SiteLocation(group_name="otro", fqdn="b.onion", source="x"),
+            ]
+        )
+        items, _ = repo.list_sites()
+        por_grupo = {i["group_name"]: i["ar_findings"] for i in items}
+
+        assert por_grupo["lockbit"] == 1
+        assert por_grupo["otro"] == 0
+
+    def test_filtro_solo_grupos_con_impacto_ar(
+        self, repo: LeakSiteRepository, repository: object
+    ) -> None:
+        from tests.conftest import make_finding
+
+        repository.upsert_many(  # type: ignore[attr-defined]
+            [make_finding(victim_domain="x.gob.ar", actor="lockbit")]
+        )
+        repo.upsert_locations(
+            [
+                SiteLocation(group_name="lockbit", fqdn="a.onion", source="x"),
+                SiteLocation(group_name="otro", fqdn="b.onion", source="x"),
+            ]
+        )
+        items, total = repo.list_sites(ar_only=True)
+
+        assert total == 1
+        assert items[0]["group_name"] == "lockbit"
+
+    def test_sin_hallazgos_el_filtro_no_devuelve_todo(self, repo: LeakSiteRepository) -> None:
+        """Sin actores conocidos el filtro tiene que vaciar, no listar todo."""
+        repo.upsert_locations([SiteLocation(group_name="otro", fqdn="b.onion", source="x")])
+        assert repo.list_sites(ar_only=True)[1] == 0
+
+    def test_las_mudanzas_ar_van_primero(
+        self, repo: LeakSiteRepository, repository: object
+    ) -> None:
+        from tests.conftest import make_finding
+
+        repository.upsert_many(  # type: ignore[attr-defined]
+            [make_finding(victim_domain="x.gob.ar", actor="lockbit")]
+        )
+        repo.upsert_locations(
+            [
+                SiteLocation(group_name="aaa-primero-alfabetico", fqdn="a.onion", source="x"),
+                SiteLocation(group_name="lockbit", fqdn="b.onion", source="x"),
+            ]
+        )
+        recientes = repo.recent_moves(days=7)
+        assert recientes[0]["group_name"] == "lockbit"
+
+
+class TestFrescuraDelEstado:
+    """El estado lo reporta el registro; nosotros no verificamos nada."""
+
+    def test_se_guarda_cuando_lo_revisó_el_registro(self, repo: LeakSiteRepository) -> None:
+        revisado = datetime.now(UTC) - timedelta(hours=3)
+        repo.upsert_locations(
+            [
+                SiteLocation(
+                    group_name="g", fqdn="a.onion", source="dls-monitor", checked_at=revisado
+                )
+            ]
+        )
+        assert repo.list_sites()[0][0]["checked_at"] is not None
+
+    def test_sin_fecha_publicada_queda_en_none(self, repo: LeakSiteRepository) -> None:
+        """ransomware.live no manda marca de tiempo: no se inventa frescura."""
+        repo.upsert_locations(
+            [SiteLocation(group_name="g", fqdn="a.onion", source="ransomware.live")]
+        )
+        assert repo.list_sites()[0][0]["checked_at"] is None

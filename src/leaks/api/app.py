@@ -369,6 +369,7 @@ def create_app(
         kind: str | None = None,
         available: bool | None = None,
         q: Annotated[str | None, Query(max_length=200)] = None,
+        ar_only: bool = False,
         limit: Annotated[int, Query(ge=1)] = 50,
         offset: Annotated[int, Query(ge=0)] = 0,
         moves_days: Annotated[int, Query(ge=1, le=90)] = 7,
@@ -380,7 +381,12 @@ def create_app(
         """
         acotado = min(limit, config.api_max_page_size)
         items, total = repo.list_sites(
-            kind=kind, available=available, q=q, limit=acotado, offset=offset
+            kind=kind,
+            available=available,
+            q=q,
+            ar_only=ar_only,
+            limit=acotado,
+            offset=offset,
         )
         return LeakSitePage(
             items=[LeakSiteOut.model_validate(i) for i in items],

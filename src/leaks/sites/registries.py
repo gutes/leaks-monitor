@@ -17,9 +17,11 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from leaks.adapters.http import FeedHttpClient
+from leaks.adapters.parsing import parse_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +32,11 @@ RANSOMLOOK_MARKETS = "https://www.ransomlook.io/api/markets"
 
 @dataclass(frozen=True)
 class SiteLocation:
-    """Una ubicación conocida de un sitio de leaks."""
+    """Una ubicación conocida de un sitio de leaks.
+
+    `available` y `checked_at` son **lo que reporta el registro**, no una
+    verificación nuestra: el prototipo no se conecta a estas direcciones.
+    """
 
     group_name: str
     fqdn: str
@@ -38,6 +44,8 @@ class SiteLocation:
     title: str | None = None
     available: bool = False
     source: str = ""
+    #: Cuándo lo revisó el registro. `None` si no lo publica.
+    checked_at: datetime | None = None
 
 
 def _normalizar_fqdn(valor: Any) -> str | None:
@@ -73,6 +81,10 @@ def _ubicaciones(payload: Any, source: str, kind: str = "ransomware") -> Iterabl
             if not fqdn:
                 continue
             titulo = ubicacion.get("title")
+            # dls-monitor publica cuándo pasó por ahí; ransomware.live no.
+            revisado = parse_datetime(ubicacion.get("lastscrape")) or parse_datetime(
+                ubicacion.get("updated")
+            )
             yield SiteLocation(
                 group_name=nombre.strip().lower(),
                 fqdn=fqdn,
@@ -80,6 +92,7 @@ def _ubicaciones(payload: Any, source: str, kind: str = "ransomware") -> Iterabl
                 title=titulo if isinstance(titulo, str) and titulo.strip() else None,
                 available=bool(ubicacion.get("available")),
                 source=source,
+                checked_at=revisado,
             )
 
 

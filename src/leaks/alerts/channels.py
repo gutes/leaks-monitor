@@ -72,6 +72,10 @@ class WebhookChannel:
         self._client = client
         self._url = url
 
+    def send_notice(self, text: str) -> None:
+        """Aviso que no es una lista de hallazgos (p. ej. una mudanza de sitio)."""
+        self._client.post_json(self._url, {"text": text, "notice": True})
+
     def send(self, findings: Sequence[Finding]) -> None:
         cuerpo: dict[str, Any] = {
             "text": format_text(findings),
@@ -104,18 +108,21 @@ class TelegramChannel:
         self._token = token
         self._chat_id = chat_id
 
-    def send(self, findings: Sequence[Finding]) -> None:
+    def _enviar(self, texto: str) -> None:
         # El token va en la URL porque así es la Bot API; por eso nunca se
         # loguea la URL de este canal (ver `dispatcher`).
         url = f"https://api.telegram.org/bot{self._token}/sendMessage"
         self._client.post_json(
             url,
-            {
-                "chat_id": self._chat_id,
-                "text": format_text(findings),
-                "disable_web_page_preview": True,
-            },
+            {"chat_id": self._chat_id, "text": texto, "disable_web_page_preview": True},
         )
+
+    def send_notice(self, text: str) -> None:
+        """Aviso que no es una lista de hallazgos (p. ej. una mudanza de sitio)."""
+        self._enviar(text)
+
+    def send(self, findings: Sequence[Finding]) -> None:
+        self._enviar(format_text(findings))
 
 
 @dataclass(frozen=True)

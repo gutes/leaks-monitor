@@ -38,6 +38,10 @@ class AlertChannel(Protocol):
         """Manda el aviso. Puede lanzar: el despachador lo aísla."""
         ...
 
+    def send_notice(self, text: str) -> None:
+        """Manda un aviso de texto que no es una lista de hallazgos."""
+        ...
+
 
 @dataclass
 class DispatchResult:
@@ -94,6 +98,29 @@ class AlertDispatcher:
     @property
     def channel_names(self) -> tuple[str, ...]:
         return tuple(c.name for c in self._channels)
+
+    def dispatch_notice(self, text: str) -> DispatchResult:
+        """Manda un aviso suelto (una mudanza de sitio, por ejemplo).
+
+        Mismas garantías que `dispatch`: nunca lanza y un canal caído no frena
+        a los demás.
+        """
+        resultado = DispatchResult(considered=1)
+        for canal in self._channels:
+            enviar = getattr(canal, "send_notice", None)
+            if enviar is None:
+                continue
+            try:
+                enviar(text)
+            except Exception as exc:
+                logger.warning("El canal %s falló: %s", canal.name, type(exc).__name__)
+                resultado.channels_failed.append(canal.name)
+                continue
+            resultado.channels_ok.append(canal.name)
+
+        if resultado.delivered:
+            resultado.sent = 1
+        return resultado
 
     def dispatch(self, findings: Sequence[Finding]) -> DispatchResult:
         """Avisa de estos hallazgos. Nunca lanza."""

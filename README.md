@@ -150,6 +150,20 @@ Lo más útil no es el listado sino el bloque de arriba: **direcciones vistas po
 primera vez en los últimos 7 días**. Un grupo que estrena dominio suele estar por
 publicar.
 
+**El cruce con Argentina es lo que le da filo.** Cada grupo muestra cuántos
+hallazgos argentinos tiene atribuidos, hay un filtro *solo grupos que golpearon
+en AR*, y las mudanzas de esos grupos van primero y disparan una **alerta**. Que
+un grupo cualquiera se mude es dato; que se mude uno que ya golpeó acá es otra
+cosa.
+
+> **El estado lo reportan los registros, no lo verificamos nosotros.** El
+> prototipo **no se conecta** a ninguna de esas direcciones —no usa Tor— así que
+> "en línea" significa que respondió cuando pasó el registro. Dos matices: a
+> veces lo que responde es un cartel de incautación (el propio `title` lo
+> delata), y solo dls-monitor publica **cuándo** revisó. ransomware.live no manda
+> marca de tiempo, y en esos casos la UI dice *sin fecha de revisión* en lugar de
+> aparentar frescura.
+
 Dos cosas importantes:
 
 - **Es un catálogo, no un colector.** Se registra dónde está cada sitio; **no se

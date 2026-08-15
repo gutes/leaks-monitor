@@ -11,7 +11,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from leaks.sites.registries import SiteLocation
-from leaks.storage.models import LeakSiteRow
+from leaks.storage.models import FindingRow, LeakSiteRow
 from leaks.storage.session import session_scope
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,9 @@ class SiteUpsertResult:
     new: int = 0
     #: Ubicaciones nuevas de grupos que ya conocíamos: son las mudanzas.
     moved: tuple[str, ...] = ()
+    #: Mudanzas de grupos que ya golpearon a una entidad argentina. Es lo que
+    #: amerita avisar: el resto es contexto.
+    moved_ar: tuple[str, ...] = ()
 
 
 class LeakSiteRepository:
@@ -34,6 +37,24 @@ class LeakSiteRepository:
         self._session_factory = session_factory
 
     # -- Escritura -----------------------------------------------------------
+
+    def ar_impact_by_group(self) -> dict[str, int]:
+        """Cuántos hallazgos argentinos tiene cada actor.
+
+        Es el cruce que le da sentido operativo al catálogo: que un grupo
+        cualquiera se mude es dato; que se mude **uno que ya golpeó a una
+        entidad argentina** es una alerta.
+
+        Se compara en minúsculas porque los feeds escriben el nombre del grupo
+        de cualquier forma ("LockBit", "lockbit3").
+        """
+        with session_scope(self._session_factory) as session:
+            filas = session.execute(
+                select(func.lower(FindingRow.actor), func.count())
+                .where(FindingRow.actor.is_not(None))
+                .group_by(func.lower(FindingRow.actor))
+            ).all()
+            return {str(actor): int(cantidad) for actor, cantidad in filas if actor}
 
     def upsert_locations(self, locations: list[SiteLocation]) -> SiteUpsertResult:
         """Consolida lo que reportaron los registros.
@@ -59,6 +80,8 @@ class LeakSiteRepository:
 
         nuevas = 0
         mudanzas: list[str] = []
+        mudanzas_ar: list[str] = []
+        impacto_ar = self.ar_impact_by_group()
 
         with session_scope(self._session_factory) as session:
             existentes = {
@@ -78,6 +101,7 @@ class LeakSiteRepository:
                     fila.available = loc.available
                     fila.title = loc.title or fila.title
                     fila.sources = sorted(set(fila.sources) | set(origen))
+                    fila.checked_at = loc.checked_at or fila.checked_at
                     if loc.available:
                         fila.last_available_at = ahora
                     continue
@@ -93,14 +117,23 @@ class LeakSiteRepository:
                         first_seen_at=ahora,
                         last_seen_at=ahora,
                         last_available_at=ahora if loc.available else None,
+                        checked_at=loc.checked_at,
                     )
                 )
                 nuevas += 1
                 # Ubicación nueva de un grupo que ya teníamos = se mudó.
                 if loc.group_name in grupos_conocidos:
-                    mudanzas.append(f"{loc.group_name} → {loc.fqdn}")
+                    etiqueta = f"{loc.group_name} → {loc.fqdn}"
+                    mudanzas.append(etiqueta)
+                    if loc.group_name in impacto_ar:
+                        mudanzas_ar.append(etiqueta)
 
-        return SiteUpsertResult(seen=len(unicas), new=nuevas, moved=tuple(mudanzas))
+        return SiteUpsertResult(
+            seen=len(unicas),
+            new=nuevas,
+            moved=tuple(mudanzas),
+            moved_ar=tuple(mudanzas_ar),
+        )
 
     # -- Lectura -------------------------------------------------------------
 
@@ -126,6 +159,7 @@ class LeakSiteRepository:
         kind: str | None = None,
         available: bool | None = None,
         q: str | None = None,
+        ar_only: bool = False,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[tuple[dict[str, Any], ...], int]:
@@ -134,26 +168,42 @@ class LeakSiteRepository:
         Ordena por `first_seen_at` descendente: lo que apareció recién arriba,
         que es la señal útil.
         """
+        impacto = self.ar_impact_by_group()
+
         with session_scope(self._session_factory) as session:
-            total = session.scalar(
-                self._apply(
-                    select(func.count()).select_from(LeakSiteRow),
-                    kind=kind,
-                    available=available,
-                    q=q,
-                )
+            stmt_total = self._apply(
+                select(func.count()).select_from(LeakSiteRow),
+                kind=kind,
+                available=available,
+                q=q,
             )
+            stmt = self._apply(select(LeakSiteRow), kind=kind, available=available, q=q)
+
+            if ar_only:
+                # Solo grupos que ya golpearon a una entidad argentina. Sin
+                # actores conocidos el filtro tiene que vaciar, no listar todo:
+                # de ahí el centinela.
+                grupos = list(impacto) or ["\x00sin-coincidencias"]
+                stmt_total = stmt_total.where(LeakSiteRow.group_name.in_(grupos))
+                stmt = stmt.where(LeakSiteRow.group_name.in_(grupos))
+
+            total = session.scalar(stmt_total)
             filas = session.scalars(
-                self._apply(select(LeakSiteRow), kind=kind, available=available, q=q)
-                .order_by(LeakSiteRow.first_seen_at.desc(), LeakSiteRow.group_name)
+                stmt.order_by(LeakSiteRow.first_seen_at.desc(), LeakSiteRow.group_name)
                 .limit(limit)
                 .offset(offset)
             ).all()
-            return tuple(self._to_dict(f) for f in filas), int(total or 0)
+            return tuple(self._to_dict(f, impacto) for f in filas), int(total or 0)
 
     def recent_moves(self, *, days: int = 7, limit: int = 50) -> tuple[dict[str, Any], ...]:
-        """Ubicaciones vistas por primera vez en los últimos `days` días."""
+        """Ubicaciones vistas por primera vez en los últimos `days` días.
+
+        Las de grupos con impacto argentino van primero: es lo que hay que
+        mirar antes que nada.
+        """
         desde = datetime.now(UTC) - timedelta(days=days)
+        impacto = self.ar_impact_by_group()
+
         with session_scope(self._session_factory) as session:
             filas = session.scalars(
                 select(LeakSiteRow)
@@ -161,7 +211,10 @@ class LeakSiteRepository:
                 .order_by(LeakSiteRow.first_seen_at.desc())
                 .limit(limit)
             ).all()
-            return tuple(self._to_dict(f) for f in filas)
+            items = [self._to_dict(f, impacto) for f in filas]
+
+        items.sort(key=lambda i: (-(i["ar_findings"] or 0), i["group_name"]))
+        return tuple(items)
 
     def counts(self) -> dict[str, int]:
         with session_scope(self._session_factory) as session:
@@ -183,7 +236,7 @@ class LeakSiteRepository:
             }
 
     @staticmethod
-    def _to_dict(row: LeakSiteRow) -> dict[str, Any]:
+    def _to_dict(row: LeakSiteRow, impacto_ar: dict[str, int] | None = None) -> dict[str, Any]:
         def _utc(v: datetime | None) -> datetime | None:
             if v is None:
                 return None
@@ -200,4 +253,7 @@ class LeakSiteRepository:
             "first_seen_at": _utc(row.first_seen_at),
             "last_seen_at": _utc(row.last_seen_at),
             "last_available_at": _utc(row.last_available_at),
+            "checked_at": _utc(row.checked_at),
+            #: Hallazgos argentinos atribuidos a este grupo.
+            "ar_findings": (impacto_ar or {}).get(row.group_name, 0),
         }

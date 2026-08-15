@@ -237,6 +237,20 @@ class PipelineRunner:
             )
             return 0
 
+        # Lo que amerita interrumpir a alguien: un grupo que ya golpeó a una
+        # entidad argentina estrenando dirección.
+        if resultado.moved_ar:
+            aviso = "🔀 Grupos con impacto argentino que estrenaron dirección:\n" + "\n".join(
+                resultado.moved_ar[:10]
+            )
+            self._emit(
+                EventKind.SITE_CATALOG,
+                f"Mudanza de grupo con hallazgos AR: {', '.join(resultado.moved_ar[:3])}",
+                level=EventLevel.WARN,
+            )
+            if self._alerts is not None and self._alerts.enabled:
+                self._alerts.dispatch_notice(aviso)
+
         detalle = f"{resultado.seen} ubicaciones, {resultado.new} nuevas"
         if resultado.moved:
             # Lo interesante: un grupo conocido estrenando dominio.

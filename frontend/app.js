@@ -813,6 +813,7 @@ function stFilters() {
     q: $("st-q").value.trim(),
     kind: $("st-kind").value,
     ...(estado ? { available: estado } : {}),
+    ...($("st-ar").checked ? { ar_only: "true" } : {}),
   };
 }
 
@@ -850,12 +851,18 @@ async function loadSites() {
     const caja = el("div", "", "moves-box");
     caja.append(
       el("strong", `${recientes.length} direcciones nuevas en los últimos 7 días`),
-      el("p", "Un grupo que estrena dominio suele estar por publicar.", "hint"),
+      el(
+        "p",
+        "Un grupo que estrena dominio suele estar por publicar. Los que ya golpearon " +
+          "en Argentina van primero.",
+        "hint",
+      ),
     );
     const lista = el("div", "", "moves-list");
     for (const m of recientes.slice(0, 8)) {
-      const fila = el("div", "", "moves-item");
+      const fila = el("div", "", `moves-item ${m.ar_findings ? "moves-ar" : ""}`);
       fila.append(el("span", m.group_name, "moves-group"));
+      if (m.ar_findings) fila.append(el("span", `${m.ar_findings} AR`, "pill pill-critical"));
       const dir = document.createElement("code");
       dir.textContent = m.fqdn;
       fila.append(dir);
@@ -881,7 +888,15 @@ async function loadSites() {
     const tr = document.createElement("tr");
     if (!sitio.available) tr.className = "row-off";
 
-    tr.append(el("td", sitio.group_name));
+    const grupo = el("td");
+    grupo.append(el("span", sitio.group_name));
+    if (sitio.ar_findings) {
+      // El cruce que le da sentido operativo: este grupo ya golpeó acá.
+      const marca = el("span", `${sitio.ar_findings} AR`, "pill pill-critical");
+      marca.title = `${sitio.ar_findings} hallazgos argentinos atribuidos a este grupo`;
+      grupo.append(marca);
+    }
+    tr.append(grupo);
 
     // Dirección como texto seleccionable, nunca enlazada.
     const dir = el("td");
@@ -902,7 +917,19 @@ async function loadSites() {
     tr.append(estado);
 
     tr.append(el("td", fmtDate(sitio.first_seen_at)));
-    tr.append(el("td", (sitio.sources || []).join(", ")));
+
+    const fuentes = el("td");
+    fuentes.append(el("div", (sitio.sources || []).join(", ")));
+    // Se dice de dónde sale el estado y cuándo lo revisaron. Si el registro no
+    // publica la fecha, se dice eso también en vez de inventar frescura.
+    fuentes.append(
+      el(
+        "div",
+        sitio.checked_at ? `revisado ${fmtDate(sitio.checked_at)}` : "sin fecha de revisión",
+        "hint",
+      ),
+    );
+    tr.append(fuentes);
 
     body.append(tr);
   }
@@ -1229,7 +1256,7 @@ for (const id of ["wl-q", "wl-f-kind", "wl-f-enabled"]) {
   });
 }
 
-for (const id of ["st-q", "st-kind", "st-available"]) {
+for (const id of ["st-q", "st-kind", "st-available", "st-ar"]) {
   $(id).addEventListener("input", () => {
     state.stOffset = 0;
     loadSites();

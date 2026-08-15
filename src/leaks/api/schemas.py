@@ -268,6 +268,12 @@ class LeakSiteOut(BaseModel):
     first_seen_at: datetime
     last_seen_at: datetime
     last_available_at: datetime | None = None
+    #: Cuándo lo revisó el registro de origen. `None` si no lo publica
+    #: (ransomware.live no manda marca de tiempo). **No es una verificación
+    #: nuestra**: el prototipo no se conecta a estas direcciones.
+    checked_at: datetime | None = None
+    #: Hallazgos argentinos atribuidos a este grupo. `> 0` = ya golpeó acá.
+    ar_findings: int = 0
 
 
 class LeakSiteCountsOut(BaseModel):
