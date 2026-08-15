@@ -81,6 +81,17 @@ Las tomé yo para no bloquear. Todas son reversibles.
 
 ---
 
+## 3-bis. Seguir a los sitios que cambian de dominio
+
+Investigado el 2026-08-15: ver [sitios-que-cambian-de-dominio.md](sitios-que-cambian-de-dominio.md).
+
+- **Ransomware**: resuelto por los feeds que ya usamos (782 ubicaciones en
+  ransomware.live, 367 en dls-monitor). Falta implementar el catálogo `leak_sites`
+  y su pantalla.
+- **Foros**: no hay proyecto confiable y **auto-seguir un dominio nuevo es
+  peligroso** (honeypots / infraestructura incautada). Propuesto: alertar cuando
+  una fuente se queda sin dominio y dejar la incorporación como acto manual.
+
 ## 4. Producto / UX
 
 - **Conectar "Actualizar" a `POST /api/runs`** (ver sección 0). Es lo más chico
