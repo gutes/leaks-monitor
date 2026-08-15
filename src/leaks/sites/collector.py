@@ -40,20 +40,24 @@ class SiteCatalogCollector:
         ubicaciones: list[SiteLocation] = []
         fallidos: list[str] = []
 
-        for nombre, traer in self._registries:
-            cliente = self._client_factory()
-            try:
-                encontradas = traer(cliente)
-            except Exception as exc:
-                # Un registro caído no puede costar el catálogo entero, ni
-                # mucho menos la corrida.
-                logger.warning("El registro %s falló: %s", nombre, type(exc).__name__)
-                fallidos.append(nombre)
-                continue
-            finally:
-                cliente.close()
+        # Un solo cliente para toda la pasada, cerrado al final. Cerrarlo por
+        # registro rompía si la fábrica devolvía uno compartido: el segundo
+        # registro se encontraba el cliente ya cerrado.
+        cliente = self._client_factory()
+        try:
+            for nombre, traer in self._registries:
+                try:
+                    encontradas = traer(cliente)
+                except Exception as exc:
+                    # Un registro caído no puede costar el catálogo entero, ni
+                    # mucho menos la corrida.
+                    logger.warning("El registro %s falló: %s", nombre, type(exc).__name__)
+                    fallidos.append(nombre)
+                    continue
 
-            logger.info("%s: %d ubicaciones", nombre, len(encontradas))
-            ubicaciones.extend(encontradas)
+                logger.info("%s: %d ubicaciones", nombre, len(encontradas))
+                ubicaciones.extend(encontradas)
+        finally:
+            cliente.close()
 
         return self._repository.upsert_locations(ubicaciones), fallidos

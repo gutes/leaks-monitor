@@ -109,6 +109,7 @@ El tablero está partido en pantallas, accesibles desde el menú de arriba:
 | **Watchlist** | Alta, baja y habilitado de lo que se monitorea, paginado |
 | **Reglas** | Las 5 reglas de relevancia con su interruptor |
 | **Fuentes** | Salud de cada feed y su última corrida |
+| **Sitios** | Dónde vive cada sitio de leaks y desde cuándo |
 | **Consola** | Actividad del pipeline en vivo |
 
 El router va por hash (`#/watchlist`), así que el enlace se puede compartir y el
@@ -136,6 +137,28 @@ y de custodia, y no la toma una herramienta automática.
 Los enlaces se extraen del **HTML crudo** del post —viven en atributos `href` y
 `src`, así que quitar las etiquetas se los lleva puestos— y se guardan aunque el
 cuerpo del post se descarte por contener PII.
+
+### Catálogo de sitios de leaks
+
+Los grupos rotan de dominio permanentemente. Los feeds que ya consumimos
+publican, además de las víctimas, **el catálogo de ubicaciones de cada grupo con
+su disponibilidad**, así que el prototipo lo consolida en la pantalla **Sitios**:
+~979 ubicaciones de ~530 grupos, cruzando ransomware.live, dls-monitor y
+RansomLook.
+
+Lo más útil no es el listado sino el bloque de arriba: **direcciones vistas por
+primera vez en los últimos 7 días**. Un grupo que estrena dominio suele estar por
+publicar.
+
+Dos cosas importantes:
+
+- **Es un catálogo, no un colector.** Se registra dónde está cada sitio; **no se
+  lo visita**. Los `.onion` de esa pantalla nunca se consultan desde acá.
+- Las direcciones se muestran **como texto, nunca enlazadas**, por el mismo
+  motivo que los enlaces de descarga.
+
+Se puebla solo en cada corrida. Un registro caído se anota y el resto sigue: el
+catálogo no puede costar la corrida.
 
 ### Alertas
 
@@ -344,6 +367,9 @@ UI ni revivir lo que borraste:
 ```bash
 leaks sync-watchlist          # o: docker compose exec api leaks sync-watchlist
 ```
+
+También está el botón **Importar semilla** en la pantalla Watchlist, que hace lo
+mismo.
 
 Es explícito a propósito: hacerlo en cada arranque resucitaría lo que diste de
 baja a mano.

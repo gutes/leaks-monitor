@@ -22,6 +22,7 @@ from leaks.config import Settings, get_settings
 from leaks.pipeline.egress_guard import EgressBlockedError, EgressGuard
 from leaks.pipeline.runner import PipelineRunner
 from leaks.relevance.watchlist import Watchlist, get_watchlist
+from leaks.sites.collector import SiteCatalogCollector
 from leaks.storage.crypto import build_cipher
 from leaks.storage.event_sink import SqlAlchemyEventSink
 from leaks.storage.pii_vault import PiiVault
@@ -30,6 +31,7 @@ from leaks.storage.repository import SqlAlchemyFindingRepository
 from leaks.storage.schema import ensure_schema
 from leaks.storage.session import create_db_engine, create_session_factory
 from leaks.storage.settings_store import SettingsStore
+from leaks.storage.site_repository import LeakSiteRepository
 from leaks.storage.watchlist_repository import WatchlistRepository
 
 logger = logging.getLogger(__name__)
@@ -48,6 +50,7 @@ class Application:
     repository: SqlAlchemyFindingRepository
     queries: FindingQueryService
     alert_dispatcher: AlertDispatcher
+    site_repo: LeakSiteRepository
     pii_vault: PiiVault
     event_sink: SqlAlchemyEventSink
     egress_guard: EgressGuard
@@ -135,6 +138,11 @@ def build_application(settings: Settings | None = None) -> Application:
             before_request=barrera,
         )
 
+    site_repo = LeakSiteRepository(session_factory)
+    # El colector usa la misma barrera de salida que los feeds: no hay motivo
+    # para que este pedido salga desde una IP bloqueada si los otros no pueden.
+    site_collector = SiteCatalogCollector(site_repo, _cliente_de_alertas)
+
     alert_dispatcher = AlertDispatcher(build_channels(config, _cliente_de_alertas))
     if alert_dispatcher.enabled:
         logger.info("Canales de alerta activos: %s", ", ".join(alert_dispatcher.channel_names))
@@ -152,6 +160,7 @@ def build_application(settings: Settings | None = None) -> Application:
         watchlist=watchlist,
         settings=config,
         alert_dispatcher=alert_dispatcher,
+        site_collector=site_collector,
         pii_vault=vault,
         event_sink=event_sink,
         egress_guard=egress_guard,
@@ -172,6 +181,7 @@ def build_application(settings: Settings | None = None) -> Application:
         repository=repository,
         queries=queries,
         alert_dispatcher=alert_dispatcher,
+        site_repo=site_repo,
         pii_vault=vault,
         event_sink=event_sink,
         egress_guard=egress_guard,

@@ -23,7 +23,9 @@ O sea: el trabajo de perseguir dominios que rotan **ya lo hacen ellos**, y
 nosotros ya tenemos acceso. No hace falta un proyecto nuevo ni un scraper
 propio.
 
-**Propuesta de implementación** (no hecha todavía):
+**Implementado el 2026-08-15.** Tabla `leak_sites`, colector dentro de la
+corrida diaria, endpoint `GET /api/sites` y pantalla **Sitios**. En la primera
+pasada consolidó 979 ubicaciones de 530 grupos. Lo que sigue describe el diseño:
 
 - Tabla `leak_sites`: `name`, `kind`, `fqdn`, `available`, `first_seen`,
   `last_seen`, `source`.

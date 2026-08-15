@@ -14,7 +14,9 @@ const PAGE_SIZE = 50;
 /** Filas por página en la watchlist. */
 const WL_PAGE_SIZE = 50;
 /** Vistas válidas del router. La primera es el default. */
-const VIEWS = ["hallazgos", "watchlist", "reglas", "fuentes", "consola"];
+const VIEWS = ["hallazgos", "watchlist", "reglas", "fuentes", "sitios", "consola"];
+/** Filas por página en el catálogo de sitios. */
+const SITES_PAGE_SIZE = 50;
 /** Cada cuánto se pregunta por actividad nueva. */
 const CONSOLE_POLL_MS = 2000;
 
@@ -32,6 +34,8 @@ const state = {
   running: false,
   wlOffset: 0,
   wlTotal: 0,
+  stOffset: 0,
+  stTotal: 0,
   // Cursor de la consola: el id del último evento ya pintado.
   lastEventId: 0,
   consoleLines: 0,
@@ -572,6 +576,7 @@ function loadView(nombre) {
   if (nombre === "watchlist") return loadWatchlist();
   if (nombre === "reglas") return loadRules();
   if (nombre === "fuentes") return loadSources();
+  if (nombre === "sitios") return loadSites();
   if (nombre === "consola") return pollEvents();
   return Promise.resolve();
 }
@@ -798,6 +803,117 @@ function renderWlPager() {
   $("wl-page-info").textContent = `${desde}–${hasta} de ${state.wlTotal}`;
   $("wl-prev").disabled = state.wlOffset === 0;
   $("wl-next").disabled = hasta >= state.wlTotal;
+}
+
+/* ------------------------------------------------------ Catálogo de sitios */
+
+function stFilters() {
+  const estado = $("st-available").value;
+  return {
+    q: $("st-q").value.trim(),
+    kind: $("st-kind").value,
+    ...(estado ? { available: estado } : {}),
+  };
+}
+
+/**
+ * Catálogo de dónde vive cada sitio de leaks.
+ *
+ * Las direcciones se muestran como texto, nunca como enlace: son sitios de
+ * extorsión, y además la mayoría son `.onion` que el navegador no resuelve.
+ * El prototipo tampoco las visita — esto es un catálogo consolidado de lo que
+ * publican los registros públicos.
+ */
+async function loadSites() {
+  const datos = await api("/api/sites", {
+    ...stFilters(),
+    limit: SITES_PAGE_SIZE,
+    offset: state.stOffset,
+  });
+
+  const body = $("sites-body");
+  body.replaceChildren();
+  if (!datos) return;
+
+  const c = datos.counts || {};
+  $("sites-counts").replaceChildren(
+    el("span", `${c.available || 0} en línea`, "pill pill-ok"),
+    el("span", `${c.offline || 0} caídos`, "pill pill-skipped"),
+    el("span", `${c.groups || 0} grupos`, "chip"),
+  );
+
+  // Mudanzas recientes: es la señal por la que existe esta pantalla.
+  const moves = $("sites-moves");
+  moves.replaceChildren();
+  const recientes = datos.recent_moves || [];
+  if (recientes.length) {
+    const caja = el("div", "", "moves-box");
+    caja.append(
+      el("strong", `${recientes.length} direcciones nuevas en los últimos 7 días`),
+      el("p", "Un grupo que estrena dominio suele estar por publicar.", "hint"),
+    );
+    const lista = el("div", "", "moves-list");
+    for (const m of recientes.slice(0, 8)) {
+      const fila = el("div", "", "moves-item");
+      fila.append(el("span", m.group_name, "moves-group"));
+      const dir = document.createElement("code");
+      dir.textContent = m.fqdn;
+      fila.append(dir);
+      lista.append(fila);
+    }
+    caja.append(lista);
+    moves.append(caja);
+  }
+
+  state.stTotal = datos.total || 0;
+  renderStPager();
+
+  if (!(datos.items || []).length) {
+    const tr = document.createElement("tr");
+    const td = el("td", "Sin sitios para este filtro. Corré el pipeline para poblarlo.", "empty");
+    td.colSpan = 6;
+    tr.append(td);
+    body.append(tr);
+    return;
+  }
+
+  for (const sitio of datos.items) {
+    const tr = document.createElement("tr");
+    if (!sitio.available) tr.className = "row-off";
+
+    tr.append(el("td", sitio.group_name));
+
+    // Dirección como texto seleccionable, nunca enlazada.
+    const dir = el("td");
+    const code = document.createElement("code");
+    code.textContent = sitio.fqdn;
+    code.className = "site-fqdn";
+    dir.append(code);
+    if (sitio.title) dir.append(el("div", sitio.title, "hint"));
+    tr.append(dir);
+
+    tr.append(el("td", sitio.kind));
+
+    const estado = el("td");
+    estado.append(
+      el("span", sitio.available ? "en línea" : "caído",
+         `pill pill-${sitio.available ? "ok" : "skipped"}`),
+    );
+    tr.append(estado);
+
+    tr.append(el("td", fmtDate(sitio.first_seen_at)));
+    tr.append(el("td", (sitio.sources || []).join(", ")));
+
+    body.append(tr);
+  }
+}
+
+function renderStPager() {
+  const desde = state.stTotal === 0 ? 0 : state.stOffset + 1;
+  const hasta = Math.min(state.stOffset + SITES_PAGE_SIZE, state.stTotal);
+  $("st-page-info").textContent = `${desde}–${hasta} de ${state.stTotal}`;
+  $("st-prev").disabled = state.stOffset === 0;
+  $("st-next").disabled = hasta >= state.stTotal;
 }
 
 /* --------------------------------------------------------- Bloqueo de OPSEC */
@@ -1112,6 +1228,42 @@ for (const id of ["wl-q", "wl-f-kind", "wl-f-enabled"]) {
     loadWatchlist();
   });
 }
+
+for (const id of ["st-q", "st-kind", "st-available"]) {
+  $(id).addEventListener("input", () => {
+    state.stOffset = 0;
+    loadSites();
+  });
+}
+
+$("st-prev").addEventListener("click", () => {
+  state.stOffset = Math.max(0, state.stOffset - SITES_PAGE_SIZE);
+  loadSites();
+});
+
+$("st-next").addEventListener("click", () => {
+  state.stOffset += SITES_PAGE_SIZE;
+  loadSites();
+});
+
+// Importar las entradas nuevas del YAML semilla.
+$("wl-sync").addEventListener("click", async () => {
+  const boton = $("wl-sync");
+  boton.disabled = true;
+  boton.textContent = "Importando…";
+
+  const r = await apiWrite("/api/watchlist/sync", "POST");
+  boton.disabled = false;
+  boton.textContent = "Importar semilla";
+
+  if (!r.ok) {
+    $("wl-error").textContent = r.error;
+    return;
+  }
+  setStatus(`Watchlist sincronizada: ${r.data.counts.total} entradas.`, "ok");
+  state.wlOffset = 0;
+  loadWatchlist();
+});
 
 $("wl-prev").addEventListener("click", () => {
   state.wlOffset = Math.max(0, state.wlOffset - WL_PAGE_SIZE);

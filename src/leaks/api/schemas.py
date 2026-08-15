@@ -250,3 +250,42 @@ class RunStateOut(BaseModel):
     last_total_new: int | None = None
     #: Motivo si el control de IP de salida la bloqueó.
     last_blocked_reason: str | None = None
+
+
+class LeakSiteOut(BaseModel):
+    """Una ubicación conocida de un sitio de leaks."""
+
+    id: int
+    group_name: str
+    kind: str
+    #: Dominio o dirección .onion. El frontend NO lo enlaza.
+    fqdn: str
+    title: str | None = None
+    available: bool = False
+    #: Registros que lo reportaron.
+    sources: list[str] = Field(default_factory=list)
+    #: Un `first_seen_at` reciente es la señal de "este grupo se mudó".
+    first_seen_at: datetime
+    last_seen_at: datetime
+    last_available_at: datetime | None = None
+
+
+class LeakSiteCountsOut(BaseModel):
+    """Totales del catálogo."""
+
+    total: int = 0
+    available: int = 0
+    offline: int = 0
+    groups: int = 0
+
+
+class LeakSitePage(BaseModel):
+    """Página del catálogo con sus totales."""
+
+    items: list[LeakSiteOut] = Field(default_factory=list)
+    counts: LeakSiteCountsOut = Field(default_factory=LeakSiteCountsOut)
+    #: Ubicaciones vistas por primera vez en los últimos días.
+    recent_moves: list[LeakSiteOut] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 50
+    offset: int = 0

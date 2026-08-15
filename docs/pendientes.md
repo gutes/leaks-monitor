@@ -85,9 +85,9 @@ Las tomé yo para no bloquear. Todas son reversibles.
 
 Investigado el 2026-08-15: ver [sitios-que-cambian-de-dominio.md](sitios-que-cambian-de-dominio.md).
 
-- **Ransomware**: resuelto por los feeds que ya usamos (782 ubicaciones en
-  ransomware.live, 367 en dls-monitor). Falta implementar el catálogo `leak_sites`
-  y su pantalla.
+- **Ransomware**: ✅ implementado. Catálogo `leak_sites` + pantalla **Sitios**
+  (979 ubicaciones, 530 grupos), con el bloque de "direcciones nuevas en los
+  últimos 7 días" como señal de mudanza.
 - **Foros**: no hay proyecto confiable y **auto-seguir un dominio nuevo es
   peligroso** (honeypots / infraestructura incautada). Propuesto: alertar cuando
   una fuente se queda sin dominio y dejar la incorporación como acto manual.

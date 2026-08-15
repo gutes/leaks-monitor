@@ -79,6 +79,7 @@
     <a href="#/watchlist" data-view="watchlist">Watchlist</a>
     <a href="#/reglas" data-view="reglas">Reglas</a>
     <a href="#/fuentes" data-view="fuentes">Fuentes<span id="nav-fuentes-badge"></span></a>
+    <a href="#/sitios" data-view="sitios">Sitios</a>
     <a href="#/consola" data-view="consola">Consola</a>
   </nav>
 
@@ -171,6 +172,10 @@
           <input type="checkbox" id="wl-critical" /> infra crítica
         </label>
         <button class="btn btn-primary" type="submit">Agregar</button>
+        <button class="btn" type="button" id="wl-sync"
+                title="Importa las entradas nuevas del YAML semilla. No pisa lo editado ni rehabilita lo dado de baja.">
+          Importar semilla
+        </button>
       </form>
       <p id="wl-error" class="error"></p>
 
@@ -239,6 +244,61 @@
       <p class="hint">Una fuente caída no interrumpe la corrida: queda registrada acá.</p>
       <div id="sources" class="sources"></div>
     </details>
+    </section>
+
+    <section class="view" data-view="sitios">
+    <section class="panel">
+      <div class="console-head">
+        <div>
+          <h2>Sitios de leaks</h2>
+          <p class="hint">
+            Dónde vive cada grupo y desde cuándo. Se consolida de los registros públicos
+            que ya consumimos: acá no se visita ninguna de estas direcciones.
+          </p>
+        </div>
+        <div id="sites-counts" class="wl-counts"></div>
+      </div>
+
+      <div id="sites-moves" class="moves"></div>
+
+      <div class="filters">
+        <label>Buscar
+          <input type="search" id="st-q" placeholder="grupo o dominio" maxlength="200" />
+        </label>
+        <label>Tipo
+          <select id="st-kind">
+            <option value="">Todos</option>
+            <option value="ransomware">Ransomware</option>
+            <option value="market">Mercados</option>
+          </select>
+        </label>
+        <label>Estado
+          <select id="st-available">
+            <option value="">Todos</option>
+            <option value="true">En línea</option>
+            <option value="false">Caídos</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="table-wrap">
+        <table id="sites">
+          <thead>
+            <tr>
+              <th>Grupo</th><th>Dirección</th><th>Tipo</th>
+              <th>Estado</th><th>Visto por primera vez</th><th>Reportado por</th>
+            </tr>
+          </thead>
+          <tbody id="sites-body"></tbody>
+        </table>
+      </div>
+
+      <div class="pager">
+        <button class="btn" id="st-prev" type="button" disabled>← Anteriores</button>
+        <span id="st-page-info" class="hint">—</span>
+        <button class="btn" id="st-next" type="button" disabled>Siguientes →</button>
+      </div>
+    </section>
     </section>
 
     <section class="view" data-view="consola">

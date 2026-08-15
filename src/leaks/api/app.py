@@ -33,6 +33,9 @@ from leaks.api.schemas import (
     FindingOut,
     FindingPage,
     HealthOut,
+    LeakSiteCountsOut,
+    LeakSiteOut,
+    LeakSitePage,
     RuleOut,
     RulesOut,
     RunStateOut,
@@ -52,6 +55,7 @@ from leaks.pipeline.egress_guard import EgressGuard
 from leaks.storage.queries import FindingFilters, FindingQueryService
 from leaks.storage.session import create_db_engine, create_session_factory
 from leaks.storage.settings_store import SettingsStore
+from leaks.storage.site_repository import LeakSiteRepository
 from leaks.storage.watchlist_repository import (
     WatchlistRepository,
     WatchlistValidationError,
@@ -97,6 +101,13 @@ def _watchlist_dep(request: Request) -> WatchlistRepository:
     return repo
 
 
+def _site_repo_dep(request: Request) -> LeakSiteRepository:
+    repo = request.app.state.site_repo
+    if not isinstance(repo, LeakSiteRepository):  # pragma: no cover — invariante
+        raise RuntimeError("La app no fue construida con create_app().")
+    return repo
+
+
 def _settings_store_dep(request: Request) -> SettingsStore:
     store = request.app.state.settings_store
     if not isinstance(store, SettingsStore):  # pragma: no cover — invariante
@@ -105,6 +116,7 @@ def _settings_store_dep(request: Request) -> SettingsStore:
 
 
 WatchlistRepo = Annotated[WatchlistRepository, Depends(_watchlist_dep)]
+SiteRepo = Annotated[LeakSiteRepository, Depends(_site_repo_dep)]
 Store = Annotated[SettingsStore, Depends(_settings_store_dep)]
 
 
@@ -139,6 +151,7 @@ def create_app(
     app.state.session_factory = session_factory
     app.state.watchlist_repo = WatchlistRepository(session_factory)
     app.state.settings_store = SettingsStore(session_factory)
+    app.state.site_repo = LeakSiteRepository(session_factory)
     # Coordinador de corridas manuales. Comparte la configuración del proceso,
     # así que el control de IP de salida se le aplica igual que al scheduler.
     app.state.runs = RunCoordinator(build_application(config).runner)
@@ -329,6 +342,56 @@ def create_app(
         _require_editing()
         if not repo.remove(entry_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No existe.")
+
+    @app.post("/api/watchlist/sync", response_model=WatchlistOut, tags=["watchlist"])
+    def sync_watchlist(repo: WatchlistRepo) -> WatchlistOut:
+        """Importa las entradas nuevas del YAML semilla.
+
+        Solo agrega lo que falta: no pisa lo editado desde la UI ni rehabilita
+        lo que se dio de baja. Es explícito —un botón, no algo del arranque—
+        porque sembrar en cada arranque resucitaría lo borrado a mano.
+        """
+        _require_editing()
+        repo.seed_from_yaml(config.watchlist_path, allow_updates=True)
+        entradas = repo.list_entries(limit=config.api_max_page_size)
+        return WatchlistOut(
+            items=[WatchlistEntryOut.model_validate(e.as_dict()) for e in entradas],
+            counts=WatchlistCountsOut.model_validate(repo.counts()),
+            sectors=list(repo.sectors()),
+            total=repo.count_entries(),
+        )
+
+    # -- Catálogo de sitios de leaks ------------------------------------------
+
+    @app.get("/api/sites", response_model=LeakSitePage, tags=["sites"])
+    def list_sites(
+        repo: SiteRepo,
+        kind: str | None = None,
+        available: bool | None = None,
+        q: Annotated[str | None, Query(max_length=200)] = None,
+        limit: Annotated[int, Query(ge=1)] = 50,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        moves_days: Annotated[int, Query(ge=1, le=90)] = 7,
+    ) -> LeakSitePage:
+        """Dónde vive cada sitio de leaks, y desde cuándo.
+
+        Es un catálogo consolidado de lo que publican los registros públicos;
+        el prototipo **no visita** estas direcciones.
+        """
+        acotado = min(limit, config.api_max_page_size)
+        items, total = repo.list_sites(
+            kind=kind, available=available, q=q, limit=acotado, offset=offset
+        )
+        return LeakSitePage(
+            items=[LeakSiteOut.model_validate(i) for i in items],
+            counts=LeakSiteCountsOut.model_validate(repo.counts()),
+            recent_moves=[
+                LeakSiteOut.model_validate(i) for i in repo.recent_moves(days=moves_days)
+            ],
+            total=total,
+            limit=acotado,
+            offset=offset,
+        )
 
     # -- Reglas de relevancia -------------------------------------------------
 
