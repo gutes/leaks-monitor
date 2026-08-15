@@ -38,6 +38,16 @@ class Severity(StrEnum):
     CRITICAL = "critical"
 
 
+#: Orden de severidad, de menor a mayor. Sirve para comparar contra el umbral
+#: de alertas: `SEVERITY_RANK[s] >= SEVERITY_RANK[umbral]`.
+SEVERITY_RANK: dict[str, int] = {
+    Severity.LOW: 0,
+    Severity.MEDIUM: 1,
+    Severity.HIGH: 2,
+    Severity.CRITICAL: 3,
+}
+
+
 class ArMatchReason(StrEnum):
     """Qué regla de relevancia argentina disparó.
 
@@ -140,6 +150,7 @@ class EventKind(StrEnum):
     RETENTION = "retention"
     EGRESS = "egress"
     EGRESS_BLOCKED = "egress_blocked"
+    ALERT = "alert"
 
 
 class RunEvent(BaseModel):

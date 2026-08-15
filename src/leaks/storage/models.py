@@ -66,6 +66,11 @@ class FindingRow(Base):
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
+    #: Cuándo se avisó de este hallazgo. `NULL` = pendiente de alertar.
+    #: Es lo que hace que no se alerte dos veces lo mismo, y que una alerta que
+    #: falló se reintente en la corrida siguiente en vez de perderse.
+    alerted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     __table_args__ = (
         UniqueConstraint("dedup_hash", name="uq_findings_dedup_hash"),
         Index("ix_findings_discovered_at", "discovered_at"),
@@ -73,6 +78,7 @@ class FindingRow(Base):
         Index("ix_findings_sector", "sector"),
         Index("ix_findings_actor", "actor"),
         Index("ix_findings_severity", "severity"),
+        Index("ix_findings_alerted_at", "alerted_at"),
     )
 
 

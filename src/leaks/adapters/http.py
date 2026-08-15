@@ -17,6 +17,19 @@ import httpx
 
 from leaks.domain.models import EventKind, EventLevel, RunEvent
 
+
+def _host(url: str) -> str:
+    """Solo el host de una URL.
+
+    Los mensajes de alerta nunca muestran la URL completa: la de la Bot API de
+    Telegram lleva el token adentro, y terminaría en la bitácora y en los logs.
+    """
+    try:
+        return httpx.URL(url).host or "destino"
+    except Exception:  # pragma: no cover — URL ilegible
+        return "destino"
+
+
 #: Códigos que ameritan reintentar: rate limit y fallas transitorias del server.
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 
@@ -75,6 +88,51 @@ class FeedHttpClient:
     def get_text(self, url: str, params: dict[str, Any] | None = None) -> str:
         """GET que devuelve el cuerpo como texto (XML/Atom)."""
         return self._get(url, params).text
+
+    def post_json(self, url: str, payload: dict[str, Any]) -> Any:
+        """POST de un JSON. Lo usan los canales de alerta.
+
+        Pasa por la misma barrera de IP de salida que los GET: mandar una
+        alerta desde una IP bloqueada también sería tráfico atribuible.
+        """
+        if self._before_request is not None:
+            self._before_request()
+
+        comenzo = time.monotonic()
+        try:
+            response = self._client.post(url, json=payload)
+        except httpx.HTTPError as exc:
+            self._report(
+                EventKind.HTTP_REQUEST,
+                EventLevel.ERROR,
+                f"POST falló: {type(exc).__name__}",
+                duration_ms=self._elapsed_ms(comenzo),
+            )
+            raise FeedHttpError(f"POST a {_host(url)} falló: {type(exc).__name__}") from exc
+
+        transcurrido = self._elapsed_ms(comenzo)
+        if response.status_code >= 400:
+            # No se incluye la URL: la de Telegram lleva el token adentro.
+            self._report(
+                EventKind.HTTP_REQUEST,
+                EventLevel.ERROR,
+                f"POST a {_host(url)} → {response.status_code}",
+                status_code=response.status_code,
+                duration_ms=transcurrido,
+            )
+            raise FeedHttpError(f"POST a {_host(url)} respondió {response.status_code}")
+
+        self._report(
+            EventKind.HTTP_REQUEST,
+            EventLevel.INFO,
+            f"POST a {_host(url)} → {response.status_code}",
+            status_code=response.status_code,
+            duration_ms=transcurrido,
+        )
+        try:
+            return response.json()
+        except ValueError:
+            return None
 
     def close(self) -> None:
         if self._owns_client:

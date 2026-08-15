@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from leaks.adapters.registry import FeedSpec, build_adapter, resolve_enabled
+from leaks.alerts.dispatcher import AlertDispatcher
 from leaks.config import Settings
 from leaks.domain.models import (
     ArMatchReason,
@@ -57,6 +58,8 @@ class RunReport:
     pii_purged: int = 0
     #: Motivo por el que el control de IP de salida bloqueó la corrida.
     blocked_reason: str | None = None
+    #: Hallazgos avisados en esta corrida.
+    alerts_sent: int = 0
 
     @property
     def blocked(self) -> bool:
@@ -98,6 +101,7 @@ class PipelineRunner:
         repository: FindingRepository,
         watchlist: Watchlist,
         settings: Settings,
+        alert_dispatcher: AlertDispatcher | None = None,
         pii_vault: PiiVault | None = None,
         event_sink: EventSink | None = None,
         egress_guard: EgressGuard | None = None,
@@ -123,6 +127,7 @@ class PipelineRunner:
         # Sin bóveda, el pipeline simplemente descarta la PII: no hay camino
         # alternativo por el que un payload sensible llegue a la base.
         self._pii_vault = pii_vault
+        self._alerts = alert_dispatcher
 
     def run(self, specs: Sequence[tuple[FeedSpec, str | None]] | None = None) -> RunReport:
         """Corre todos los feeds habilitados."""
@@ -168,6 +173,9 @@ class PipelineRunner:
             reporte.results.append(resultado)
             self._repository.record_run(resultado)
 
+        # Alertas antes de la retención: avisar es lo urgente.
+        reporte.alerts_sent = self._dispatch_alerts()
+
         # La retención se aplica en cada corrida: una política que nadie
         # ejecuta no es una política.
         if self._pii_vault is not None:
@@ -190,6 +198,51 @@ class PipelineRunner:
             duration_ms=int(duracion * 1000),
         )
         return reporte
+
+    # -- Alertas ---------------------------------------------------------------
+
+    def _dispatch_alerts(self) -> int:
+        """Avisa de los hallazgos pendientes que llegan al umbral.
+
+        Nunca lanza: quedarse sin alertar es malo, pero perder la corrida
+        entera por un webhook caído es peor. Lo que no se pudo avisar queda
+        pendiente para la próxima.
+        """
+        if self._alerts is None or not self._alerts.enabled:
+            return 0
+
+        pendientes = self._repository.list_pending_alerts(
+            min_severity=self._settings.alert_min_severity,
+            limit=self._settings.alert_max_per_run,
+        )
+        if not pendientes:
+            return 0
+
+        resultado = self._alerts.dispatch(pendientes)
+
+        if not resultado.delivered:
+            self._emit(
+                EventKind.ALERT,
+                (
+                    f"No se pudo avisar de {len(pendientes)} hallazgos "
+                    f"(canales caídos: {', '.join(resultado.channels_failed) or 'ninguno'}). "
+                    "Quedan pendientes para la próxima corrida."
+                ),
+                level=EventLevel.WARN,
+            )
+            return 0
+
+        # Solo se marca lo que efectivamente salió por algún canal.
+        self._repository.mark_alerted([f.dedup_hash for f in pendientes])
+        self._emit(
+            EventKind.ALERT,
+            (
+                f"Alerta enviada por {len(pendientes)} hallazgos "
+                f"(≥ {self._settings.alert_min_severity}) "
+                f"vía {', '.join(resultado.channels_ok)}"
+            ),
+        )
+        return len(pendientes)
 
     # -- Bitácora ------------------------------------------------------------
 

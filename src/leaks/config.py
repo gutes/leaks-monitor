@@ -71,6 +71,17 @@ class Settings(BaseSettings):
     # decisión explícita, no un efecto secundario de la watchlist.
     hudsonrock_domains: CsvTuple = ()
 
+    # --- Alertas -------------------------------------------------------------
+    #: Severidad mínima para avisar. Con `high` no molesta por cada .com.ar.
+    alert_min_severity: str = "high"
+    #: URL de webhook (Slack, Discord, n8n, propio). Vacío = canal apagado.
+    alert_webhook_url: str = ""
+    #: Bot de Telegram. Los dos valores son obligatorios para ese canal.
+    alert_telegram_token: SecretStr | None = None
+    alert_telegram_chat_id: str = ""
+    #: Tope de hallazgos por mensaje; el resto queda para el próximo.
+    alert_max_per_run: int = Field(default=50, ge=1)
+
     # --- IP de salida (verificación de VPN) ---------------------------------
     #: Consultar la IP pública de salida. Apagarlo deja el badge en desconocido
     #: y evita el único request que no va a un feed.
@@ -141,6 +152,18 @@ class Settings(BaseSettings):
         if isinstance(value, (list, tuple)):
             return tuple(str(v).strip() for v in value if str(v).strip())
         return value
+
+    @field_validator("alert_min_severity")
+    @classmethod
+    def _validate_severity(cls, value: str) -> str:
+        """Falla al arrancar, no en la primera alerta."""
+        from leaks.domain.models import SEVERITY_RANK
+
+        if value.lower() not in SEVERITY_RANK:
+            raise ValueError(
+                f"alert_min_severity debe ser uno de {sorted(SEVERITY_RANK)}, se recibió {value!r}"
+            )
+        return value.lower()
 
     @field_validator("daily_run_at")
     @classmethod

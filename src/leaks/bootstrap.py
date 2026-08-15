@@ -10,14 +10,16 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from leaks.adapters.egress import EgressResolver
 from leaks.adapters.http import build_client
+from leaks.alerts.dispatcher import AlertDispatcher, build_channels
 from leaks.config import Settings, get_settings
-from leaks.pipeline.egress_guard import EgressGuard
+from leaks.pipeline.egress_guard import EgressBlockedError, EgressGuard
 from leaks.pipeline.runner import PipelineRunner
 from leaks.relevance.watchlist import Watchlist, get_watchlist
 from leaks.storage.crypto import build_cipher
@@ -45,6 +47,7 @@ class Application:
     settings_store: SettingsStore
     repository: SqlAlchemyFindingRepository
     queries: FindingQueryService
+    alert_dispatcher: AlertDispatcher
     pii_vault: PiiVault
     event_sink: SqlAlchemyEventSink
     egress_guard: EgressGuard
@@ -107,6 +110,35 @@ def build_application(settings: Settings | None = None) -> Application:
         else None
     )
 
+    # Los canales comparten la barrera de IP de salida: una alerta mandada
+    # desde una IP bloqueada también sería tráfico atribuible.
+    egress_guard_para_alertas = EgressGuard(
+        egress,
+        blocked_countries=config.egress_blocked_countries,
+        block_on_unknown=config.egress_block_on_unknown,
+    )
+
+    def _cliente_de_alertas() -> Any:
+        def barrera() -> None:
+            decision = egress_guard_para_alertas.evaluate()
+            if not decision.allowed:
+                raise EgressBlockedError(decision.reason)
+
+        return build_client(
+            user_agent=config.http_user_agent,
+            timeout=config.http_timeout_seconds,
+            max_retries=config.http_max_retries,
+            backoff_base=config.http_backoff_base_seconds,
+            rate_limit_delay=0,
+            before_request=barrera,
+        )
+
+    alert_dispatcher = AlertDispatcher(build_channels(config, _cliente_de_alertas))
+    if alert_dispatcher.enabled:
+        logger.info("Canales de alerta activos: %s", ", ".join(alert_dispatcher.channel_names))
+    else:
+        logger.info("Sin canales de alerta configurados (ver .env.example)")
+
     egress_guard = EgressGuard(
         egress,
         blocked_countries=config.egress_blocked_countries,
@@ -117,6 +149,7 @@ def build_application(settings: Settings | None = None) -> Application:
         repository=repository,
         watchlist=watchlist,
         settings=config,
+        alert_dispatcher=alert_dispatcher,
         pii_vault=vault,
         event_sink=event_sink,
         egress_guard=egress_guard,
@@ -136,6 +169,7 @@ def build_application(settings: Settings | None = None) -> Application:
         settings_store=settings_store,
         repository=repository,
         queries=queries,
+        alert_dispatcher=alert_dispatcher,
         pii_vault=vault,
         event_sink=event_sink,
         egress_guard=egress_guard,

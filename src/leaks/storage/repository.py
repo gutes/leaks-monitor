@@ -8,11 +8,19 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import Any, cast
 
-from sqlalchemy import select, update
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
-from leaks.domain.models import Finding, SourceRunResult
+from leaks.domain.models import (
+    SEVERITY_RANK,
+    ArMatchReason,
+    Finding,
+    LeakType,
+    Severity,
+    SourceRunResult,
+)
 from leaks.storage.models import FindingRow, SourceRunRow, SourceStateRow
 from leaks.storage.session import session_scope
 
@@ -91,6 +99,67 @@ class SqlAlchemyFindingRepository:
         """Total de hallazgos persistidos (para tests y métricas)."""
         with session_scope(self._session_factory) as session:
             return len(session.scalars(select(FindingRow.id)).all())
+
+    # -- Alertas -------------------------------------------------------------
+
+    def list_pending_alerts(self, *, min_severity: str, limit: int) -> list[Finding]:
+        """Hallazgos que llegan al umbral y todavía no se avisaron.
+
+        El criterio es `alerted_at IS NULL`, no "insertado en esta corrida": si
+        un envío falla, el hallazgo sigue pendiente y se reintenta en la
+        corrida siguiente en vez de perderse.
+        """
+        piso = SEVERITY_RANK.get(min_severity.lower(), 0)
+        alcanzan = [s for s, rango in SEVERITY_RANK.items() if rango >= piso]
+
+        with session_scope(self._session_factory) as session:
+            filas = session.scalars(
+                select(FindingRow)
+                .where(
+                    FindingRow.alerted_at.is_(None),
+                    FindingRow.severity.in_(alcanzan),
+                )
+                .order_by(FindingRow.discovered_at.desc())
+                .limit(limit)
+            ).all()
+            return [self._to_finding(f) for f in filas]
+
+    def mark_alerted(self, dedup_hashes: Sequence[str]) -> int:
+        """Marca los hallazgos como avisados. Devuelve cuántos marcó."""
+        if not dedup_hashes:
+            return 0
+        now = datetime.now(UTC)
+        with session_scope(self._session_factory) as session:
+            resultado = cast(
+                CursorResult[Any],
+                session.execute(
+                    update(FindingRow)
+                    .where(FindingRow.dedup_hash.in_(list(dedup_hashes)))
+                    .values(alerted_at=now)
+                ),
+            )
+            return int(resultado.rowcount or 0)
+
+    @staticmethod
+    def _to_finding(row: FindingRow) -> Finding:
+        """Reconstruye el modelo de dominio desde la fila."""
+        return Finding(
+            source=row.source,
+            leak_type=LeakType(row.leak_type),
+            victim_name=row.victim_name,
+            victim_domain=row.victim_domain,
+            country=row.country,
+            sector=row.sector,
+            actor=row.actor,
+            discovered_at=_as_utc(row.discovered_at),
+            published_at=_as_utc(row.published_at) if row.published_at else None,
+            raw_ref=row.raw_ref,
+            description=row.description,
+            ar_match_reason=tuple(ArMatchReason(r) for r in row.ar_match_reason),
+            ar_match_detail=row.ar_match_detail or {},
+            severity=Severity(row.severity),
+            dedup_hash=row.dedup_hash,
+        )
 
     # -- Telemetría por fuente ----------------------------------------------
 

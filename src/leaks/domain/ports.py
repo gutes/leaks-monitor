@@ -66,6 +66,18 @@ class FindingRepository(Protocol):
         """Guarda la telemetría de una fuente dentro de un run."""
         ...
 
+    def list_pending_alerts(self, *, min_severity: str, limit: int) -> list[Finding]:
+        """Hallazgos que llegan al umbral y todavía no se avisaron.
+
+        Pendiente es `alerted_at IS NULL`: si un envío falla, el hallazgo se
+        reintenta en la corrida siguiente en vez de perderse.
+        """
+        ...
+
+    def mark_alerted(self, dedup_hashes: Sequence[str]) -> int:
+        """Marca hallazgos como avisados. Solo se llama tras un envío exitoso."""
+        ...
+
     def get_cursor(self, source: str) -> datetime | None:
         """Marca incremental: hasta dónde llegó la última corrida de esa fuente."""
         ...

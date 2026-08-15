@@ -118,6 +118,33 @@ no dispara la consulta de hallazgos.
 El menú muestra un contador rojo sobre **Fuentes** si alguna se cayó, para que
 se note desde cualquier pantalla.
 
+### Alertas
+
+Al terminar cada corrida se avisa de los hallazgos **nuevos** que llegan al
+umbral (`LEAKS_ALERT_MIN_SEVERITY`, default `high`).
+
+| Canal | Qué necesita |
+|---|---|
+| **Webhook** | `LEAKS_ALERT_WEBHOOK_URL` — sirve para Slack, Discord, n8n o uno propio |
+| **Telegram** | `LEAKS_ALERT_TELEGRAM_TOKEN` + `LEAKS_ALERT_TELEGRAM_CHAT_ID` |
+
+Sin canales configurados no se manda nada, y eso no es un error.
+
+Tres propiedades que vale la pena conocer:
+
+- **No repite.** Cada hallazgo se avisa una sola vez. El marcado va *después*
+  del envío: si todos los canales fallan, el hallazgo queda pendiente y se
+  reintenta en la corrida siguiente en vez de perderse.
+- **No tumba la corrida.** Un canal caído se registra en la consola y el resto
+  sigue.
+- **No lleva PII.** Sale la misma metadata que se persiste — organismo,
+  dominio, actor, fuente, severidad, fecha y el enlace a la publicación. Ni un
+  campo más. Un canal de alertas es un tercero, así que vale la misma regla que
+  para los feeds. Las alertas también pasan por el control de IP de salida.
+
+Sumar un canal es implementar la interfaz y agregar una entrada al registro
+(`src/leaks/alerts/channels.py`); el despachador no se toca.
+
 ### Consola de actividad
 
 Abajo del tablero hay una consola en vivo que muestra **a qué sitio le está
