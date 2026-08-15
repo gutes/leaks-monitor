@@ -29,6 +29,7 @@ const state = {
   editingAllowed: true,
   sourcesAlerted: false,
   view: "hallazgos",
+  running: false,
   wlOffset: 0,
   wlTotal: 0,
   // Cursor de la consola: el id del último evento ya pintado.
@@ -348,6 +349,92 @@ async function loadFindings() {
   $("next").disabled = hasta >= page.total;
 }
 
+/* -------------------------------------------------- Corridas y actualización */
+
+/**
+ * Dispara una corrida del pipeline.
+ *
+ * Hace falta un botón aparte de "Actualizar" porque son cosas distintas y
+ * confundirlas fue justamente el problema: "Actualizar" relee la base, esto
+ * sale a consultar las fuentes. Cambiar un toggle o la watchlist no dispara
+ * nada por su cuenta — aplica en la próxima corrida, y esta es la forma de
+ * pedirla sin esperar al horario.
+ */
+async function runNow() {
+  if (state.running) return;
+
+  const boton = $("run-now");
+  boton.disabled = true;
+  boton.textContent = "Iniciando…";
+
+  const r = await apiWrite("/api/runs", "POST");
+  if (!r.ok) {
+    boton.disabled = false;
+    boton.textContent = "Correr ahora";
+    setStatus(`No se pudo iniciar: ${r.error}`, "error");
+    return;
+  }
+
+  state.running = true;
+  setStatus("Corrida en curso — el detalle se ve en la Consola.", "run");
+  watchRun();
+}
+
+/** Sigue el estado de la corrida hasta que termina. */
+async function watchRun() {
+  const boton = $("run-now");
+  boton.disabled = true;
+  boton.textContent = "Corriendo…";
+
+  const estado = await api("/api/runs/current");
+
+  if (estado && estado.running) {
+    setTimeout(watchRun, 2000);
+    return;
+  }
+
+  state.running = false;
+  boton.disabled = false;
+  boton.textContent = "Correr ahora";
+
+  if (!estado) {
+    setStatus("Se perdió el estado de la corrida.", "error");
+  } else if (estado.last_blocked_reason) {
+    setStatus(estado.last_blocked_reason, "error");
+  } else if (estado.last_error) {
+    setStatus(`La corrida falló: ${estado.last_error}`, "error");
+  } else {
+    const nuevos = estado.last_total_new ?? 0;
+    setStatus(
+      nuevos ? `Corrida lista: ${nuevos} hallazgos nuevos.` : "Corrida lista: sin novedades.",
+      "ok",
+    );
+  }
+
+  // Se repinta con lo que haya quedado, haya novedades o no.
+  await refreshData();
+}
+
+/** Mensaje corto al lado de los botones. Sin esto, todo parece no hacer nada. */
+function setStatus(texto, tono = "") {
+  const nodo = $("last-updated");
+  nodo.textContent = texto;
+  nodo.className = `last-updated last-updated-${tono}`;
+}
+
+/** "Actualizar": relee la base y lo dice, para que no parezca muerto. */
+async function refreshNow() {
+  const boton = $("refresh");
+  boton.disabled = true;
+  boton.textContent = "Actualizando…";
+
+  await refreshAll();
+
+  boton.disabled = false;
+  boton.textContent = "Actualizar";
+  setStatus(`Actualizado ${new Date().toLocaleTimeString()}`, "ok");
+}
+
 /* ------------------------------------------------------------------ Router */
 
 /**
@@ -443,6 +530,8 @@ async function loadRules() {
       if (!r.ok) {
         input.checked = !input.checked;
         alert(`No se pudo cambiar la regla: ${r.error}`);
+      } else {
+        setStatus("Regla actualizada — aplica en la próxima corrida.", "run");
       }
       loadRules();
     });
@@ -505,6 +594,13 @@ function renderPiiControl(datos) {
     // Se repinta con lo que devolvió el servidor, no con lo que asumimos.
     renderPiiControl(r.data);
     loadSources();
+    // El cambio no consulta nada por su cuenta: aplica en la próxima corrida.
+    setStatus(
+      pii.checked
+        ? 'Fuentes con PII habilitadas — aplican en la próxima corrida ("Correr ahora").'
+        : "Fuentes con PII deshabilitadas — aplica en la próxima corrida.",
+      "run",
+    );
   };
 }
 
@@ -880,7 +976,8 @@ $("next").addEventListener("click", () => {
   loadFindings();
 });
 
-$("refresh").addEventListener("click", refreshAll);
+$("refresh").addEventListener("click", refreshNow);
+$("run-now").addEventListener("click", runNow);
 
 // -- Watchlist: alta y filtros
 $("wl-add").addEventListener("submit", async (e) => {
@@ -942,6 +1039,15 @@ window.addEventListener("hashchange", () => showView(viewFromHash()));
 // Arranque: se pinta la vista del hash y se traen los datos comunes.
 showView(viewFromHash());
 refreshAll();
+
+// Si el scheduler o alguien más dejó una corrida en curso, se engancha.
+api("/api/runs/current").then((estado) => {
+  if (estado && estado.running) {
+    state.running = true;
+    setStatus("Corrida en curso — el detalle se ve en la Consola.", "run");
+    watchRun();
+  }
+});
 
 // La consola se actualiza sola aunque estés en otra pantalla: así no se pierde
 // actividad mientras mirás otra sección.
