@@ -16,7 +16,7 @@ const FRESH_DAYS = 30;
 /** Filas por página en la watchlist. */
 const WL_PAGE_SIZE = 50;
 /** Vistas válidas del router. La primera es el default. */
-const VIEWS = ["hallazgos", "watchlist", "reglas", "fuentes", "sitios", "consola"];
+const VIEWS = ["hallazgos", "watchlist", "reglas", "fuentes", "sitios", "adyacentes", "consola"];
 /** Filas por página en el catálogo de sitios. */
 const SITES_PAGE_SIZE = 50;
 /** Cada cuánto se pregunta por actividad nueva. */
@@ -862,8 +862,243 @@ function loadView(nombre) {
   if (nombre === "reglas") return loadRules();
   if (nombre === "fuentes") return loadSources();
   if (nombre === "sitios") return loadSites();
+  if (nombre === "adyacentes") return loadAdjacency();
   if (nombre === "consola") return pollEvents();
   return Promise.resolve();
+}
+
+/* ---------------------------------------------------------- Leaks adyacentes */
+
+/** Nombre corto del componente, para el desglose. */
+const ADJ_COMPONENTES = {
+  alcance: "Alcance regional",
+  recencia: "Actividad reciente",
+  volumen: "Volumen de víctimas",
+  tendencia: "Tendencia",
+  proximidad: "Proximidad a AR",
+  afinidad: "Afinidad sectorial",
+};
+
+/** Guarda los perfiles de la última carga, para abrir el desglose sin refetch. */
+const adjCache = new Map();
+
+async function loadAdjacency() {
+  const datos = await api("/api/adjacency", { limit: 100 });
+  const cand = $("adj-cand-body");
+  const conf = $("adj-conf-body");
+  cand.replaceChildren();
+  conf.replaceChildren();
+  if (!datos) return;
+
+  adjCache.clear();
+
+  $("adj-counts").replaceChildren(
+    el("span", `${datos.total_candidatos ?? 0} candidatos`, "pill pill-high"),
+    el("span", `${datos.total_confirmados ?? 0} confirmados`, "pill pill-critical"),
+    el("span", `${datos.victimas_regionales ?? 0} víctimas regionales`, "pill pill-low"),
+    el("span", `${(datos.paises || []).length} países`, "pill pill-low"),
+  );
+
+  renderCobertura(datos.cobertura || {});
+
+  const candidatos = Array.isArray(datos.candidatos) ? datos.candidatos : [];
+  if (!candidatos.length) {
+    cand.append(filaVacia(7, "Sin candidatos: ¿corrió la adyacencia?"));
+  } else {
+    for (const a of candidatos) {
+      adjCache.set(a.actor, a);
+      cand.append(filaCandidato(a));
+    }
+  }
+
+  const confirmados = Array.isArray(datos.confirmados) ? datos.confirmados : [];
+  if (!confirmados.length) {
+    conf.append(filaVacia(5, "Ningún actor de la región golpeó Argentina todavía."));
+  } else {
+    for (const a of confirmados) conf.append(filaConfirmado(a));
+  }
+}
+
+function filaVacia(columnas, texto) {
+  const tr = document.createElement("tr");
+  const td = el("td", texto, "empty");
+  td.colSpan = columnas;
+  tr.append(td);
+  return tr;
+}
+
+/**
+ * El cartel de alcance.
+ *
+ * No es un descargo de responsabilidad de compromiso: son números medidos, y
+ * sin ellos la lista afirma más de lo que sabe.
+ */
+function renderCobertura(c) {
+  const cuerpo = $("adj-cobertura-cuerpo");
+  cuerpo.replaceChildren();
+
+  const total = (c.con_precursor ?? 0) + (c.sin_precursor ?? 0);
+  const ciego = total ? Math.round((100 * (c.sin_precursor ?? 0)) / total) : 0;
+
+  cuerpo.append(
+    el(
+      "p",
+      `De ${total} actores que golpearon Argentina, ${c.sin_precursor ?? 0} la eligieron ` +
+        `como su primera víctima latinoamericana: para ellos no hay actividad regional ` +
+        `previa que puntuar. El score es ciego al ${ciego}% de los casos, y es ciego por ` +
+        `construcción, no por estar mal calibrado.`,
+      "hint",
+    ),
+    el(
+      "p",
+      `Sobre los ${c.con_precursor ?? 0} que sí dejaron rastro, funciona: el día que ` +
+        `cruzaron estaban en el percentil ${c.percentil_mediano ?? 0} mediano del ranking, ` +
+        `con ${c.anticipacion_mediana_dias ?? 0} días de anticipación mediana.`,
+      "hint",
+    ),
+    el(
+      "p",
+      "Y hay un tercer límite que ningún score arregla: un actor que ninguna de " +
+        "nuestras fuentes trackea no aparece acá. Eso se arregla sumando una fuente.",
+      "hint",
+    ),
+    el("p", `Medido el ${c.medido_el || "—"}.`, "hint"),
+  );
+}
+
+function filaCandidato(a) {
+  const tr = document.createElement("tr");
+
+  const actor = el("td");
+  const boton = el("button", a.actor, "linkish");
+  boton.type = "button";
+  boton.title = `Ver de dónde sale el score de ${a.actor}`;
+  boton.addEventListener("click", () => openAdjacency(a.actor));
+  actor.append(boton);
+  tr.append(actor);
+
+  // Barra + número: el número solo no da idea de la escala.
+  const score = el("td");
+  const barra = el("div", "", "adj-bar");
+  const relleno = el("div", "", "adj-bar-fill");
+  relleno.style.width = `${Math.max(0, Math.min(100, a.score || 0))}%`;
+  barra.append(relleno);
+  score.append(el("div", (a.score ?? 0).toFixed(1), "adj-score"), barra);
+  tr.append(score);
+
+  const variacion = el("td");
+  if (a.variacion === null || a.variacion === undefined || a.variacion === 0) {
+    variacion.append(el("span", "—", "hint"));
+  } else {
+    const sube = a.variacion > 0;
+    const chip = el("span", `${sube ? "↑" : "↓"}${Math.abs(a.variacion).toFixed(1)}`,
+                    `pill pill-${sube ? "critical" : "low"}`);
+    chip.title = `Corrida anterior: ${(a.score_prev ?? 0).toFixed(1)}`;
+    variacion.append(chip);
+  }
+  tr.append(variacion);
+
+  tr.append(el("td", a.victims_total ?? 0));
+
+  const paises = el("td");
+  const lista = a.countries || [];
+  paises.append(el("span", String(lista.length)));
+  paises.title = lista.join(", ");
+  tr.append(paises);
+
+  tr.append(el("td", a.last_seen ? fmtDate(a.last_seen) : "—"));
+
+  // La confianza se muestra aparte del score: un número alto con poca
+  // evidencia tiene que poder verse como tal.
+  const conf = el("td");
+  const c = (a.score_breakdown || {}).confianza;
+  if (typeof c === "number") {
+    const chip = el("span", c < 0.6 ? "poca evidencia" : "sostenido", `pill pill-${c < 0.6 ? "medium" : "ok"}`);
+    chip.title = `Confianza ${c} — atenúa los componentes que son ratios.`;
+    conf.append(chip);
+  }
+  tr.append(conf);
+
+  return tr;
+}
+
+function filaConfirmado(a) {
+  const tr = document.createElement("tr");
+
+  const actor = el("td");
+  const boton = el("button", a.actor, "linkish");
+  boton.type = "button";
+  boton.title = `Ver los hallazgos argentinos de ${a.actor}`;
+  boton.addEventListener("click", () => filtrarPorActor(a.actor));
+  actor.append(boton);
+  tr.append(actor);
+
+  const ar = el("td");
+  ar.append(el("span", String(a.ar_victims ?? 0), "pill pill-critical"));
+  tr.append(ar);
+
+  tr.append(el("td", a.victims_total ?? 0));
+
+  const paises = el("td");
+  const lista = a.countries || [];
+  paises.append(el("span", String(lista.length)));
+  paises.title = lista.join(", ");
+  tr.append(paises, el("td", a.last_seen ? fmtDate(a.last_seen) : "—"));
+
+  return tr;
+}
+
+/** Pop-up con el desglose: por qué el score es ese y no otro. */
+function openAdjacency(nombre) {
+  const a = adjCache.get(nombre);
+  if (!a) return;
+
+  $("adj-actor").textContent = `${a.actor} · ${a.victims_total} víctimas en ${(a.countries || []).length} países`;
+
+  const resumen = $("adj-summary");
+  resumen.replaceChildren(
+    el("span", `score ${(a.score ?? 0).toFixed(1)} / 100`, "pill pill-high"),
+  );
+  const conf = (a.score_breakdown || {}).confianza;
+  if (typeof conf === "number") {
+    resumen.append(el("span", `confianza ${conf}`, `pill pill-${conf < 0.6 ? "medium" : "ok"}`));
+  }
+
+  const cont = $("adj-breakdown");
+  cont.replaceChildren();
+  for (const [clave, etiqueta] of Object.entries(ADJ_COMPONENTES)) {
+    const puntos = (a.score_breakdown || {})[clave];
+    if (typeof puntos !== "number") continue;
+    const fila = el("div", "", "adj-comp");
+    fila.append(el("span", etiqueta, "adj-comp-name"));
+    const barra = el("div", "", "adj-bar");
+    const relleno = el("div", "", "adj-bar-fill");
+    // Relativo al total, para que se vea qué componente domina.
+    relleno.style.width = `${Math.max(0, Math.min(100, (puntos / Math.max(1, a.score)) * 100))}%`;
+    barra.append(relleno);
+    fila.append(barra, el("span", puntos.toFixed(1), "adj-comp-val"));
+    cont.append(fila);
+  }
+  if (typeof conf === "number") {
+    const nota = el(
+      "p",
+      "La confianza no suma puntos: atenúa recencia, tendencia, proximidad y " +
+        "afinidad, que son ratios que un solo dato satura.",
+      "hint",
+    );
+    cont.append(nota);
+  }
+
+  const paises = $("adj-paises");
+  paises.replaceChildren();
+  for (const cc of a.countries || []) paises.append(el("span", cc, "chip"));
+  if (!paises.children.length) paises.append(el("span", "sin datos", "hint"));
+
+  $("adj-modal").hidden = false;
+}
+
+function closeAdjacency() {
+  $("adj-modal").hidden = true;
 }
 
 /* ------------------------------------------------ Reglas y watchlist (CRUD) */
@@ -1522,6 +1757,7 @@ $("sel-page").addEventListener("change", (e) => togglePagina(e.target.checked));
 $("sel-clear").addEventListener("click", limpiarSeleccion);
 $("export-txt").addEventListener("click", exportarSeleccion);
 $("wl-export").addEventListener("click", exportarWatchlist);
+$("adj-close").addEventListener("click", closeAdjacency);
 $("run-now").addEventListener("click", runNow);
 
 // -- Watchlist: alta y filtros

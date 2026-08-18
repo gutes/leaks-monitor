@@ -80,6 +80,7 @@
     <a href="#/reglas" data-view="reglas">Reglas</a>
     <a href="#/fuentes" data-view="fuentes">Fuentes<span id="nav-fuentes-badge"></span></a>
     <a href="#/sitios" data-view="sitios">Sitios</a>
+    <a href="#/adyacentes" data-view="adyacentes">Adyacentes</a>
     <a href="#/consola" data-view="consola">Consola</a>
   </nav>
 
@@ -339,6 +340,67 @@
     </section>
     </section>
 
+    <section class="view" data-view="adyacentes">
+    <section class="panel">
+      <div class="console-head">
+        <div>
+          <h2>Leaks adyacentes</h2>
+          <p class="hint">
+            Actores que operan en Latinoamérica. Los que ya golpearon Argentina van aparte
+            y sin score: una probabilidad de que le peguen a AR no significa nada para quien
+            ya lo hizo.
+          </p>
+        </div>
+        <div id="adj-counts" class="wl-counts"></div>
+      </div>
+
+      <!-- El alcance va en la pantalla, no en un README. Sin esto la lista se
+           lee como "las amenazas" cuando es "las que podemos ver venir". -->
+      <details class="adj-cobertura" id="adj-cobertura">
+        <summary>Hasta dónde llega esto (leer una vez)</summary>
+        <div id="adj-cobertura-cuerpo"></div>
+      </details>
+
+      <h3 class="exp-h3">Candidatos — todavía no golpearon Argentina</h3>
+      <p class="hint">
+        Ordenados por probabilidad estimada. El número se abre para ver de dónde sale.
+      </p>
+      <div class="table-wrap">
+        <table id="adj-candidatos">
+          <thead>
+            <tr>
+              <th>Actor</th>
+              <th title="0-100, calculado con la actividad regional">Score</th>
+              <th title="Cuánto se movió desde la corrida anterior">Var.</th>
+              <th>Víctimas</th>
+              <th>Países</th>
+              <th title="Fecha de su víctima regional más reciente">Última</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="adj-cand-body"></tbody>
+        </table>
+      </div>
+
+      <h3 class="exp-h3">Confirmados — ya golpearon Argentina</h3>
+      <p class="hint">Sin score, ordenados por impacto argentino.</p>
+      <div class="table-wrap">
+        <table id="adj-confirmados">
+          <thead>
+            <tr>
+              <th>Actor</th>
+              <th title="Víctimas argentinas en nuestros hallazgos">Víctimas AR</th>
+              <th>Víctimas región</th>
+              <th>Países</th>
+              <th>Última</th>
+            </tr>
+          </thead>
+          <tbody id="adj-conf-body"></tbody>
+        </table>
+      </div>
+    </section>
+    </section>
+
     <section class="view" data-view="consola">
     <section class="panel console-panel">
       <div class="console-head">
@@ -404,6 +466,22 @@
       <div id="exp-families" class="exp-chips"></div>
       <h3 class="exp-h3">Otros dominios donde reaparecen esas credenciales</h3>
       <div id="exp-third" class="exp-chips"></div>
+    </div>
+  </div>
+
+  <!-- Desglose del score. Es lo que lo hace discutible en vez de un veredicto
+       opaco: cada componente con cuánto aportó. -->
+  <div id="adj-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="adj-title" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2 id="adj-title">De dónde sale el score</h2>
+        <button type="button" class="btn" id="adj-close" aria-label="Cerrar">✕</button>
+      </div>
+      <p class="hint" id="adj-actor"></p>
+      <div id="adj-summary" class="exp-summary"></div>
+      <div id="adj-breakdown" class="adj-breakdown"></div>
+      <h3 class="exp-h3">Países donde tiene víctimas</h3>
+      <div id="adj-paises" class="exp-chips"></div>
     </div>
   </div>
 

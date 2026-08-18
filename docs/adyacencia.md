@@ -21,17 +21,41 @@ regional previa**. Los otros **30 eligieron Argentina como su primera víctima
 latinoamericana registrada**: para ellos no existe precursor regional que
 puntuar. El score es **estructuralmente ciego**, no está mal calibrado.
 
-Dos casos que importan porque se citaron como motivación del feature:
+### Tres modos de falla, no dos
 
-| Actor | Qué muestran los datos |
-|---|---|
-| `thegentlemen` | Primera víctima AR y primera CL el **mismo día** (2025-09-09). Cero víctimas regionales previas. |
-| `chronus` | **No aparece** en el feed regional. |
+Los dos actores que se citaron como motivación del feature fallan por razones
+**distintas**, y confundirlas lleva a arreglar lo que no es:
 
-O sea: los dos actores que motivaron el diseño son justamente los que este
-enfoque no habría visto venir. Eso no invalida el feature —sirve para la otra
-mitad— pero **la UI tiene que decirlo**, o la lista se lee como "las amenazas"
-cuando es "las que podemos ver venir".
+| | `thegentlemen` | Chronus/Cronus Team |
+|---|---|---|
+| ¿Está en las fuentes? | **Sí**, 92 víctimas | **No**, en ninguna |
+| Por qué falla | Golpeó AR sin precursor regional | Nadie que consumamos lo trackea |
+| Categoría | Punto ciego del score | **Hueco de cobertura** |
+| Cómo se arregla | No se arregla: es ciego el enfoque | Sumando una fuente |
+
+Ningún ajuste de la fórmula toca el segundo caso.
+
+La búsqueda de Chronus fue exhaustiva —variantes `chronus|cronus|chronos|
+kronos|crono` contra los 156 actores de `adjacent_actors`, los actores de
+`findings`, los 531 grupos de `leak_sites`, el texto libre de los hallazgos, y
+los catálogos en vivo de ransomware.live (388 grupos) y ransomlook (613)— y no
+hay nada. Los dos únicos aciertos son ruido: `lockbit3_cronos` es la Operación
+Cronos, el operativo policial contra LockBit, y `empresa-ejemplo.com.ar` es una víctima
+argentina.
+
+**La UI tiene que decir las tres cosas**, o la lista se lee como "las amenazas"
+cuando es "las que nuestras fuentes registran y además dejaron rastro regional".
+
+### El patrón México → Argentina sí existe
+
+19 de 163 actores golpearon México antes que Argentina, con anticipaciones de 2
+a 862 días:
+
+```
+funksec       2 días        akira        32 días        ransomhub   138 días
+m3rx         15 días        clop         92 días        killsec     162 días
+blackbyte    27 días        krybit      130 días        lockbit2    172 días
+```
 
 ### Sobre los que sí puede ver, anda bien
 

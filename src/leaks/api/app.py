@@ -28,7 +28,10 @@ from fastapi.staticfiles import StaticFiles
 from leaks.adapters.egress import EgressResolver
 from leaks.adapters.http import build_client
 from leaks.adapters.registry import FEED_REGISTRY, resolve_enabled
+from leaks.adjacency.countries import COUNTRY_CODES
 from leaks.api.schemas import (
+    AdjacencyOut,
+    AdjacentActorOut,
     EgressOut,
     EnabledIn,
     EventOut,
@@ -60,6 +63,7 @@ from leaks.export.report import render_report, report_filename
 from leaks.export.watchlist_report import render_watchlist_report, watchlist_filename
 from leaks.pipeline.coordinator import RunCoordinator
 from leaks.pipeline.egress_guard import EgressGuard
+from leaks.storage.adjacency_repository import AdjacencyRepository
 from leaks.storage.queries import FindingFilters, FindingQueryService
 from leaks.storage.session import create_db_engine, create_session_factory
 from leaks.storage.settings_store import SettingsStore
@@ -117,6 +121,13 @@ def _site_repo_dep(request: Request) -> LeakSiteRepository:
     return repo
 
 
+def _adjacency_dep(request: Request) -> AdjacencyRepository:
+    repo = request.app.state.adjacency_repo
+    if not isinstance(repo, AdjacencyRepository):  # pragma: no cover — invariante
+        raise RuntimeError("La app no fue construida con create_app().")
+    return repo
+
+
 def _settings_store_dep(request: Request) -> SettingsStore:
     store = request.app.state.settings_store
     if not isinstance(store, SettingsStore):  # pragma: no cover — invariante
@@ -127,6 +138,7 @@ def _settings_store_dep(request: Request) -> SettingsStore:
 WatchlistRepo = Annotated[WatchlistRepository, Depends(_watchlist_dep)]
 SiteRepo = Annotated[LeakSiteRepository, Depends(_site_repo_dep)]
 Store = Annotated[SettingsStore, Depends(_settings_store_dep)]
+AdjacencyRepo = Annotated[AdjacencyRepository, Depends(_adjacency_dep)]
 
 
 def create_app(
@@ -161,6 +173,7 @@ def create_app(
     app.state.watchlist_repo = WatchlistRepository(session_factory)
     app.state.settings_store = SettingsStore(session_factory)
     app.state.site_repo = LeakSiteRepository(session_factory)
+    app.state.adjacency_repo = AdjacencyRepository(session_factory)
     # Coordinador de corridas manuales. Comparte la configuración del proceso,
     # así que el control de IP de salida se le aplica igual que al scheduler.
     app.state.runs = RunCoordinator(build_application(config).runner)
@@ -457,6 +470,39 @@ def create_app(
         )
 
     # -- Catálogo de sitios de leaks ------------------------------------------
+
+    # -- Adyacencia regional --------------------------------------------------
+
+    @app.get("/api/adjacency", response_model=AdjacencyOut, tags=["adjacency"])
+    def adjacency(
+        repo: AdjacencyRepo,
+        limit: Annotated[int, Query(ge=1)] = 50,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ) -> AdjacencyOut:
+        """Actores de la región, partidos en confirmados y candidatos.
+
+        Son dos poblaciones que no se comparan entre sí: los confirmados ya
+        golpearon Argentina y por eso no llevan score, y los candidatos son los
+        únicos puntuados. Se devuelven separados en vez de con una bandera para
+        que la UI no pueda mezclarlos por descuido.
+
+        `cobertura` viaja siempre: sin ella la lista se lee como «las amenazas»
+        cuando es «las que nuestras fuentes registran y además dejaron rastro
+        regional antes de cruzar».
+        """
+        acotado = min(limit, config.api_max_page_size)
+        confirmados = repo.list_actors(hit_ar=True, limit=acotado, offset=offset)
+        candidatos = repo.list_actors(hit_ar=False, limit=acotado, offset=offset)
+        return AdjacencyOut(
+            confirmados=[AdjacentActorOut.model_validate(a.as_dict()) for a in confirmados],
+            candidatos=[AdjacentActorOut.model_validate(a.as_dict()) for a in candidatos],
+            total_confirmados=repo.count_actors(hit_ar=True),
+            total_candidatos=repo.count_actors(hit_ar=False),
+            victimas_regionales=repo.count_victims(),
+            paises=list(COUNTRY_CODES),
+            limit=acotado,
+            offset=offset,
+        )
 
     @app.get("/api/sites", response_model=LeakSitePage, tags=["sites"])
     def list_sites(

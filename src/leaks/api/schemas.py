@@ -181,6 +181,59 @@ class EgressOut(BaseModel):
     block_reason: str | None = None
 
 
+class AdjacentActorOut(BaseModel):
+    """Un actor de la sección de adyacencia."""
+
+    actor: str
+    victims_total: int
+    countries: list[str] = Field(default_factory=list)
+    first_seen: datetime | None = None
+    last_seen: datetime | None = None
+    #: Ya golpeó Argentina. Parte la lista en dos poblaciones que no se comparan.
+    hit_ar: bool = False
+    ar_victims: int = 0
+    #: 0-100. Siempre 0 para los confirmados: no se les calcula.
+    score: float = 0.0
+    #: Cuánto aportó cada componente, más `confianza` (que NO suma puntos).
+    score_breakdown: dict[str, float] = Field(default_factory=dict)
+    score_prev: float | None = None
+    #: Cuánto se movió desde la corrida anterior. `None` la primera vez.
+    variacion: float | None = None
+    score_updated_at: datetime | None = None
+
+
+class AdjacencyCoverageOut(BaseModel):
+    """Qué tan lejos llega esta sección. Va a la vista, no a un README.
+
+    Sin esto la lista se lee como «las amenazas» cuando es «las que nuestras
+    fuentes registran y además dejaron rastro regional».
+    """
+
+    #: Actores que golpearon AR habiendo dejado rastro regional antes.
+    con_precursor: int = 35
+    #: Actores para los que AR fue su primera víctima latinoamericana.
+    sin_precursor: int = 30
+    #: Percentil mediano del backtest.
+    percentil_mediano: int = 93
+    #: Días de anticipación medianos entre la primera regional y la primera AR.
+    anticipacion_mediana_dias: int = 105
+    medido_el: str = "2026-08-18"
+
+
+class AdjacencyOut(BaseModel):
+    """La sección completa: perfiles más el alcance declarado."""
+
+    confirmados: list[AdjacentActorOut] = Field(default_factory=list)
+    candidatos: list[AdjacentActorOut] = Field(default_factory=list)
+    total_confirmados: int = 0
+    total_candidatos: int = 0
+    victimas_regionales: int = 0
+    paises: list[str] = Field(default_factory=list)
+    cobertura: AdjacencyCoverageOut = Field(default_factory=AdjacencyCoverageOut)
+    limit: int = 50
+    offset: int = 0
+
+
 class WatchlistEntryOut(BaseModel):
     """Una entrada de la watchlist tal como la ve la UI."""
 

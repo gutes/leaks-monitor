@@ -14,6 +14,10 @@ chance de cruzar. Medido contra los datos del feed el 2026-08-18:
   y 30 no**. Para esos 30, Argentina fue su primera víctima latinoamericana
   registrada: el score es **estructuralmente ciego**, no está mal calibrado.
   `thegentlemen` es uno de ellos — golpeó Argentina y Chile el mismo día.
+* Y hay un tercer modo de falla que la fórmula tampoco puede tocar: un actor
+  que **ninguna fuente nuestra trackea** (Chronus/Cronus Team, verificado
+  contra 388 grupos de ransomware.live y 613 de ransomlook). Eso es cobertura,
+  no calibración: se arregla sumando una fuente, no ajustando pesos.
 * Sobre los 35 que sí se podían ver, el backtest (rankear con datos
   estrictamente anteriores al día del cruce) los dejó en el **percentil 93
   mediano**, con 27 en el top 10 y ninguno en el cuartil inferior.
