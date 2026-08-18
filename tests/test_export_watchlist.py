@@ -13,7 +13,14 @@ from typing import Any, ClassVar
 
 import pytest
 
-from leaks.export.coverage import Compromiso, cubre, host_de, relacionar
+from leaks.export.coverage import (
+    ORIGEN_SISTEMA,
+    ORIGEN_VICTIMA,
+    Compromiso,
+    cubre,
+    host_de,
+    relacionar,
+)
 from leaks.export.watchlist_report import render_watchlist_report, watchlist_filename
 
 AHORA = datetime(2026, 8, 18, 16, 0, tzinfo=UTC)
@@ -92,8 +99,53 @@ class TestRelacionar:
 
     def test_saca_los_subdominios_de_la_exposicion(self) -> None:
         mapa = relacionar(["nuclear-ejemplo.gob.ar"], [hallazgo(exposure_detail=self.EXPO)])
-        hosts = {c.host for c in mapa["nuclear-ejemplo.gob.ar"][0]}
-        assert hosts == {"nuclear-ejemplo.gob.ar", "siar.nuclear-ejemplo.gob.ar", "portal.nuclear-ejemplo.gob.ar"}
+        sistemas = {c.host for c in mapa["nuclear-ejemplo.gob.ar"][0] if c.origen == ORIGEN_SISTEMA}
+        assert sistemas == {"siar.nuclear-ejemplo.gob.ar", "portal.nuclear-ejemplo.gob.ar"}
+
+    def test_conserva_la_url_exacta_con_su_path(self) -> None:
+        """Sin el path queda un hostname genérico: `/vpn` es lo que lo identifica."""
+        mapa = relacionar(["nuclear-ejemplo.gob.ar"], [hallazgo(exposure_detail=self.EXPO)])
+        urls = {c.url for c in mapa["nuclear-ejemplo.gob.ar"][0] if c.origen == ORIGEN_SISTEMA}
+        assert "https://siar.nuclear-ejemplo.gob.ar/vpn" in urls
+
+    def test_el_dominio_de_la_victima_no_se_cuenta_como_sistema(self) -> None:
+        """En Hudson Rock ese valor es el dominio que preguntamos nosotros.
+
+        Mezclarlo con los sistemas encontrados haría pasar nuestra propia
+        consulta por evidencia de compromiso.
+        """
+        mapa = relacionar(["nuclear-ejemplo.gob.ar"], [hallazgo(exposure_detail=self.EXPO)])
+        declarados = [c for c in mapa["nuclear-ejemplo.gob.ar"][0] if c.origen == ORIGEN_VICTIMA]
+        assert [c.host for c in declarados] == ["nuclear-ejemplo.gob.ar"]
+        assert declarados[0].url is None
+
+    def test_sin_exposicion_queda_solo_el_organismo_declarado(self) -> None:
+        """Es el caso de ransomware.live: nombra la víctima, no el sistema."""
+        mapa = relacionar(["nuclear-ejemplo.gob.ar"], [hallazgo(source="ransomware.live")])
+        (unico,) = mapa["nuclear-ejemplo.gob.ar"][0]
+        assert unico.origen == ORIGEN_VICTIMA
+
+    def test_dos_endpoints_del_mismo_host_son_dos_superficies(self) -> None:
+        expo = {
+            "urls": [
+                {"url": "https://correo.nuclear-ejemplo.gob.ar/owa/auth/logon.aspx", "kind": "employee"},
+                {"url": "https://correo.nuclear-ejemplo.gob.ar/owa/auth.owa", "kind": "employee"},
+            ]
+        }
+        mapa = relacionar(["nuclear-ejemplo.gob.ar"], [hallazgo(exposure_detail=expo)])
+        urls = {c.url for c in mapa["nuclear-ejemplo.gob.ar"][0] if c.origen == ORIGEN_SISTEMA}
+        assert len(urls) == 2
+
+    def test_la_barra_final_no_duplica_el_sistema(self) -> None:
+        expo = {
+            "urls": [
+                {"url": "https://webmail.nuclear-ejemplo.gob.ar", "kind": "employee"},
+                {"url": "https://webmail.nuclear-ejemplo.gob.ar/", "kind": "employee"},
+            ]
+        }
+        mapa = relacionar(["nuclear-ejemplo.gob.ar"], [hallazgo(exposure_detail=expo)])
+        sistemas = [c for c in mapa["nuclear-ejemplo.gob.ar"][0] if c.origen == ORIGEN_SISTEMA]
+        assert len(sistemas) == 1
 
     def test_marca_los_de_empleados(self) -> None:
         """Es la distinción que cambia la decisión: acceso interno vs. trámite."""
@@ -206,10 +258,57 @@ class TestInforme:
         texto = render_watchlist_report(
             [entrada()], counts=CONTEOS, compromisos=mapa, generated_at=AHORA
         )
-        assert "Comprometidos alguna vez: 3 sistemas, 1 con credenciales de empleados" in texto
+        assert "Comprometidos alguna vez: 2 sistemas, 2 URLs (1 de empleados)" in texto
         assert "2026-08-09 · hudsonrock" in texto
-        assert "siar.nuclear-ejemplo.gob.ar [EMPLEADO]" in texto
-        assert "https://ejemplo.test/Nuclear Ejemplo" in texto
+        assert "[EMPLEADO]  https://siar.nuclear-ejemplo.gob.ar/vpn" in texto
+        assert "visto en: https://ejemplo.test/Nuclear Ejemplo" in texto
+
+    def test_muestra_la_url_exacta_y_no_solo_el_host(self) -> None:
+        mapa = relacionar(["nuclear-ejemplo.gob.ar"], [hallazgo(exposure_detail=TestRelacionar.EXPO)])
+        texto = render_watchlist_report(
+            [entrada()], counts=CONTEOS, compromisos=mapa, generated_at=AHORA
+        )
+        assert "https://siar.nuclear-ejemplo.gob.ar/vpn" in texto
+
+    def test_rotula_aparte_el_organismo_declarado(self) -> None:
+        """No puede leerse como un sistema más: es un dato de otra naturaleza."""
+        mapa = relacionar(["nuclear-ejemplo.gob.ar"], [hallazgo(exposure_detail=TestRelacionar.EXPO)])
+        texto = render_watchlist_report(
+            [entrada()], counts=CONTEOS, compromisos=mapa, generated_at=AHORA
+        )
+        assert "[organismo señalado por la fuente]  nuclear-ejemplo.gob.ar" in texto
+
+    def test_cuenta_hosts_y_urls_por_separado(self) -> None:
+        """Dos endpoints de un servidor son dos superficies de UN sistema."""
+        expo = {
+            "urls": [
+                {"url": "https://siar.nuclear-ejemplo.gob.ar/sslvpn_logon.shtml", "kind": "employee"},
+                {"url": "https://siar.nuclear-ejemplo.gob.ar/wgcgi.cgi", "kind": "employee"},
+            ]
+        }
+        mapa = relacionar(["nuclear-ejemplo.gob.ar"], [hallazgo(exposure_detail=expo)])
+        texto = render_watchlist_report(
+            [entrada()], counts=CONTEOS, compromisos=mapa, generated_at=AHORA
+        )
+        assert "1 sistemas, 2 URLs (2 de empleados)" in texto
+
+    def test_la_marca_de_empleado_nunca_queda_huerfana(self) -> None:
+        """Envuelta a la línea siguiente, no se sabe de qué URL es."""
+        larga = "https://teletrabajo.nuclear-ejemplo.gob.ar/" + "a" * 90
+        expo = {"urls": [{"url": larga, "kind": "employee"}]}
+        mapa = relacionar(["nuclear-ejemplo.gob.ar"], [hallazgo(exposure_detail=expo)])
+        texto = render_watchlist_report(
+            [entrada()], counts=CONTEOS, compromisos=mapa, generated_at=AHORA
+        )
+        (linea,) = [x for x in texto.splitlines() if larga in x]
+        assert "[EMPLEADO]" in linea
+
+    def test_sin_sistemas_no_afirma_cuantos_cayeron(self) -> None:
+        mapa = relacionar(["nuclear-ejemplo.gob.ar"], [hallazgo(source="ransomware.live")])
+        texto = render_watchlist_report(
+            [entrada()], counts=CONTEOS, compromisos=mapa, generated_at=AHORA
+        )
+        assert "Comprometidos alguna vez: sin detalle de sistemas" in texto
 
     def test_agrupa_los_sistemas_por_hallazgo(self) -> None:
         """La URL aparece una vez por hallazgo, no una vez por subdominio."""
@@ -234,11 +333,19 @@ class TestInforme:
         assert "Comprometidos alguna vez" not in texto.split("«Comprometido")[1]
 
     def test_avisa_lo_que_no_se_listo(self) -> None:
-        mapa = {"nuclear-ejemplo.gob.ar": ((Compromiso("nuclear-ejemplo.gob.ar", None, "x", None, "Comision Nuclear Ejemplo"),), 5)}
+        uno = Compromiso(
+            host="nuclear-ejemplo.gob.ar",
+            url="https://nuclear-ejemplo.gob.ar/x",
+            occurred_at=None,
+            source="x",
+            ref_url=None,
+            victim_name="Comision Nuclear Ejemplo",
+        )
+        mapa = {"nuclear-ejemplo.gob.ar": ((uno,), 5)}
         texto = render_watchlist_report(
             [entrada()], counts=CONTEOS, compromisos=mapa, generated_at=AHORA
         )
-        assert "y 5 sistemas más, no listados por espacio" in texto
+        assert "y 5 más, no listados por espacio" in texto
 
     def test_dice_que_el_historial_no_prueba_el_estado_actual(self) -> None:
         """Sin esa aclaración el informe afirma algo que no sabe."""

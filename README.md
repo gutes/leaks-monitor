@@ -208,26 +208,40 @@ aparecieron comprometidos alguna vez**, agrupados por hallazgo, con la fecha
 del evento y la URL donde lo encontramos.
 
 ```
-    activa    semilla  nuclear-ejemplo.gob.ar         Ciencia, registros y nuclear · CRÍTICO
+    activa   semilla  nuclear-ejemplo.gob.ar     Ciencia, registros y nuclear · CRÍTICO
 
-      Comprometidos alguna vez: 12 sistemas, 8 con credenciales de empleados
+      Comprometidos alguna vez: 11 sistemas, 14 URLs (9 de empleados)
 
         2026-08-09 · hudsonrock
-          siar.nuclear-ejemplo.gob.ar [EMPLEADO]
-          webmail.nuclear-ejemplo.gob.ar [EMPLEADO]
-          gitlab.nuclear-ejemplo.gob.ar [EMPLEADO]
-          portal.nuclear-ejemplo.gob.ar
-          https://cavalier.hudsonrock.com/api/json/v2/osint-tools/...
+          [EMPLEADO]  https://siar.nuclear-ejemplo.gob.ar/sslvpn_logon.shtml
+          [EMPLEADO]  https://gitlab.nuclear-ejemplo.gob.ar/users/sign_in
+          [EMPLEADO]  https://webmaildos.nuclear-ejemplo.gob.ar/squirrelmail/src/login.php
+          [usuario ]  https://www.nuclear-ejemplo.gob.ar/becas/login
+          visto en: https://cavalier.hudsonrock.com/...
 
         2024-12-18 · ransomware.live
-          nuclear-ejemplo.gob.ar
-          http://blogvl7...onion/news.php?id=1
+          [organismo señalado por la fuente]  nuclear-ejemplo.gob.ar
+          visto en: http://blogvl7...onion/news.php?id=1
 ```
 
 Ahí se ve algo que ninguna pantalla muestra: el mismo organismo cayó por dos
-vías distintas con año y medio de diferencia. Los subdominios salen de las URLs
-de login capturadas por los infostealers, y un host se asigna siempre a la
-entrada **más específica** que lo cubra.
+vías distintas con año y medio de diferencia.
+
+Tres precisiones sobre qué es cada línea, porque no son lo mismo:
+
+- **La URL va exacta, con su path.** `/sslvpn_logon.shtml` es lo que identifica
+  al sistema como la VPN institucional y `/squirrelmail/src/login.php` como un
+  webmail viejo; recortado al hostname queda un dato genérico.
+- **Sistemas y URLs se cuentan por separado.** `siar.nuclear-ejemplo.gob.ar/sslvpn_logon`
+  y `siar.nuclear-ejemplo.gob.ar/wgcgi.cgi` son dos superficies de **un** sistema.
+- **«Organismo señalado por la fuente» no es un sistema comprometido**, y por
+  eso va rotulado aparte y no entra en el conteo. Ahí la fuente nombró a la
+  organización sin decir qué sistema suyo cayó — y en las fuentes que se
+  consultan dominio por dominio (Hudson Rock) ese valor es *el dominio que
+  preguntamos nosotros*. Mezclarlo con los sistemas encontrados haría pasar la
+  propia consulta por evidencia.
+
+Un host se asigna siempre a la entrada **más específica** que lo cubra.
 
 Este cruce existe **solo en la exportación**. En la pantalla, colgarle el
 historial a cada fila convertiría una vista de administración en otra cosa.
