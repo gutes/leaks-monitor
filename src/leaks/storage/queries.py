@@ -101,6 +101,28 @@ class FindingQueryService:
             filas = session.scalars(select(FindingRow).where(FindingRow.id.in_(unicos))).all()
             return tuple(self._to_dict(f) for f in filas)
 
+    def para_cobertura(self, *, limit: int) -> tuple[dict[str, Any], ...]:
+        """Hallazgos que pueden relacionarse con una entrada de la watchlist.
+
+        Se traen solo los que aportan un host —los que tienen `victim_domain` o
+        detalle de exposición—; el resto no puede cruzarse con nada. La
+        proyección es la completa porque el cruce necesita fecha, fuente y
+        referencia, pero el filtro y el tope acotan cuánto entra en memoria.
+
+        Ordenado del evento más reciente al más viejo, así el tope corta la
+        cola histórica y no la señal fresca.
+        """
+        with session_scope(self._session_factory) as session:
+            filas = session.scalars(
+                select(FindingRow)
+                .where(
+                    FindingRow.victim_domain.is_not(None) | FindingRow.exposure_detail.is_not(None)
+                )
+                .order_by(FindingRow.occurred_at.desc().nullslast(), FindingRow.id.desc())
+                .limit(limit)
+            ).all()
+            return tuple(self._to_dict(f) for f in filas)
+
     @staticmethod
     def _apply(stmt: Select[Any], filters: FindingFilters) -> Select[Any]:
         """Aplica los filtros activos. Los `None` no filtran."""

@@ -111,6 +111,8 @@ Investigado el 2026-08-15: ver [sitios-que-cambian-de-dominio.md](sitios-que-cam
 
 - **Conectar "Actualizar" a `POST /api/runs`** (ver sección 0). Es lo más chico
   y lo más visible.
+- ~~Exportar la watchlist a TXT, con el historial de compromisos de cada
+  entrada~~ ✅ hecho en la sesión 5 (`GET /api/watchlist/export`).
 - ~~Exportar hallazgos seleccionados a TXT~~ ✅ hecho en la sesión 5
   (`POST /api/findings/export`). **Falta** CSV/JSON, que es otro caso de uso:
   el TXT es para leer, un CSV sería para cruzar con otra herramienta.

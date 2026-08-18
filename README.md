@@ -195,6 +195,47 @@ puras) y el nombre no lleva nombres de víctima, porque el archivo circula.
 Como todo lo demás, **el informe solo contiene metadata**: no hay credenciales
 que exportar porque no se persisten, y el encabezado lo dice explícitamente.
 
+### Exportar la watchlist
+
+En la pantalla Watchlist, "Exportar TXT" baja el listado completo agrupado por
+sector, con estado, origen (semilla o manual) e infraestructura crítica. Si hay
+filtros puestos exporta lo que se está viendo, y el encabezado dice cuál se
+aplicó — un TXT parcial no se puede confundir con el total.
+
+Lo que lo convierte en informe y no en listado es el cruce contra los
+hallazgos: **por cada dominio vigilado se listan los sistemas suyos que
+aparecieron comprometidos alguna vez**, agrupados por hallazgo, con la fecha
+del evento y la URL donde lo encontramos.
+
+```
+    activa    semilla  nuclear-ejemplo.gob.ar         Ciencia, registros y nuclear · CRÍTICO
+
+      Comprometidos alguna vez: 12 sistemas, 8 con credenciales de empleados
+
+        2026-08-09 · hudsonrock
+          siar.nuclear-ejemplo.gob.ar [EMPLEADO]
+          webmail.nuclear-ejemplo.gob.ar [EMPLEADO]
+          gitlab.nuclear-ejemplo.gob.ar [EMPLEADO]
+          portal.nuclear-ejemplo.gob.ar
+          https://cavalier.hudsonrock.com/api/json/v2/osint-tools/...
+
+        2024-12-18 · ransomware.live
+          nuclear-ejemplo.gob.ar
+          http://blogvl7...onion/news.php?id=1
+```
+
+Ahí se ve algo que ninguna pantalla muestra: el mismo organismo cayó por dos
+vías distintas con año y medio de diferencia. Los subdominios salen de las URLs
+de login capturadas por los infostealers, y un host se asigna siempre a la
+entrada **más específica** que lo cubra.
+
+Este cruce existe **solo en la exportación**. En la pantalla, colgarle el
+historial a cada fila convertiría una vista de administración en otra cosa.
+
+> El historial es acumulado: que un sistema figure no significa que siga
+> comprometido hoy, y que no figure no prueba que esté limpio — solo que no
+> apareció en las fuentes que miramos. El informe lo dice explícitamente.
+
 ### Antigüedad de los hallazgos
 
 El tablero distingue **cuándo ocurrió** un leak de **cuándo lo vimos**, que no

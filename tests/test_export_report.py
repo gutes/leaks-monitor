@@ -9,12 +9,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any, ClassVar
 
-from leaks.export.report import (
-    WIDTH,
-    ordenar,
-    render_report,
-    report_filename,
-)
+from leaks.export.layout import WIDTH
+from leaks.export.report import ordenar, render_report, report_filename
 
 AHORA = datetime(2026, 8, 18, 15, 30, tzinfo=UTC)
 

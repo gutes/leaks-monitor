@@ -521,3 +521,43 @@ test("un error al exportar se informa y el botón vuelve a quedar usable", async
 test("el nombre del archivo se sanea antes de escribirlo en disco", async () => {
   assert.match(APP, /replace\(\/\[\^A-Za-z0-9\._-\]\/g, "_"\)/);
 });
+
+test("la watchlist se exporta con los filtros puestos", async () => {
+  const { el, pedidos, descargas } = await cargarApp({
+    html: HTML,
+    hash: "#/watchlist",
+    respuestas: {
+      ...RESPUESTAS_BASE,
+      "/api/watchlist/export": {
+        __texto: "WATCHLIST",
+        __headers: {
+          "Content-Disposition": 'attachment; filename="watchlist-20260818-1600-284.txt"',
+          "X-Watchlist-Exported": "284",
+        },
+      },
+    },
+  });
+
+  el("wl-f-kind").value = "domain";
+  await disparar(el("wl-export"), "click");
+
+  const pedido = pedidos.find((p) => p.startsWith("/api/watchlist/export"));
+  assert.ok(pedido, "tiene que pegarle al endpoint");
+  assert.match(pedido, /kind=domain/, "lleva el filtro que se está viendo");
+  assert.equal(descargas.length, 1);
+  assert.match(textoDe(el("last-updated")), /284 entradas/);
+});
+
+test("un error al exportar la watchlist se informa y el botón vuelve", async () => {
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/watchlist",
+    respuestas: { ...RESPUESTAS_BASE, "/api/watchlist/export": { __status: 500, detail: "roto" } },
+  });
+
+  await disparar(el("wl-export"), "click");
+
+  assert.match(textoDe(el("last-updated")), /No se pudo exportar/);
+  assert.equal(el("wl-export").disabled, false);
+  assert.match(textoDe(el("wl-export")), /Exportar TXT/);
+});

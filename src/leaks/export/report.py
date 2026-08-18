@@ -17,27 +17,30 @@ pasados por el redactor.
 
 from __future__ import annotations
 
-import textwrap
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-#: Ancho del informe. 80 columnas: entra en cualquier terminal, en el cuerpo de
-#: un mail y en un adjunto impreso sin que se corte.
-WIDTH = 80
-
-#: Ancho de la etiqueta en los pares "campo : valor". Fijo para que la columna
-#: de valores quede alineada y el informe se pueda leer en diagonal.
-LABEL_W = 15
-
-_SEP_FUERTE = "=" * WIDTH
-_SEP_SUAVE = "-" * WIDTH
+from leaks.export.layout import (
+    SEP_FUERTE,
+    SEP_SUAVE,
+    campo,
+    dia,
+    fecha,
+    lista_envuelta,
+    num,
+    parrafo,
+    sello,
+    unir,
+)
 
 #: La clave sale de una constante y no de un literal dentro del diccionario
 #: porque el SAST lee el par `"repo_secret": "..."` como una credencial
 #: embebida y marcaría el literal entero.
 _CLAVE_REPO = "repo_secret"
 
+#: Etiquetas y textos propios de este informe. El maquetado (ancho, columnas,
+#: separadores) vive en `layout` y lo comparten los dos informes.
 _TIPO_LEGIBLE = {
     "ransomware": "ransomware",
     "infostealer": "infostealer",
@@ -60,61 +63,6 @@ _AVISO_ENLACES = (
     "infraestructura de quien los publicó. Se listan como texto, no como "
     "enlaces: abrirlos es una decisión deliberada, no un click distraído."
 )
-
-
-def _num(valor: Any) -> str:
-    """Entero con separador de miles a la española: 225375 -> '225.375'."""
-    if not isinstance(valor, int):
-        return str(valor)
-    return f"{valor:,}".replace(",", ".")
-
-
-def _fecha(valor: Any) -> str:
-    """Fecha en ISO corto y UTC. Los naive se asumen UTC, como en toda la base."""
-    if not isinstance(valor, datetime):
-        return "—"
-    momento = valor if valor.tzinfo else valor.replace(tzinfo=UTC)
-    return momento.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
-
-
-def _dia(valor: Any) -> str:
-    if not isinstance(valor, datetime):
-        return "—"
-    momento = valor if valor.tzinfo else valor.replace(tzinfo=UTC)
-    return momento.astimezone(UTC).strftime("%Y-%m-%d")
-
-
-def _campo(etiqueta: str, valor: Any, sangria: str = "  ") -> str:
-    texto = "—" if valor in (None, "", []) else str(valor)
-    return f"{sangria}{etiqueta.ljust(LABEL_W)}: {texto}"
-
-
-def _parrafo(texto: str, sangria: str = "    ") -> list[str]:
-    """Envuelve texto libre respetando el ancho. Vacío no produce líneas."""
-    if not texto:
-        return []
-    lineas: list[str] = []
-    for cruda in str(texto).splitlines():
-        if not cruda.strip():
-            lineas.append("")
-            continue
-        lineas.extend(
-            textwrap.wrap(
-                cruda.strip(),
-                width=WIDTH,
-                initial_indent=sangria,
-                subsequent_indent=sangria,
-                break_long_words=False,
-                break_on_hyphens=False,
-            )
-        )
-    return lineas
-
-
-def _lista_envuelta(valores: Iterable[str], sangria: str = "      ") -> list[str]:
-    """Una enumeración separada por comas, envuelta al ancho del informe."""
-    texto = ", ".join(v for v in valores if v)
-    return _parrafo(texto, sangria) if texto else []
 
 
 # -- Ordenamiento -------------------------------------------------------------
@@ -156,27 +104,27 @@ def _encabezado(
     sin_fecha = len(findings) - len(fechados)
 
     lineas = [
-        _SEP_FUERTE,
+        SEP_FUERTE,
         "  INFORME DE HALLAZGOS — Monitor de leaks",
-        _SEP_FUERTE,
+        SEP_FUERTE,
         "",
-        _campo("Generado", _fecha(generated_at)),
-        _campo("Hallazgos", _num(len(findings))),
+        campo("Generado", fecha(generated_at)),
+        campo("Hallazgos", num(len(findings))),
     ]
     if fechados:
-        lineas.append(_campo("Ocurrencias", f"{_dia(min(fechados))} → {_dia(max(fechados))}"))
+        lineas.append(campo("Ocurrencias", f"{dia(min(fechados))} → {dia(max(fechados))}"))
     if sin_fecha:
-        lineas.append(_campo("Sin fechar", f"{_num(sin_fecha)} (van al final)"))
-    lineas.append(_campo("Umbral reciente", f"{fresh_days} días"))
+        lineas.append(campo("Sin fechar", f"{num(sin_fecha)} (van al final)"))
+    lineas.append(campo("Umbral reciente", f"{fresh_days} días"))
     lineas += [
         "",
-        *_parrafo(
+        *parrafo(
             "Ordenados por fecha de ocurrencia del evento —no por cuándo lo "
             "importamos—, del más reciente al más antiguo.",
             "  ",
         ),
         "",
-        *_parrafo(
+        *parrafo(
             "Contenido: metadata solamente. No incluye credenciales, "
             "contraseñas ni datos de personas físicas, porque no se persisten.",
             "  ",
@@ -190,7 +138,7 @@ def _identificacion(f: dict[str, Any], ahora: datetime, fresh_days: int) -> list
     ocurrido = f.get("occurred_at")
     base = _BASIS_LEGIBLE.get(str(f.get("occurred_at_basis") or ""), "origen desconocido")
     detalle_fecha = (
-        f"{_dia(ocurrido)}  ({_frescura(ocurrido, ahora, fresh_days)} · {base})"
+        f"{dia(ocurrido)}  ({_frescura(ocurrido, ahora, fresh_days)} · {base})"
         if isinstance(ocurrido, datetime)
         else f"sin fecha  ({base})"
     )
@@ -199,37 +147,37 @@ def _identificacion(f: dict[str, Any], ahora: datetime, fresh_days: int) -> list
     fuente = f"{f.get('source') or '—'}  ({_TIPO_LEGIBLE.get(tipo, tipo or '—')})"
 
     lineas = [
-        _campo("Ocurrencia", detalle_fecha),
-        _campo("Declarado", f"{_dia(f.get('discovered_at'))}  (fecha que informa la fuente)"),
-        _campo("Visto", f"{_dia(f.get('first_seen_at'))}  (cuándo lo detectamos)"),
+        campo("Ocurrencia", detalle_fecha),
+        campo("Declarado", f"{dia(f.get('discovered_at'))}  (fecha que informa la fuente)"),
+        campo("Visto", f"{dia(f.get('first_seen_at'))}  (cuándo lo detectamos)"),
     ]
     if f.get("backfill"):
-        lineas += _parrafo(
+        lineas += parrafo(
             "Entró con la importación inicial de su fuente: es histórico que "
             "recién conocemos, no una novedad de ese día.",
             "                   ",
         )
     lineas += [
-        _campo("Víctima", f.get("victim_name")),
-        _campo("Dominio", f.get("victim_domain")),
-        _campo("País", f.get("country")),
-        _campo("Sector", f.get("sector")),
-        _campo("Actor", f.get("actor")),
-        _campo("Fuente", fuente),
-        _campo("Severidad", str(f.get("severity") or "—").upper()),
+        campo("Víctima", f.get("victim_name")),
+        campo("Dominio", f.get("victim_domain")),
+        campo("País", f.get("country")),
+        campo("Sector", f.get("sector")),
+        campo("Actor", f.get("actor")),
+        campo("Fuente", fuente),
+        campo("Severidad", str(f.get("severity") or "—").upper()),
     ]
 
     razones = list(f.get("ar_match_reason") or [])
-    lineas.append(_campo("Relevancia AR", ", ".join(razones) if razones else "—"))
+    lineas.append(campo("Relevancia AR", ", ".join(razones) if razones else "—"))
     detalles = f.get("ar_match_detail") or {}
     for regla in razones:
         evidencia = detalles.get(regla) or []
         if evidencia:
-            lineas += _parrafo(
+            lineas += parrafo(
                 f"{regla}: {', '.join(str(e) for e in evidencia)}", "                   "
             )
 
-    lineas.append(_campo("Referencia", f.get("raw_ref")))
+    lineas.append(campo("Referencia", f.get("raw_ref")))
     return lineas
 
 
@@ -237,7 +185,7 @@ def _descripcion(f: dict[str, Any]) -> list[str]:
     texto = f.get("description")
     if not texto:
         return []
-    return ["", "  Descripción", *_parrafo(str(texto))]
+    return ["", "  Descripción", *parrafo(str(texto))]
 
 
 def _exposicion(f: dict[str, Any]) -> list[str]:
@@ -254,19 +202,19 @@ def _exposicion(f: dict[str, Any]) -> list[str]:
         return []
 
     internos = [u for u in urls if u.get("kind") == "employee"]
-    resumen = [f"{_num(len(urls))} sistemas comprometidos"]
+    resumen = [f"{num(len(urls))} sistemas comprometidos"]
     if internos:
-        resumen.append(f"{_num(len(internos))} de empleados")
+        resumen.append(f"{num(len(internos))} de empleados")
     if debiles:
         resumen.append(f"{debiles}% de contraseñas débiles")
 
-    lineas = ["", "  DATOS · Exposición por infostealers", *_parrafo(" · ".join(resumen))]
+    lineas = ["", "  DATOS · Exposición por infostealers", *parrafo(" · ".join(resumen))]
 
     if urls:
         lineas += [
             "",
             "    Sistemas comprometidos",
-            *_parrafo(
+            *parrafo(
                 "URLs contra las que se estaba autenticando la víctima al "
                 "infectarse. Las de empleados van primero: implican acceso "
                 "interno, no un trámite público.",
@@ -278,18 +226,18 @@ def _exposicion(f: dict[str, Any]) -> list[str]:
         for u in urls:
             marca = "EMPLEADO" if u.get("kind") == "employee" else "usuario"
             veces = u.get("occurrences") or 0
-            conteo = _num(veces).rjust(9) if veces else "        —"
+            conteo = num(veces).rjust(9) if veces else "        —"
             lineas.append(f"      [{marca:<8}] {conteo}  {u.get('url') or '—'}")
 
     if familias:
-        pares = [f"{k} ({_num(v)})" for k, v in familias.items()]
-        lineas += ["", "    Familias de malware", *_lista_envuelta(pares)]
+        pares = [f"{k} ({num(v)})" for k, v in familias.items()]
+        lineas += ["", "    Familias de malware", *lista_envuelta(pares)]
 
     if terceros:
         lineas += [
             "",
             "    Otros dominios donde reaparecen esas credenciales",
-            *_lista_envuelta(terceros),
+            *lista_envuelta(terceros),
         ]
 
     return lineas
@@ -304,7 +252,7 @@ def _enlaces(f: dict[str, Any]) -> list[str]:
     lineas = [
         "",
         "  DATOS · Enlaces a lo publicado",
-        *_parrafo(_AVISO_ENLACES),
+        *parrafo(_AVISO_ENLACES),
         "",
     ]
     for e in enlaces:
@@ -318,9 +266,9 @@ def _hallazgo(
 ) -> list[str]:
     titulo = str(f.get("victim_name") or "sin nombre")
     return [
-        _SEP_SUAVE,
+        SEP_SUAVE,
         f"[{indice}/{total}]  {titulo}",
-        _SEP_SUAVE,
+        SEP_SUAVE,
         "",
         *_identificacion(f, ahora, fresh_days),
         *_descripcion(f),
@@ -342,18 +290,14 @@ def render_report(
 
     lineas = _encabezado(ordenados, ahora, fresh_days)
     if not ordenados:
-        lineas += [_SEP_SUAVE, "", "  Ningún hallazgo seleccionado.", ""]
+        lineas += [SEP_SUAVE, "", "  Ningún hallazgo seleccionado.", ""]
     for i, f in enumerate(ordenados, start=1):
         lineas += _hallazgo(f, i, len(ordenados), ahora, fresh_days)
 
-    lineas += [_SEP_FUERTE, "  Fin del informe.", _SEP_FUERTE, ""]
-    # Ninguna línea termina en espacios: el archivo se pega en tickets y mails,
-    # donde el espacio final sobrevive y se nota.
-    return "\n".join(linea.rstrip() for linea in lineas)
+    lineas += [SEP_FUERTE, "  Fin del informe.", SEP_FUERTE, ""]
+    return unir(lineas)
 
 
 def report_filename(generated_at: datetime, count: int) -> str:
     """Nombre del archivo. Sin nombres de víctima: el archivo puede circular."""
-    momento = generated_at if generated_at.tzinfo else generated_at.replace(tzinfo=UTC)
-    sello = momento.astimezone(UTC).strftime("%Y%m%d-%H%M")
-    return f"hallazgos-{sello}-{count}.txt"
+    return f"hallazgos-{sello(generated_at)}-{count}.txt"

@@ -55,7 +55,9 @@ from leaks.api.schemas import (
 from leaks.bootstrap import build_application
 from leaks.config import Settings, get_settings
 from leaks.domain.models import ArMatchReason
+from leaks.export.coverage import relacionar
 from leaks.export.report import render_report, report_filename
+from leaks.export.watchlist_report import render_watchlist_report, watchlist_filename
 from leaks.pipeline.coordinator import RunCoordinator
 from leaks.pipeline.egress_guard import EgressGuard
 from leaks.storage.queries import FindingFilters, FindingQueryService
@@ -63,6 +65,7 @@ from leaks.storage.session import create_db_engine, create_session_factory
 from leaks.storage.settings_store import SettingsStore
 from leaks.storage.site_repository import LeakSiteRepository
 from leaks.storage.watchlist_repository import (
+    KIND_DOMAIN,
     WatchlistRepository,
     WatchlistValidationError,
 )
@@ -336,6 +339,54 @@ def create_app(
             total=repo.count_entries(kind=kind, sector=sector, enabled=enabled, q=q),
             limit=acotado,
             offset=offset,
+        )
+
+    @app.get(
+        "/api/watchlist/export",
+        response_class=PlainTextResponse,
+        tags=["watchlist"],
+        responses={200: {"content": {"text/plain": {}}}},
+    )
+    def export_watchlist(
+        repo: WatchlistRepo,
+        queries: Queries,
+        kind: str | None = None,
+        sector: str | None = None,
+        enabled: bool | None = None,
+        q: Annotated[str | None, Query(max_length=200)] = None,
+    ) -> PlainTextResponse:
+        """Exporta la watchlist a TXT, con el historial de cada entrada.
+
+        Sin filtros sale entera —que es el caso normal—; con filtros sale el
+        subconjunto que se está viendo, y el informe dice cuál se aplicó. No
+        hay paginado: un informe a medias no sirve para nada.
+
+        Cada entrada de tipo dominio se cruza contra los hallazgos para listar
+        qué sistemas suyos aparecieron comprometidos alguna vez. Ese cruce no
+        existe en la pantalla a propósito: ahí sería ruido sobre una vista de
+        administración, y acá es lo que se quiere leer.
+        """
+        entradas = repo.list_entries(kind=kind, sector=sector, enabled=enabled, q=q)
+        dominios = [e.value for e in entradas if e.kind == KIND_DOMAIN]
+        escaneados = queries.para_cobertura(limit=config.export_coverage_scan)
+        compromisos = relacionar(dominios, escaneados)
+
+        ahora = datetime.now(UTC)
+        texto = render_watchlist_report(
+            [e.as_dict() for e in entradas],
+            counts=repo.counts(),
+            compromisos=compromisos,
+            generated_at=ahora,
+            filtros={"tipo": kind, "sector": sector, "estado": enabled, "búsqueda": q},
+        )
+        nombre = watchlist_filename(ahora, len(entradas))
+        return PlainTextResponse(
+            texto,
+            media_type="text/plain; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{nombre}"',
+                "X-Watchlist-Exported": str(len(entradas)),
+            },
         )
 
     @app.post(

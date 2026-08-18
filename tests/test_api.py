@@ -72,6 +72,61 @@ def client(settings: Settings, poblado: None) -> Iterator[TestClient]:
         yield c
 
 
+class TestExportWatchlist:
+    """Exportación de la watchlist, con el cruce contra los hallazgos."""
+
+    @pytest.fixture
+    def con_watchlist(self, client: TestClient) -> TestClient:
+        client.post(
+            "/api/watchlist",
+            json={"kind": "domain", "value": "salud.gob.ar", "sector": "salud", "critical": True},
+        )
+        client.post(
+            "/api/watchlist",
+            json={"kind": "keyword", "value": "ministerio", "sector": "salud"},
+        )
+        return client
+
+    def test_devuelve_texto_plano_descargable(self, con_watchlist: TestClient) -> None:
+        res = con_watchlist.get("/api/watchlist/export")
+        assert res.status_code == 200
+        assert res.headers["content-type"].startswith("text/plain")
+        assert res.headers["content-disposition"].startswith('attachment; filename="watchlist-')
+        assert res.headers["X-Watchlist-Exported"] == "2"
+
+    def test_sale_entera_sin_paginado(self, con_watchlist: TestClient) -> None:
+        """El listado pagina; el informe no: uno a medias no sirve de nada."""
+        texto = con_watchlist.get("/api/watchlist/export").text
+        assert "salud.gob.ar" in texto
+        assert "ministerio" in texto
+
+    def test_respeta_el_filtro_y_lo_declara(self, con_watchlist: TestClient) -> None:
+        texto = con_watchlist.get("/api/watchlist/export", params={"kind": "domain"}).text
+        assert "tipo=domain" in texto
+        assert "salud.gob.ar" in texto
+        assert "En el informe  : 1" in texto
+
+    def test_cruza_los_hallazgos_con_la_entrada(self, con_watchlist: TestClient) -> None:
+        """Es lo que convierte el listado en informe: qué de esto ya cayó."""
+        texto = con_watchlist.get("/api/watchlist/export").text
+        assert "Comprometidos alguna vez" in texto
+        assert "salud.gob.ar" in texto
+
+    def test_una_entrada_sin_historial_no_lo_finge(self, client: TestClient) -> None:
+        client.post(
+            "/api/watchlist",
+            json={"kind": "domain", "value": "nadie.gob.ar", "sector": "otros"},
+        )
+        texto = client.get("/api/watchlist/export", params={"q": "nadie"}).text
+        assert "nadie.gob.ar" in texto
+        assert "0 entradas cayeron alguna vez" in texto
+
+    def test_watchlist_vacia_devuelve_informe_no_error(self, client: TestClient) -> None:
+        res = client.get("/api/watchlist/export", params={"q": "no-existe-nada"})
+        assert res.status_code == 200
+        assert "La watchlist está vacía para este filtro." in res.text
+
+
 class TestExport:
     """Exportación a TXT de una selección de hallazgos."""
 
@@ -449,6 +504,7 @@ class TestBloqueoDeLaApi:
             ("get", "/api/rules"),
             ("post", "/api/runs"),
             ("post", "/api/findings/export"),
+            ("get", "/api/watchlist/export"),
         ],
     )
     def test_todo_devuelve_403(self, bloqueado: TestClient, metodo: str, ruta: str) -> None:

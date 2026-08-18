@@ -606,23 +606,13 @@ async function exportarSeleccion() {
   const ids = Array.from(state.selected);
   if (!ids.length) return;
 
-  const boton = $("export-txt");
-  boton.disabled = true;
-  boton.textContent = "Exportando…";
-  try {
+  await conBotonOcupado($("export-txt"), "Exportar TXT", async () => {
     const res = await fetch(new URL("/api/findings/export", window.location.origin), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids }),
     });
-    if (!res.ok) {
-      const data = await res.json().catch(() => null);
-      throw new Error((data && data.detail) || `HTTP ${res.status}`);
-    }
-
-    const exportados = Number(res.headers.get("X-Findings-Exported") || ids.length);
-    const blob = await res.blob();
-    descargarBlob(blob, nombreDeArchivo(res) || "hallazgos.txt");
+    const exportados = await bajarInforme(res, "hallazgos.txt", "X-Findings-Exported", ids.length);
 
     // Un id puede haber desaparecido entre que se tildó y se pidió el archivo:
     // se avisa en vez de entregar un informe corto en silencio.
@@ -632,12 +622,56 @@ async function exportarSeleccion() {
         : `Informe con ${exportados} hallazgos descargado.`,
       exportados < ids.length ? "warn" : "ok",
     );
+  });
+  renderSelection();
+}
+
+/**
+ * Exporta la watchlist con los filtros que estén puestos.
+ *
+ * Sin filtros baja entera, que es el caso normal. El informe declara en su
+ * encabezado cuál se aplicó, así un TXT parcial no se confunde con el total.
+ */
+async function exportarWatchlist() {
+  await conBotonOcupado($("wl-export"), "Exportar TXT", async () => {
+    const url = new URL("/api/watchlist/export", window.location.origin);
+    for (const [k, v] of Object.entries(wlFilters())) {
+      if (v !== "" && v !== null && v !== undefined) url.searchParams.set(k, v);
+    }
+    const res = await fetch(url);
+    const n = await bajarInforme(res, "watchlist.txt", "X-Watchlist-Exported", 0);
+    setStatus(`Watchlist exportada: ${n} entradas.`, "ok");
+  });
+}
+
+/** Deshabilita el botón mientras corre, y lo deja usable pase lo que pase. */
+async function conBotonOcupado(boton, rotulo, tarea) {
+  boton.disabled = true;
+  boton.textContent = "Exportando…";
+  try {
+    await tarea();
   } catch (err) {
     setStatus(`No se pudo exportar: ${err.message || err}`, "error");
   } finally {
-    boton.textContent = "Exportar TXT";
-    renderSelection();
+    boton.textContent = rotulo;
+    boton.disabled = false;
   }
+}
+
+/**
+ * Convierte la respuesta en una descarga. Devuelve cuántos ítems trajo.
+ *
+ * Los informes vuelven como texto, no como JSON: hay que mirar el header para
+ * saber qué entró, porque el cuerpo es el archivo.
+ */
+async function bajarInforme(res, porDefecto, headerConteo, esperados) {
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error((data && data.detail) || `HTTP ${res.status}`);
+  }
+  const cantidad = Number(res.headers.get(headerConteo) || esperados);
+  descargarBlob(await res.blob(), nombreDeArchivo(res) || porDefecto);
+  return cantidad;
 }
 
 /** Nombre que propuso el backend en el Content-Disposition. */
@@ -1487,6 +1521,7 @@ $("refresh").addEventListener("click", refreshNow);
 $("sel-page").addEventListener("change", (e) => togglePagina(e.target.checked));
 $("sel-clear").addEventListener("click", limpiarSeleccion);
 $("export-txt").addEventListener("click", exportarSeleccion);
+$("wl-export").addEventListener("click", exportarWatchlist);
 $("run-now").addEventListener("click", runNow);
 
 // -- Watchlist: alta y filtros
