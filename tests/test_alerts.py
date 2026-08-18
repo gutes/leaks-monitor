@@ -226,3 +226,68 @@ class TestUmbralConfigurable:
         """Falla al arrancar, no en la primera alerta."""
         with pytest.raises(ValueError, match="alert_min_severity"):
             Settings(alert_min_severity="urgentisimo")
+
+
+class TestNoSeAlertaLoViejo:
+    """El objetivo operativo del arreglo de frescura.
+
+    Sin esto, la importación inicial de una fuente disparaba una alerta por
+    cada hallazgo histórico: 230 avisos de cosas que pasaron entre 2020 y 2026.
+    """
+
+    def _finding(self, **extra: object) -> object:
+        return make_finding(severity=Severity.CRITICAL, **extra)  # type: ignore[arg-type]
+
+    def test_no_se_alerta_la_importacion_inicial(
+        self, repository: SqlAlchemyFindingRepository
+    ) -> None:
+        from datetime import UTC, datetime
+
+        repository.upsert_many(
+            [
+                make_finding(
+                    victim_domain="a.gob.ar",
+                    severity=Severity.CRITICAL,
+                ).model_copy(update={"backfill": True, "occurred_at": datetime.now(UTC)})
+            ]
+        )
+        assert repository.list_pending_alerts(min_severity="high", limit=50) == []
+
+    def test_no_se_alerta_un_evento_viejo(self, repository: SqlAlchemyFindingRepository) -> None:
+        from datetime import UTC, datetime, timedelta
+
+        viejo = datetime.now(UTC) - timedelta(days=400)
+        repository.upsert_many(
+            [
+                make_finding(victim_domain="b.gob.ar", severity=Severity.CRITICAL).model_copy(
+                    update={"occurred_at": viejo}
+                )
+            ]
+        )
+        pendientes = repository.list_pending_alerts(min_severity="high", limit=50, max_age_days=30)
+        assert pendientes == []
+
+    def test_si_se_alerta_lo_reciente(self, repository: SqlAlchemyFindingRepository) -> None:
+        from datetime import UTC, datetime, timedelta
+
+        reciente = datetime.now(UTC) - timedelta(days=2)
+        repository.upsert_many(
+            [
+                make_finding(victim_domain="c.gob.ar", severity=Severity.CRITICAL).model_copy(
+                    update={"occurred_at": reciente}
+                )
+            ]
+        )
+        pendientes = repository.list_pending_alerts(min_severity="high", limit=50, max_age_days=30)
+        assert len(pendientes) == 1
+
+    def test_sin_fecha_no_se_alerta(self, repository: SqlAlchemyFindingRepository) -> None:
+        """Si no se pudo fechar, no se puede afirmar que sea reciente."""
+        repository.upsert_many(
+            [
+                make_finding(victim_domain="d.gob.ar", severity=Severity.CRITICAL).model_copy(
+                    update={"occurred_at": None}
+                )
+            ]
+        )
+        assert repository.list_pending_alerts(min_severity="high", limit=50, max_age_days=30) == []

@@ -138,6 +138,31 @@ Los enlaces se extraen del **HTML crudo** del post —viven en atributos `href` 
 `src`, así que quitar las etiquetas se los lleva puestos— y se guardan aunque el
 cuerpo del post se descarte por contener PII.
 
+### Antigüedad de los hallazgos
+
+El tablero distingue **cuándo ocurrió** un leak de **cuándo lo vimos**, que no
+es lo mismo: una fuente que recién agregás trae su histórico entero y todo
+parecería novedad del día.
+
+La columna *Ocurrió* muestra la fecha del evento, con un chip de `reciente` /
+`histórico` / `sin fecha`, y el detalle completo en el tooltip (qué declaró el
+feed, cuándo lo vimos nosotros, de dónde salió la fecha).
+
+La fecha se resuelve por cascada, todo en código: lo que declara la fuente → el
+año embebido en el título (los foros titulan `[2.1TB][2026] …`) → lo que aportó
+otra fuente para el mismo dominio. **Si no se puede fechar, dice "sin fecha".**
+Nunca se rellena con la fecha de la consulta: una fecha inventada es creíble y
+contamina el orden, las alertas y cualquier cálculo de recencia.
+
+Dos consecuencias prácticas:
+
+- **La importación inicial de una fuente no alerta.** Se detecta porque no
+  había cursor previo y se marca como tal. Sin eso, activar una fuente con
+  histórico disparaba un aviso por cada hallazgo viejo.
+- **No se avisa de eventos viejos** (`LEAKS_ALERT_MAX_AGE_DAYS`, default 30), ni
+  de los que no se pudieron fechar: si no se puede afirmar que es reciente, no
+  se alerta.
+
 ### Catálogo de sitios de leaks
 
 Los grupos rotan de dominio permanentemente. Los feeds que ya consumimos

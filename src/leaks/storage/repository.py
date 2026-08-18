@@ -7,10 +7,10 @@ esta clase: cambiar de motor no obliga a reescribir el core.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
-from sqlalchemy import CursorResult, select, update
+from sqlalchemy import CursorResult, func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from leaks.domain.models import (
@@ -21,6 +21,7 @@ from leaks.domain.models import (
     Severity,
     SourceRunResult,
 )
+from leaks.extraction.dating import DateBasis
 from leaks.extraction.downloads import DownloadLink
 from leaks.storage.models import FindingRow, SourceRunRow, SourceStateRow
 from leaks.storage.session import session_scope
@@ -60,11 +61,13 @@ class SqlAlchemyFindingRepository:
             # sirve: en una columna JSON, SQLAlchemy le da a NULL una
             # semántica propia y la condición no matchea.)
             existing = {
-                fila.dedup_hash: fila.download_links
+                fila.dedup_hash: fila
                 for fila in session.execute(
-                    select(FindingRow.dedup_hash, FindingRow.download_links).where(
-                        FindingRow.dedup_hash.in_(list(unique))
-                    )
+                    select(
+                        FindingRow.dedup_hash,
+                        FindingRow.download_links,
+                        FindingRow.occurred_at,
+                    ).where(FindingRow.dedup_hash.in_(list(unique)))
                 ).all()
             }
 
@@ -75,10 +78,17 @@ class SqlAlchemyFindingRepository:
                     # cuerpo del post se edita después de publicado, y los
                     # hallazgos anteriores a esta columna los tienen vacíos.
                     # No se pisan los que ya estaban registrados.
-                    if finding.download_links and not existing[dedup_hash]:
+                    previo = existing[dedup_hash]
+                    if finding.download_links and not previo.download_links:
                         valores["download_links"] = [
                             {"url": link.url, "kind": link.kind} for link in finding.download_links
                         ]
+                    # Un hallazgo sin fechar puede *adquirir* fecha: la fuente
+                    # empezó a informarla, o la migración limpió una inventada.
+                    # No se pisa una fecha que ya estaba.
+                    if finding.occurred_at is not None and previo.occurred_at is None:
+                        valores["occurred_at"] = finding.occurred_at
+                        valores["occurred_at_basis"] = str(finding.occurred_at_basis)
                     session.execute(
                         update(FindingRow)
                         .where(FindingRow.dedup_hash == dedup_hash)
@@ -108,6 +118,9 @@ class SqlAlchemyFindingRepository:
             ar_match_detail=finding.ar_match_detail or None,
             severity=str(finding.severity),
             description=finding.description,
+            occurred_at=finding.occurred_at,
+            occurred_at_basis=str(finding.occurred_at_basis),
+            backfill=finding.backfill,
             download_links=[{"url": link.url, "kind": link.kind} for link in finding.download_links]
             or None,
             first_seen_at=now,
@@ -119,9 +132,24 @@ class SqlAlchemyFindingRepository:
         with session_scope(self._session_factory) as session:
             return len(session.scalars(select(FindingRow.id)).all())
 
+    def earliest_occurrence(self, victim_domain: str) -> datetime | None:
+        """La fecha de evento más antigua registrada para ese dominio."""
+        if not victim_domain:
+            return None
+        with session_scope(self._session_factory) as session:
+            valor = session.scalar(
+                select(func.min(FindingRow.occurred_at)).where(
+                    FindingRow.victim_domain == victim_domain,
+                    FindingRow.occurred_at.is_not(None),
+                )
+            )
+            return _as_utc(valor) if valor else None
+
     # -- Alertas -------------------------------------------------------------
 
-    def list_pending_alerts(self, *, min_severity: str, limit: int) -> list[Finding]:
+    def list_pending_alerts(
+        self, *, min_severity: str, limit: int, max_age_days: int | None = None
+    ) -> list[Finding]:
         """Hallazgos que llegan al umbral y todavía no se avisaron.
 
         El criterio es `alerted_at IS NULL`, no "insertado en esta corrida": si
@@ -132,15 +160,25 @@ class SqlAlchemyFindingRepository:
         alcanzan = [s for s, rango in SEVERITY_RANK.items() if rango >= piso]
 
         with session_scope(self._session_factory) as session:
-            filas = session.scalars(
-                select(FindingRow)
-                .where(
-                    FindingRow.alerted_at.is_(None),
-                    FindingRow.severity.in_(alcanzan),
+            stmt = select(FindingRow).where(
+                FindingRow.alerted_at.is_(None),
+                FindingRow.severity.in_(alcanzan),
+                # La importación inicial de una fuente trae su histórico
+                # entero: son hallazgos que recién conocemos, no que recién
+                # pasaron. Avisarlos sería spam el primer día.
+                FindingRow.backfill.is_(False),
+            )
+
+            if max_age_days is not None:
+                # Tampoco se avisa de lo viejo. Sin fecha NO se alerta: si no
+                # se pudo fechar, no se puede afirmar que sea reciente.
+                limite = datetime.now(UTC) - timedelta(days=max_age_days)
+                stmt = stmt.where(
+                    FindingRow.occurred_at.is_not(None),
+                    FindingRow.occurred_at >= limite,
                 )
-                .order_by(FindingRow.discovered_at.desc())
-                .limit(limit)
-            ).all()
+
+            filas = session.scalars(stmt.order_by(FindingRow.occurred_at.desc()).limit(limit)).all()
             return [self._to_finding(f) for f in filas]
 
     def mark_alerted(self, dedup_hashes: Sequence[str]) -> int:
@@ -178,6 +216,9 @@ class SqlAlchemyFindingRepository:
             ar_match_detail=row.ar_match_detail or {},
             severity=Severity(row.severity),
             dedup_hash=row.dedup_hash,
+            occurred_at=_as_utc(row.occurred_at) if row.occurred_at else None,
+            occurred_at_basis=DateBasis(row.occurred_at_basis or "sin_dato"),
+            backfill=bool(row.backfill),
             download_links=tuple(
                 DownloadLink(url=d["url"], kind=d.get("kind", "unknown"))  # type: ignore[arg-type]
                 for d in (row.download_links or [])

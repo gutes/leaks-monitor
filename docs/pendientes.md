@@ -8,6 +8,21 @@ cobertura, imagen Docker verificada, 216 hallazgos argentinos reales en la base,
 
 ## 0. Lo último que se hizo
 
+### Sesión 5 (2026-08-18) — frescura
+
+Se separó **cuándo ocurrió** de **cuándo lo vimos**. Hudson Rock fechaba todo
+con `now()` (14/14 de sus hallazgos parecían de hoy) porque el adapter asumía
+que el proveedor no fechaba: sí fecha, en `last_employee_compromised` y
+`last_user_compromised`, campos que además estaban mal clasificados como PII
+—son timestamps—. Verificado tras el arreglo: `registro-ejemplo.gob.ar` fechado en mayo,
+`nuclear-ejemplo.gob.ar` el 9 de agosto, en vez de todos hoy.
+
+Además: la importación inicial de una fuente se detecta y no alerta, y no se
+avisa de eventos viejos ni de los que no se pudieron fechar.
+
+**Pendiente inmediato:** la Parte 2 del plan (sección "Leaks adyacentes"),
+diseñada y aprobada. Ver `~/.claude/plans/`.
+
 ### Sesión 3 (2026-08-15)
 
 - **El tablero se partió en 5 pantallas** con menú (router por hash), cada una

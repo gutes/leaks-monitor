@@ -66,16 +66,30 @@ class FindingRepository(Protocol):
         """Guarda la telemetría de una fuente dentro de un run."""
         ...
 
-    def list_pending_alerts(self, *, min_severity: str, limit: int) -> list[Finding]:
+    def list_pending_alerts(
+        self, *, min_severity: str, limit: int, max_age_days: int | None = None
+    ) -> list[Finding]:
         """Hallazgos que llegan al umbral y todavía no se avisaron.
 
         Pendiente es `alerted_at IS NULL`: si un envío falla, el hallazgo se
         reintenta en la corrida siguiente en vez de perderse.
+
+        Nunca incluye los de importación inicial ni, con `max_age_days`, los
+        eventos viejos: son cosas que recién conocemos, no que recién pasaron.
         """
         ...
 
     def mark_alerted(self, dedup_hashes: Sequence[str]) -> int:
         """Marca hallazgos como avisados. Solo se llama tras un envío exitoso."""
+        ...
+
+    def earliest_occurrence(self, victim_domain: str) -> datetime | None:
+        """Fecha más antigua que ya tenemos para ese dominio, de cualquier fuente.
+
+        Corrobora el fechado: si otro feed ya ubicó el mismo evento antes, esa
+        fecha es mejor que ninguna. El evento es uno solo aunque lo reporten
+        varios.
+        """
         ...
 
     def get_cursor(self, source: str) -> datetime | None:

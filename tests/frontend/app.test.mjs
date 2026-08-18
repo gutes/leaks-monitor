@@ -309,3 +309,68 @@ test("la consola no pierde líneas al recibir un lote", async () => {
   // La más reciente va arriba.
   assert.ok(texto.indexOf("segunda") < texto.indexOf("primera"), "la más nueva va primero");
 });
+
+/* ------------------------------------------------------------- Frescura */
+
+test("muestra la fecha del evento y no la de importación", async () => {
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/hallazgos",
+    respuestas: {
+      ...RESPUESTAS_BASE,
+      "/api/findings": {
+        items: [
+          hallazgo({
+            occurred_at: "2022-03-15T00:00:00Z",
+            occurred_at_basis: "feed",
+            discovered_at: "2026-08-18T00:00:00Z",
+            first_seen_at: "2026-08-18T00:00:00Z",
+          }),
+        ],
+        total: 1,
+        limit: 50,
+        offset: 0,
+      },
+    },
+  });
+
+  const texto = textoDe(el("findings-body"));
+  assert.match(texto, /2022-03-15/, "tiene que verse cuándo ocurrió");
+  assert.match(texto, /histórico/, "y clasificarse como histórico, no como nuevo");
+});
+
+test("un hallazgo sin fecha lo dice, no la inventa", async () => {
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/hallazgos",
+    respuestas: {
+      ...RESPUESTAS_BASE,
+      "/api/findings": {
+        items: [hallazgo({ occurred_at: null, occurred_at_basis: "sin_dato" })],
+        total: 1,
+        limit: 50,
+        offset: 0,
+      },
+    },
+  });
+
+  assert.match(textoDe(el("findings-body")), /sin fecha/);
+});
+
+test("la importación inicial se marca como tal", async () => {
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/hallazgos",
+    respuestas: {
+      ...RESPUESTAS_BASE,
+      "/api/findings": {
+        items: [hallazgo({ occurred_at: "2021-01-01T00:00:00Z", backfill: true })],
+        total: 1,
+        limit: 50,
+        offset: 0,
+      },
+    },
+  });
+
+  assert.match(textoDe(el("findings-body")), /importación inicial/);
+});

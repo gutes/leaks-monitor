@@ -11,6 +11,8 @@
  */
 
 const PAGE_SIZE = 50;
+/** Días para considerar reciente un evento. Espeja LEAKS_FRESHNESS_DAYS. */
+const FRESH_DAYS = 30;
 /** Filas por página en la watchlist. */
 const WL_PAGE_SIZE = 50;
 /** Vistas válidas del router. La primera es el default. */
@@ -109,6 +111,21 @@ function fmtBytes(n) {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * Reciente / histórico según los días transcurridos.
+ *
+ * El vocabulario coincide con el del filtro a propósito: si el chip dijera "4a"
+ * y el filtro "histórico", el usuario no podría relacionarlos. A lo viejo se le
+ * agrega la antigüedad, que es la información que de verdad importa.
+ */
+function freshnessLabel(iso) {
+  const dias = (Date.now() - new Date(iso).getTime()) / 86400000;
+  if (Number.isNaN(dias)) return { texto: "sin fecha", tono: "skipped" };
+  if (dias <= FRESH_DAYS) return { texto: "reciente", tono: "ok" };
+  if (dias <= 365) return { texto: "histórico", tono: "skipped" };
+  return { texto: `histórico · ${Math.floor(dias / 365)}a`, tono: "skipped" };
 }
 
 function fmtDate(iso) {
@@ -280,7 +297,27 @@ async function loadFilterOptions() {
 function renderRow(f) {
   const tr = document.createElement("tr");
 
-  tr.append(el("td", fmtDate(f.discovered_at)));
+  // La fecha del EVENTO, no la de importación. Sin fecha se dice "sin fecha":
+  // fingir una es lo que hacía ver el histórico como novedad del día.
+  const cuando = el("td");
+  if (f.occurred_at) {
+    cuando.append(el("div", fmtDate(f.occurred_at)));
+    const etiqueta = freshnessLabel(f.occurred_at);
+    cuando.append(el("span", etiqueta.texto, `pill pill-${etiqueta.tono}`));
+  } else {
+    cuando.append(el("span", "sin fecha", "pill pill-skipped"));
+  }
+  if (f.backfill) {
+    const marca = el("div", "importación inicial", "hint");
+    marca.title = "Entró con el histórico de su fuente: no es una novedad.";
+    cuando.append(marca);
+  }
+  cuando.title = [
+    f.occurred_at ? `Ocurrió: ${fmtDate(f.occurred_at)} (según ${f.occurred_at_basis})` : "Sin fecha de evento",
+    `Lo declaró el feed: ${fmtDate(f.discovered_at)}`,
+    `Lo vimos: ${fmtDate(f.first_seen_at)}`,
+  ].join("\n");
+  tr.append(cuando);
 
   const victima = el("td");
   victima.append(el("div", f.victim_name, "victim-name"));
@@ -1177,6 +1214,7 @@ function readFilters() {
     source: $("f-source").value,
     sector: $("f-sector").value,
     severity: $("f-severity").value,
+    freshness: $("f-freshness").value,
     // La API espera datetime ISO; el input date da solo la fecha.
     since: since ? `${since}T00:00:00Z` : "",
     until: until ? `${until}T23:59:59Z` : "",

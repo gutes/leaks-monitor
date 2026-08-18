@@ -268,3 +268,58 @@ class TestHudsonRock:
         """Documenta qué campos se dejan afuera a propósito."""
         assert "employees" in PII_KEYS
         assert "credentials" in PII_KEYS
+
+
+class TestFechadoDeHudsonRock:
+    """Regresión: el adapter fechaba todo con `now()` y su histórico se veía
+    como novedad del día. El proveedor sí manda fechas; las ignorábamos."""
+
+    def test_usa_la_fecha_real_del_compromiso(self, client: FeedHttpClient) -> None:
+        item = HudsonRockAdapter(client, domains=()).normalize(
+            RawItem(
+                source="hudsonrock",
+                payload={
+                    "_queried_domain": "prevision-ejemplo.gob.ar",
+                    "total": 5,
+                    "last_employee_compromised": "2026-05-26T16:57:25.000Z",
+                    "last_user_compromised": "1970-01-01T00:00:00.000Z",
+                },
+            )
+        )
+        assert item is not None
+        assert item.occurred_at is not None
+        assert item.occurred_at.year == 2026
+        assert item.occurred_at.month == 5
+
+    def test_el_centinela_epoch_no_fecha_nada(self, client: FeedHttpClient) -> None:
+        """1970 es "sin dato" del proveedor, no un leak de los setenta."""
+        item = HudsonRockAdapter(client, domains=()).normalize(
+            RawItem(
+                source="hudsonrock",
+                payload={
+                    "_queried_domain": "x.gob.ar",
+                    "total": 3,
+                    "last_employee_compromised": "1970-01-01T00:00:00.000Z",
+                    "last_user_compromised": "1970-01-01T00:00:00.000Z",
+                },
+            )
+        )
+        assert item is not None
+        assert item.occurred_at is None, "sin fecha creíble, se dice sin fecha"
+
+    def test_sin_campos_de_fecha_no_inventa(self, client: FeedHttpClient) -> None:
+        """El corazón del bug: antes acá se ponía `now()`."""
+        item = HudsonRockAdapter(client, domains=()).normalize(
+            RawItem(source="hudsonrock", payload={"_queried_domain": "x.gob.ar", "total": 2})
+        )
+        assert item is not None
+        assert item.occurred_at is None
+
+    def test_los_campos_de_fecha_ya_no_estan_en_pii_keys(self) -> None:
+        """Eran timestamps, no identidades: la suposición estaba mal."""
+        from leaks.adapters.hudson_rock import DATE_KEYS
+
+        assert "last_employee_compromised" not in PII_KEYS
+        assert "last_employee_compromised" in DATE_KEYS
+        # Lo que sí es PII sigue estándolo.
+        assert "credentials" in PII_KEYS

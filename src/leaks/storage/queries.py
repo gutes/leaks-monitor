@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import Select, func, select
@@ -42,6 +42,10 @@ class FindingFilters:
     until: datetime | None = None
     #: Búsqueda por texto sobre nombre y dominio de la víctima.
     q: str | None = None
+    #: `reciente`, `historico` o `sin_fecha`. Se calcula sobre `occurred_at`.
+    freshness: str | None = None
+    #: Umbral en días para decidir qué es reciente.
+    fresh_days: int = 30
 
 
 @dataclass(frozen=True)
@@ -98,6 +102,21 @@ class FindingQueryService:
             stmt = stmt.where(FindingRow.discovered_at >= filters.since)
         if filters.until:
             stmt = stmt.where(FindingRow.discovered_at <= filters.until)
+        if filters.freshness:
+            # La frescura se filtra sobre la fecha del EVENTO, no sobre cuándo
+            # lo importamos: es toda la diferencia que introdujo este cambio.
+            limite = datetime.now(UTC) - timedelta(days=filters.fresh_days)
+            if filters.freshness == "reciente":
+                stmt = stmt.where(
+                    FindingRow.occurred_at.is_not(None), FindingRow.occurred_at >= limite
+                )
+            elif filters.freshness == "historico":
+                stmt = stmt.where(
+                    FindingRow.occurred_at.is_not(None), FindingRow.occurred_at < limite
+                )
+            elif filters.freshness == "sin_fecha":
+                stmt = stmt.where(FindingRow.occurred_at.is_(None))
+
         if filters.q:
             # `q` viene de la query string: va como parámetro ligado, nunca
             # interpolado. El escape de comodines evita que un `%` del usuario
@@ -128,6 +147,9 @@ class FindingQueryService:
             "ar_match_detail": row.ar_match_detail or {},
             "severity": row.severity,
             "description": row.description,
+            "occurred_at": _as_utc(row.occurred_at) if row.occurred_at else None,
+            "occurred_at_basis": row.occurred_at_basis or "sin_dato",
+            "backfill": bool(row.backfill),
             "download_links": row.download_links or [],
             "first_seen_at": _as_utc(row.first_seen_at),
             "last_seen_at": _as_utc(row.last_seen_at),

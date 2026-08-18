@@ -450,3 +450,69 @@ class TestBitacoraDeActividad:
         # La corrida termina bien y el hallazgo se persiste igual.
         assert reporte.ok
         assert reporte.total_new == 1
+
+
+class TestImportacionInicialYFechado:
+    """La primera corrida de una fuente trae su histórico entero.
+
+    Son hallazgos que recién conocemos, no que recién pasaron. Sin la marca de
+    backfill, cada uno dispararía una alerta el primer día.
+    """
+
+    def test_la_primera_corrida_marca_backfill(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+        session_factory: sessionmaker[Session],
+    ) -> None:
+        from leaks.storage.models import FindingRow
+
+        runner = PipelineRunner(repository=repository, watchlist=watchlist, settings=settings)
+        runner.run([(spec_for(FakeAdapter([payload_ar()])), None)])
+
+        with session_factory() as session:
+            fila = session.query(FindingRow).one()
+        assert fila.backfill is True, "sin cursor previo = importación inicial"
+
+    def test_la_segunda_corrida_ya_no(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+        session_factory: sessionmaker[Session],
+    ) -> None:
+        from leaks.storage.models import FindingRow
+
+        ayer = datetime(2026, 8, 17, 12, 0, tzinfo=UTC)
+        hoy = datetime(2026, 8, 18, 12, 0, tzinfo=UTC)
+
+        runner = PipelineRunner(repository=repository, watchlist=watchlist, settings=settings)
+        runner.run([(spec_for(FakeAdapter([payload_ar(discovered=ayer)])), None)])
+
+        # Ya hay cursor: lo que entra ahora es novedad genuina.
+        segundo = FakeAdapter([payload_ar("Ministerio Y", "y.gob.ar", discovered=hoy)])
+        runner.run([(spec_for(segundo), None)])
+
+        with session_factory() as session:
+            nuevo = session.query(FindingRow).filter(FindingRow.victim_domain == "y.gob.ar").one()
+        assert nuevo.backfill is False
+
+    def test_se_fecha_con_lo_que_declara_la_fuente(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+        session_factory: sessionmaker[Session],
+    ) -> None:
+        from leaks.storage.models import FindingRow
+
+        cuando = datetime(2023, 4, 5, tzinfo=UTC)
+        runner = PipelineRunner(repository=repository, watchlist=watchlist, settings=settings)
+        runner.run([(spec_for(FakeAdapter([payload_ar(discovered=cuando)])), None)])
+
+        with session_factory() as session:
+            fila = session.query(FindingRow).one()
+        assert fila.occurred_at is not None
+        assert fila.occurred_at.year == 2023, "la fecha del evento, no la de importación"
+        assert fila.occurred_at_basis == "feed"

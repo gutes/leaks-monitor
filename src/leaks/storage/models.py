@@ -70,6 +70,16 @@ class FindingRow(Base):
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
+    #: Cuándo ocurrió el evento (mejor estimación), contra `first_seen_at` que
+    #: es cuándo lo vimos nosotros. `NULL` = no se pudo fechar, y se muestra
+    #: como tal en vez de aparentar una fecha.
+    occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: De dónde salió esa fecha: `feed`, `texto`, `corroboracion`, `sin_dato`.
+    occurred_at_basis: Mapped[str | None] = mapped_column(String(16))
+    #: Entró en la importación inicial de su fuente: histórico que recién
+    #: conocemos. No dispara alertas.
+    backfill: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     #: Cuándo se avisó de este hallazgo. `NULL` = pendiente de alertar.
     #: Es lo que hace que no se alerte dos veces lo mismo, y que una alerta que
     #: falló se reintente en la corrida siguiente en vez de perderse.
@@ -83,6 +93,7 @@ class FindingRow(Base):
         Index("ix_findings_actor", "actor"),
         Index("ix_findings_severity", "severity"),
         Index("ix_findings_alerted_at", "alerted_at"),
+        Index("ix_findings_occurred_at", "occurred_at"),
     )
 
 

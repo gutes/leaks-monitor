@@ -102,6 +102,14 @@
         <label>Severidad
           <select id="f-severity" name="severity"><option value="">Todas</option></select>
         </label>
+        <label>Antigüedad
+          <select id="f-freshness" name="freshness">
+            <option value="">Toda</option>
+            <option value="reciente">Reciente</option>
+            <option value="historico">Histórico</option>
+            <option value="sin_fecha">Sin fecha</option>
+          </select>
+        </label>
         <label>Desde
           <input type="date" id="f-since" name="since" />
         </label>
@@ -118,7 +126,7 @@
         <table id="findings">
           <thead>
             <tr>
-              <th>Descubierto</th>
+              <th title="Cuándo ocurrió el leak, no cuándo lo importamos">Ocurrió</th>
               <th>Víctima</th>
               <th>Sector</th>
               <th>Actor</th>

@@ -214,6 +214,7 @@ def create_app(
         since: datetime | None = None,
         until: datetime | None = None,
         q: Annotated[str | None, Query(max_length=200)] = None,
+        freshness: Annotated[str | None, Query(pattern="^(reciente|historico|sin_fecha)$")] = None,
         limit: Annotated[int, Query(ge=1)] = 50,
         offset: Annotated[int, Query(ge=0)] = 0,
     ) -> FindingPage:
@@ -233,6 +234,8 @@ def create_app(
                 since=since,
                 until=until,
                 q=q,
+                freshness=freshness,
+                fresh_days=config.freshness_days,
             ),
             limit=acotado,
             offset=offset,

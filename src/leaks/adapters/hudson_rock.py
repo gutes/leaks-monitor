@@ -23,10 +23,6 @@ resuelta. Quién la arma es una decisión de quien despliega, y hay dos caminos:
 Lo que se persiste en `findings` son CONTEOS, nunca identidades: cuántos
 empleados y cuántos usuarios aparecen comprometidos. Los emails y credenciales
 que devuelva el proveedor viajan al vault cifrado y solo si `STORE_PII=true`.
-
-Lo que se persiste en `findings` son CONTEOS, nunca identidades: cuántos
-empleados y cuántos usuarios aparecen comprometidos. Los emails y credenciales
-que devuelva el proveedor viajan al vault cifrado y solo si `STORE_PII=true`.
 """
 
 from __future__ import annotations
@@ -38,6 +34,7 @@ from typing import Any
 
 from leaks.adapters.http import FeedHttpClient
 from leaks.domain.models import LeakType, NormalizedItem, RawItem
+from leaks.extraction.dating import newest_sane
 from leaks.pipeline.egress_guard import EgressBlockedError
 
 BASE_URL = "https://cavalier.hudsonrock.com/api/json/v2/osint-tools"
@@ -61,10 +58,14 @@ PII_KEYS = frozenset(
         "data",
         "logs",
         "credentials",
-        "last_employee_compromised",
-        "last_user_compromised",
     }
 )
+
+#: Campos de fecha del proveedor. Estuvieron en `PII_KEYS` por una suposición
+#: equivocada —el nombre sugiere una identidad, pero el valor es un timestamp
+#: ISO— y por eso el adapter fechaba todo con `now()` y el histórico se veía
+#: como novedad del día. Se usan para fechar, nunca se persisten como texto.
+DATE_KEYS = ("last_employee_compromised", "last_user_compromised")
 
 
 def _as_count(value: Any) -> int | None:
@@ -141,6 +142,13 @@ class HudsonRockAdapter:
             # Dominio limpio: no es un hallazgo, no se persiste nada.
             return None
 
+        # El proveedor SÍ fecha: informa el último compromiso de empleados y el
+        # de usuarios por separado, y deja el centinela epoch en el que no
+        # aplica. Se toma el más reciente de los dos. Si no hay ninguno
+        # creíble, el hallazgo queda sin fecha de evento — nunca `now()`, que
+        # es lo que hacía ver todo el histórico como nuevo.
+        ocurrido = newest_sane(*(payload.get(k) for k in DATE_KEYS))
+
         return NormalizedItem(
             source=self.name,
             leak_type=self.leak_type,
@@ -149,8 +157,9 @@ class HudsonRockAdapter:
             country=None,
             sector=None,
             actor=None,
-            # El proveedor no fecha el agregado: la fecha es la de la consulta.
+            # `discovered_at` es cuándo lo supimos: la consulta es hoy.
             discovered_at=datetime.now(UTC),
+            occurred_at=ocurrido,
             published_at=None,
             raw_ref=f"{self._base_url}/search-by-domain?domain={dominio}",
             # Texto derivado por nosotros a partir de conteos: sin PII por

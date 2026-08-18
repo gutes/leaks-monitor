@@ -33,6 +33,7 @@ from leaks.domain.models import (
     SourceRunStatus,
 )
 from leaks.domain.ports import EventSink, FindingRepository
+from leaks.extraction.dating import resolve
 from leaks.extraction.downloads import extract_download_links
 from leaks.pipeline.egress_guard import EgressBlockedError, EgressDecision, EgressGuard
 from leaks.privacy.scrub import redact_pii, scrub_free_text
@@ -286,6 +287,7 @@ class PipelineRunner:
         pendientes = self._repository.list_pending_alerts(
             min_severity=self._settings.alert_min_severity,
             limit=self._settings.alert_max_per_run,
+            max_age_days=self._settings.alert_max_age_days,
         )
         if not pendientes:
             return 0
@@ -437,6 +439,11 @@ class PipelineRunner:
                 self._feed_deps,
             )
             desde = self._repository.get_cursor(spec.name)
+            # Sin cursor previo, esta corrida es la importación inicial de la
+            # fuente: entra su histórico entero de golpe. Son hallazgos que
+            # recién conocemos, no novedades — y sin esta marca dispararían una
+            # alerta cada uno.
+            es_importacion_inicial = desde is None
             hallazgos: list[Finding] = []
             # Se guarda el crudo junto al hallazgo solo para las fuentes que
             # declaran PII, y solo para mandarlo cifrado al vault más abajo.
@@ -456,7 +463,7 @@ class PipelineRunner:
                 if cursor_nuevo is None or item.discovered_at > cursor_nuevo:
                     cursor_nuevo = item.discovered_at
 
-                hallazgo = self._to_finding(item, spec)
+                hallazgo = self._to_finding(item, spec, backfill=es_importacion_inicial)
                 if hallazgo is None:
                     continue
 
@@ -550,8 +557,10 @@ class PipelineRunner:
 
     # -- Relevancia + privacidad --------------------------------------------
 
-    def _to_finding(self, item: NormalizedItem, spec: FeedSpec) -> Finding | None:
-        """Aplica relevancia AR y privacidad. `None` = no es hallazgo argentino."""
+    def _to_finding(
+        self, item: NormalizedItem, spec: FeedSpec, *, backfill: bool = False
+    ) -> Finding | None:
+        """Aplica relevancia AR, privacidad y fechado. `None` = no es argentino."""
         veredicto = evaluate(item, self._watchlist, self._enabled_rules)
         if not veredicto.is_match:
             return None
@@ -582,11 +591,29 @@ class PipelineRunner:
         if spec.high_pii_surface:
             nombre = redact_pii(nombre) or nombre
 
+        # Cuándo OCURRIÓ, que no es cuándo lo vimos. El adapter puede haberlo
+        # resuelto ya; si no, se intenta con el año del título y con lo que
+        # haya aportado otra fuente para el mismo dominio. Si no hay nada, el
+        # hallazgo queda sin fecha y se dice — no se inventa.
+        corroborada = (
+            self._repository.earliest_occurrence(item.victim_domain) if item.victim_domain else None
+        )
+        ocurrido, base = resolve(
+            feed_date=item.occurred_at or item.discovered_at,
+            texts=(item.victim_name, item.description),
+            corroborated=corroborada,
+        )
+
         return Finding(
-            **item.model_dump(exclude={"description", "victim_name", "download_links"}),
+            **item.model_dump(
+                exclude={"description", "victim_name", "download_links", "occurred_at"}
+            ),
             victim_name=nombre,
             description=descripcion,
             download_links=enlaces,
+            occurred_at=ocurrido,
+            occurred_at_basis=base,
+            backfill=backfill,
             ar_match_reason=veredicto.reasons,
             ar_match_detail=veredicto.detail,
             severity=derive_severity(veredicto, item.leak_type),

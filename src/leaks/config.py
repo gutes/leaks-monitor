@@ -92,6 +92,13 @@ class Settings(BaseSettings):
     alert_telegram_chat_id: str = ""
     #: Tope de hallazgos por mensaje; el resto queda para el próximo.
     alert_max_per_run: int = Field(default=50, ge=1)
+    #: No avisar de eventos más viejos que esto. Evita el chubasco de alertas
+    #: cuando una fuente importa su histórico: son cosas que recién conocemos,
+    #: no cosas que recién pasaron.
+    alert_max_age_days: int = Field(default=30, ge=1)
+
+    #: Umbral para clasificar un hallazgo como reciente o histórico.
+    freshness_days: int = Field(default=30, ge=1)
 
     # --- IP de salida (verificación de VPN) ---------------------------------
     #: Consultar la IP pública de salida. Apagarlo deja el badge en desconocido

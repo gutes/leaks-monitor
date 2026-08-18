@@ -33,6 +33,14 @@ class FindingOut(BaseModel):
     ar_match_detail: dict[str, list[str]] = Field(default_factory=dict)
     severity: str
     description: str | None = None
+    #: Cuándo ocurrió el evento (mejor estimación), contra `first_seen_at` que
+    #: es cuándo lo vimos. `None` = no se pudo fechar, y se dice.
+    occurred_at: datetime | None = None
+    #: De dónde salió esa fecha: feed, texto, corroboracion o sin_dato.
+    occurred_at_basis: str = "sin_dato"
+    #: Entró en la importación inicial de su fuente: histórico que recién
+    #: conocemos, no una novedad.
+    backfill: bool = False
     #: Referencias a los datos filtrados y a las muestras: `[{url, kind}]`.
     #: El frontend las muestra NO clickeables, para copiar y pegar.
     download_links: list[dict[str, str]] = Field(default_factory=list)

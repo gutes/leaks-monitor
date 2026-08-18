@@ -18,6 +18,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from leaks.extraction.dating import DateBasis
 from leaks.extraction.downloads import DownloadLink
 
 
@@ -96,8 +97,11 @@ class NormalizedItem(BaseModel):
     #: Referencias a los datos filtrados (magnet, torrent, file hosts) y a las
     #: muestras. Se guardan como referencia; nunca se descarga el contenido.
     download_links: tuple[DownloadLink, ...] = ()
+    #: Cuándo ocurrió el evento, no cuándo lo vimos. `None` = no se pudo
+    #: fechar, y eso se dice: nunca se rellena con la fecha de la consulta.
+    occurred_at: datetime | None = None
 
-    @field_validator("discovered_at", "published_at")
+    @field_validator("discovered_at", "published_at", "occurred_at")
     @classmethod
     def _require_aware_utc(cls, value: datetime | None) -> datetime | None:
         """El borde decide: acá adentro todo es aware en UTC, sin excepción."""
@@ -131,6 +135,11 @@ class Finding(NormalizedItem):
     ar_match_detail: dict[str, list[str]] = Field(default_factory=dict)
     severity: Severity
     dedup_hash: str
+    #: De dónde salió `occurred_at`, para poder auditar la estimación.
+    occurred_at_basis: DateBasis = DateBasis.SIN_DATO
+    #: El hallazgo entró en la importación inicial de su fuente: es histórico
+    #: que recién conocemos, no una novedad. No dispara alertas.
+    backfill: bool = False
 
 
 class EventLevel(StrEnum):
