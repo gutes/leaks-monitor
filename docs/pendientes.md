@@ -1,158 +1,125 @@
 # Pendientes y decisiones abiertas
 
-Estado al **2026-08-15**. El prototipo corre end-to-end: 250 tests, 90,7% de
-cobertura, imagen Docker verificada, 216 hallazgos argentinos reales en la base,
-3 commits en `main`.
+Estado verificado contra el código el **2026-08-18**: 573 tests backend + 30
+frontend, 90% de cobertura, imagen Docker corriendo, 232 hallazgos argentinos y
+1.353 víctimas regionales en la base.
+
+> Este archivo se desactualizó una vez y decía cosas falsas («Alertas — no
+> existe nada» cuando ya existían). Cada ítem de acá se cruzó contra el código,
+> no contra la memoria.
 
 ---
 
-## 0. Lo último que se hizo
+## Lo que YA está (para no re-preguntar)
 
-### Sesión 5 (2026-08-18) — frescura
-
-Se separó **cuándo ocurrió** de **cuándo lo vimos**. Hudson Rock fechaba todo
-con `now()` (14/14 de sus hallazgos parecían de hoy) porque el adapter asumía
-que el proveedor no fechaba: sí fecha, en `last_employee_compromised` y
-`last_user_compromised`, campos que además estaban mal clasificados como PII
-—son timestamps—. Verificado tras el arreglo: `registro-ejemplo.gob.ar` fechado en mayo,
-`nuclear-ejemplo.gob.ar` el 9 de agosto, en vez de todos hoy.
-
-Además: la importación inicial de una fuente se detecta y no alerta, y no se
-avisa de eventos viejos ni de los que no se pudieron fechar.
-
-**Pendiente inmediato:** la Parte 2 del plan (sección "Leaks adyacentes"),
-diseñada y aprobada. Ver `~/.claude/plans/`.
-
-### Sesión 3 (2026-08-15)
-
-- **El tablero se partió en 5 pantallas** con menú (router por hash), cada una
-  con su carga perezosa. La watchlist se pagina de verdad (`limit`/`offset` en
-  el endpoint, total del filtro).
-
-**Pendiente inmediato:** el botón **"Actualizar" sigue sin conectar** a
-`POST /api/runs`, que ya existe y funciona. Hoy solo relee la base y no da
-ninguna señal — que es la queja original. Falta: botón "Correr ahora", estado
-"corriendo…", y timestamp de última actualización.
-
-### Sesión 2 (2026-08-14)
-
-**El control de IP de salida se endureció.** Se encontró en vivo que el pipeline
-consultaba feeds con la salida en AR: el chequeo era solo al arrancar la
-corrida, y la IP puede cambiar en el medio. Agujeros cerrados, cada uno con su
-test:
-
-1. **Barrera antes de cada request HTTP** (`FeedHttpClient.before_request`). No
-   sale un byte a un feed sin una lectura fresca que lo autorice.
-2. **AR no se puede sacar de la lista** (`ALWAYS_BLOCKED` en `egress_guard.py`).
-   La configuración solo puede AGREGAR países.
-3. **Lectura fresca obligatoria** (60 s). Antes el cache de 5 min podía tapar
-   una VPN caída.
-4. **La API entera devuelve 403** estando bloqueada, salvo `/api/egress` y
-   `/api/health` (si se cerraran, el modal quedaría trabado para siempre).
-5. **Corte a mitad de corrida**: si la salida se bloquea, no se sigue con las
-   fuentes que faltan.
-
-**Ojo con el ruteo:** se observó que el contenedor sale por la VPN (CL) mientras
-el shell del host salía por AR (Red Científica). Hay ruteo dividido: verificar
-por dónde sale **cada** proceso, no alcanza con mirar el navegador.
-
-**Otras cosas de esta sesión:** botón "Reintentar ahora" en el modal (fuerza el
-re-chequeo, no es override); endpoint `POST /api/runs` + `RunCoordinator` para
-disparar corridas a mano; pastilla de PII arreglada (mostraba la variable de
-entorno en vez del estado persistido); redacción de `email:password` en títulos
-(la contraseña sobrevivía a la redacción).
+| | |
+|---|---|
+| Pipeline diario | 6 fuentes, aisladas, incremental por cursor |
+| Relevancia AR | 5 reglas auditables, editables desde la UI |
+| Frescura | ocurrencia vs. descubrimiento vs. importación inicial |
+| Alertas | `AlertDispatcher` + registro de canales (webhook, Telegram) |
+| Botón "Actualizar" | conectado a `POST /api/runs`, con estado en vivo |
+| Exportación TXT | hallazgos seleccionados y watchlist con historial de compromisos |
+| Exposición infostealer | qué sistemas cayeron, con la URL exacta |
+| Catálogo de sitios | 979 ubicaciones, señal de mudanza de dominio |
+| Adyacencia | 1.353 víctimas, 156 actores, score calibrado por backtest, vista propia |
+| Telegram | canales públicos, gestión de canales, cursor incremental |
+| Pantallas | 8, con router por hash y paginado |
 
 ---
 
-## 1. Decisiones que esperan confirmación del líder técnico
+## 1. Lo que falta, por orden de valor
 
-Las tomé yo para no bloquear. Todas son reversibles.
+### 1.1 — El handle del canal de Chronus
+
+**Es lo más valioso y lo más barato: no requiere código.** La maquinaria de
+Telegram está lista y probada, pero hasta que no se cargue el canal real de
+Chronus Team (y de Sherlock, Dictadores, La Pampa Leaks) se están vigilando
+canales globales que no tocan Argentina.
+
+No está en ningún catálogo público: de 1.025 filas de deepdarkCTI, 4 son de la
+región y ninguna es de estos actores. Ver `docs/hueco-hacktivistas.md`.
+
+### 1.2 — Watchlist regional por país (adyacencia)
+
+Falta `data/watchlist/<cc>.yaml` y su gestión. Hoy la **afinidad sectorial** del
+score se calcula contra los sectores que se golpean en Argentina, que funciona,
+pero no se puede distinguir "cayó un ministerio chileno" de "cayó una PyME
+brasileña". Es el último incremento del plan aprobado.
+
+### 1.3 — Alerta por salto de score
+
+`score_prev` ya se persiste y la variación se muestra en la vista. Falta
+disparar el aviso cuando un candidato pega un salto. `dispatch_notice()` ya
+existe —lo usan las mudanzas de dominio—, así que es cablear, no construir.
+
+**Ojo:** no alertar por víctima regional (serían 1.353 avisos de cosas que no
+son nuestras), solo por salto.
+
+### 1.4 — Sector vacío en dls-monitor y foros
+
+100% de los hallazgos de esas fuentes no tienen sector, porque el feed no lo
+trae. **Ya lo sabemos por otra vía**: si el hallazgo matcheó la watchlist,
+conocemos su sector. Falta derivarlo en `_to_finding`.
+
+### 1.5 — Loop de falsos positivos
+
+No hay forma de descartar un hallazgo ni una allowlist. El caso *Distribuidora Ejemplo
+Dominicana* se corrigió tocando código; debería ser dato.
+
+### 1.6 — Vista agrupada por víctima
+
+Por diseño `source` entra en el `dedup_hash`, así que la misma víctima aparece
+una vez por feed que la publique. Falta la vista que las agrupe.
+
+---
+
+## 2. Producto / UX
+
+- **Export CSV/JSON.** El TXT es para leer; un CSV es para cruzar con otra
+  herramienta. Otro caso de uso, no un reemplazo.
+- **Filtro por `ar_match_reason` en la UI.** El dato está y es la columna
+  auditable; falta el selector.
+- Vista de detalle por hallazgo.
+- Timeline o gráfico de evolución.
+
+---
+
+## 3. Operación y seguridad
+
+| # | Pendiente | Por qué importa |
+|---|---|---|
+| 1 | **La API no tiene autenticación y escribe.** | Aceptable en loopback. Si sale a una red, hace falta un proxy que autentique — son hallazgos de seguridad de organismos públicos. |
+| 2 | Sin rate limiting en la API. | — |
+| 3 | Sin backup de la base. | — |
+| 4 | **CI nunca corrió**: no hay remoto. | El workflow existe. El líder técnico indicó que no es prioridad. |
+| 5 | **Watchlist sin validar contra el CNC.** | 288 entradas en 11 sectores. No se pudo verificar por DNS: el nodo VPN no alcanza sitios `.ar`. |
+| 6 | `dls-monitor` sin ETag. | Se baja entero en cada corrida. |
+
+---
+
+## 4. Decisiones tomadas por mí que siguen abiertas
+
+Todas reversibles.
 
 | # | Decisión | Alternativa |
 |---|---|---|
-| 1 | **El control de IP de salida bloquea también cuando el país es indeterminable** (`LEAKS_EGRESS_BLOCK_ON_UNKNOWN=true`). El pedido fue "bloquear si es AR"; interpreté fail-closed porque el control promete que *no* se sale por AR, y una IP sin resolver no da esa garantía. **Costo:** si los proveedores de geo-IP se caen, el monitoreo se detiene. | Ponerlo en `false`: prioriza disponibilidad sobre garantía. |
-| 2 | **La API dejó de ser solo-lectura.** Hay escritura para watchlist y reglas, sin autenticación, detrás de `LEAKS_ALLOW_RULE_EDITING` (default `true`). Aceptable en loopback, no en una red. | `false` para bloquear la edición, o poner auth adelante. |
-| 3 | **DarkForums quedó `enabled_by_default=True` + `requires_pii=True`**, para que su único motivo de apagado sea el toggle de PII y el interruptor pueda encenderlo. | — |
-| 4 | **El handle del autor de un thread de foro se guarda como `actor`.** Es un seudónimo público, igual que el nombre de un grupo de ransomware. | Hashearlo si se considera PII. |
+| 1 | **Bloquear también cuando el país es indeterminable** (`EGRESS_BLOCK_ON_UNKNOWN=true`). El pedido fue "bloquear si es AR"; interpreté fail-closed porque el control promete que *no* se sale por AR, y una IP sin resolver no da esa garantía. **Costo:** si la geo-IP se cae, el monitoreo se detiene. | `false`: prioriza disponibilidad sobre garantía. |
+| 2 | **La API dejó de ser solo-lectura**, detrás de `LEAKS_ALLOW_RULE_EDITING` (default `true`). | `false`, o auth adelante. |
+| 3 | **El handle del autor de un thread se guarda como `actor`.** Es un seudónimo público, igual que el nombre de un grupo. | Hashearlo si se considera PII. |
+| 4 | **Los canales de Telegram guardan el cuerpo en el vault cifrado** (decisión del líder técnico, sesión 6), solo con `STORE_PII=true`. | Solo metadata. |
 
 ---
 
-## 2. Deuda contra el bootstrap original
+## 5. Límites conocidos que ningún código arregla
 
-| # | Pendiente | Detalle |
-|---|---|---|
-| 1 | **Alertas — no existe nada.** | El ejemplo del bootstrap termina en *"Alerta emitida"*. Hoy el hallazgo se persiste y se ve en el tablero, nada más. Sin email, sin webhook, sin Telegram. **Es lo único del spec original que falta entero.** |
-| 2 | **Watchlist ampliada, todavía sin validar contra el CNC.** | Pasó de 69 a 284 entradas (11 sectores: + provincias, municipios, universidades, salud, nuclear). Los 8 dominios estatales huérfanos quedaron cubiertos y 18 hallazgos existentes ganaron sector. **No se pudo verificar por DNS**: el nodo VPN no alcanza sitios `.ar`. Falta la validación contra el inventario del CNC. |
-| 3 | ~~Hudson Rock sin verificar~~ ✅ | Verificado el 2026-08-18: el endpoint responde. Probado contra `prevision-ejemplo.gob.ar` (225.375 equipos comprometidos, solo conteos persistidos). Queda detrás del toggle de PII y de `LEAKS_HUDSONROCK_DOMAINS`. |
-| 4 | **Fase 2 sin implementar.** | GitHub secret scanning sobre orgs `.gob.ar`, Telegram (MTProto), paste sites. Los hooks están listos: es un adapter más una entrada en el registro. |
+Están acá para que no se prometan de más:
 
----
-
-## 3. Calidad de los datos
-
-- **`sector` vacío** en el 100% de dls-monitor (31/31) y de los foros: esos feeds no lo traen y no lo derivamos de la watchlist cuando hay match. Se podría.
-- **Sin loop de falsos positivos.** No hay forma de marcar un hallazgo como descartado ni una allowlist. El caso *Distribuidora Ejemplo Dominicana* se corrigió tocando código; debería ser dato.
-- **Sin deduplicación entre fuentes.** Por diseño `source` entra en el hash, así que una misma víctima aparece dos veces si dos feeds la publican. Falta la vista agrupada por víctima.
-
----
-
-## 3-bis. Seguir a los sitios que cambian de dominio
-
-Investigado el 2026-08-15: ver [sitios-que-cambian-de-dominio.md](sitios-que-cambian-de-dominio.md).
-
-- **Ransomware**: ✅ implementado. Catálogo `leak_sites` + pantalla **Sitios**
-  (979 ubicaciones, 530 grupos), con el bloque de "direcciones nuevas en los
-  últimos 7 días" como señal de mudanza.
-- **Foros**: no hay proyecto confiable y **auto-seguir un dominio nuevo es
-  peligroso** (honeypots / infraestructura incautada). Propuesto: alertar cuando
-  una fuente se queda sin dominio y dejar la incorporación como acto manual.
-
-## 4. Producto / UX
-
-- **Conectar "Actualizar" a `POST /api/runs`** (ver sección 0). Es lo más chico
-  y lo más visible.
-- ~~Exportar la watchlist a TXT, con el historial de compromisos de cada
-  entrada~~ ✅ hecho en la sesión 5 (`GET /api/watchlist/export`).
-- ~~Exportar hallazgos seleccionados a TXT~~ ✅ hecho en la sesión 5
-  (`POST /api/findings/export`). **Falta** CSV/JSON, que es otro caso de uso:
-  el TXT es para leer, un CSV sería para cruzar con otra herramienta.
-- Vista de detalle por hallazgo.
-- Filtro por `ar_match_reason` en la UI (el dato está, falta el selector).
-- Timeline o gráfico de evolución.
-- ~~Partir el tablero en pantallas~~ ✅ hecho en la sesión 3.
-
----
-
-## 5. Operación y seguridad
-
-- **El repositorio ya está inicializado** (`git init` + commit inicial en `main`). Falta remoto: el workflow de CI existe pero **nunca se ejecutó**. (El líder técnico indicó que el CI no es prioridad por ahora.)
-- **La API no tiene autenticación y ahora además escribe.** Sube la prioridad de poner un proxy que autentique si sale de loopback.
-- Sin rate limiting en la API. Sin backup de la base.
-- `dls-monitor` baja 2 MB completos en cada corrida: falta `ETag`/`If-Modified-Since`.
-- Del checklist del CLAUDE.md faltan: escaneo de imagen (trivy/grype), DAST, `pip-audit` local, gitleaks local.
-
----
-
-## 6. Testing
-
-- ~~El frontend no tiene tests~~ ✅ 14 tests sobre un DOM mínimo propio (`tests/frontend/`), integrados al `check` y al CI. Encontraron 3 bugs reales: un `for...of` sobre datos no iterables que cortaba la carga entera, `.filter` sobre una respuesta con otra forma que **crasheaba el proceso**, y los `.onion` que sí se estaban enlazando pese a lo documentado.
-- Sin test de `alembic downgrade`.
-
----
-
-## 7. Hallazgos que conviene no perder
-
-- **BreachForums está incautado.** `.hn`, `.is` y `.cx` muestran el cartel de las fuerzas del orden; el resto no resuelve. Queda registrado y apagado; cuando reaparezca alcanza con setear `LEAKS_BREACHFORUMS_BASE_URLS`.
-- **Ningún proveedor CTI de los 8 evaluados tiene free tier con API usable.** Ver [cti-proveedores.md](cti-proveedores.md).
-- **VECERT: no integrar sin verificación independiente.** Hay un análisis público que alega credenciales hardcodeadas, API abierta sin key y redistribución de ~633.000 registros robados. Son alegaciones de un tercero, pero de gravedad suficiente para frenar.
-- **Dos bugs que solo aparecieron en Docker** (ya corregidos, con tests): las listas por variable de entorno rompían el arranque porque pydantic-settings las parseaba como JSON; y `leaks serve` no creaba el schema, así que todos los endpoints devolvían 500.
-
----
-
-## Prioridad sugerida
-
-0. **Conectar "Actualizar"** — media hora, y cierra la queja que quedó abierta.
-1. **Alertas** — lo único del spec original que falta entero.
-2. **Completar la watchlist** — hoy se está perdiendo señal o degradando severidad; ya se puede cargar desde la UI.
-3. **Tests del frontend** — es donde vive ahora la lógica sin cobertura.
-4. **Loop de falsos positivos** — para que tunear deje de requerir tocar código.
+- **El score de adyacencia es ciego al 46%** de los actores que golpean
+  Argentina: la eligieron como su primera víctima latinoamericana y no hay
+  precursor regional que puntuar. Ver `docs/adyacencia.md`.
+- **Solo se ve lo que las fuentes publican.** Un actor que ninguna fuente
+  trackea no aparece — es lo que pasó con Chronus. Se arregla sumando fuentes,
+  no ajustando pesos. Ver `docs/hueco-hacktivistas.md`.
+- **Las credenciales de Hudson Rock no vienen** en el tier gratuito: son su
+  producto comercial. Lo que se obtiene son agregados y URLs.
