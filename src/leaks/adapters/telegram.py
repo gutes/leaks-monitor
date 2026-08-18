@@ -267,8 +267,15 @@ class TelegramChannelAdapter:
             occurred_at=publicado,
             published_at=publicado,
             raw_ref=payload.get("url"),
-            # El cuerpo entero se usa en memoria para decidir relevancia y
-            # extraer punteros; lo que se persiste lo decide el pipeline.
-            description=texto[:MAX_TITULO],
+            # El cuerpo va ENTERO y sin recortar. Es lo que la capa de
+            # relevancia lee para decidir si el mensaje es argentino, y estos
+            # canales postean un titular genérico con el organismo afectado
+            # cientos de caracteres más abajo: recortarlo acá hacía que
+            # `prevision-ejemplo.gob.ar` en la línea 22 fuera invisible.
+            #
+            # No se persiste: el feed es `high_pii_surface`, así que el runner
+            # pone `description=None` al construir el hallazgo. Lo único que
+            # sobrevive es `victim_name`, que sí va recortado y redactado.
+            description=texto,
             download_links=tuple(extract_download_links(texto)),
         )

@@ -35,6 +35,11 @@ avisó en su canal con un mes de anticipación.
   del mensaje, topeada en 300 caracteres y pasada por el redactor. El título es
   la primera línea a propósito: un volcado de cien líneas de credenciales no
   puede terminar en el nombre de la víctima.
+- El cuerpo **entero y sin recortar** se le pasa a la capa de relevancia, que lo
+  lee en memoria y lo descarta. Es imprescindible: estos canales ponen un
+  titular genérico —«MEGA LEAK 2026»— y el organismo afectado cientos de
+  caracteres más abajo. Recortarlo antes de evaluar hacía invisible a
+  `prevision-ejemplo.gob.ar` en la línea 22, y el hallazgo nunca se creaba.
 - El **cuerpo completo** viaja en `RawItem.payload` y va al vault cifrado, y
   **solo con `STORE_PII=true`**. Sin clave se descarta; nunca se guarda en claro.
 

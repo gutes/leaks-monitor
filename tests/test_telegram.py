@@ -309,3 +309,58 @@ class TestRepositorio:
         """El filtro «cargados a mano» quiere decir «los que decidí yo»."""
         tg_repo.import_many([{"handle": "delcatalogo"}])
         assert tg_repo.add("delcatalogo", notes="lo sigo yo").origin == "user"
+
+
+class TestRelevancia:
+    """El camino completo: mensaje -> relevancia AR -> hallazgo.
+
+    Es la pregunta operativa: ¿lo que aparece en un canal termina en Hallazgos?
+    """
+
+    CUERPO = (
+        "MEGA LEAK 2026 — GOVERNMENT DATABASES\n"
+        + "\n".join(f"relleno {i}" for i in range(40))
+        + "\nTarget: prevision-ejemplo.gob.ar — 2.4M records"
+    )
+
+    def _item(self, texto: str) -> Any:
+        adapter = TelegramChannelAdapter(ClienteFalso({}), [])  # type: ignore[arg-type]
+        return adapter.normalize(
+            RawItem(
+                source="telegram",
+                payload={
+                    "channel": "canal",
+                    "text": texto,
+                    "published": "2026-08-10T00:00:00Z",
+                    "url": "https://t.me/canal/1",
+                },
+            )
+        )
+
+    def test_ve_el_dominio_aunque_este_al_fondo_del_mensaje(self) -> None:
+        """Estos canales ponen un titular genérico y el objetivo mucho más abajo.
+
+        Recortar el cuerpo antes de evaluar hacía invisible al organismo
+        afectado, y el hallazgo nunca se creaba.
+        """
+        from leaks.relevance.rules import extract_domains
+
+        item = self._item(self.CUERPO)
+        assert len(self.CUERPO) > 400, "el dominio tiene que quedar lejos del inicio"
+        assert "prevision-ejemplo.gob.ar" in extract_domains(item)
+
+    def test_el_cuerpo_entero_llega_a_la_evaluacion(self) -> None:
+        item = self._item(self.CUERPO)
+        assert item is not None
+        assert item.description == self.CUERPO
+
+    def test_pero_el_titulo_que_se_persiste_va_recortado(self) -> None:
+        item = self._item(self.CUERPO)
+        assert item is not None
+        assert item.victim_name == "MEGA LEAK 2026 — GOVERNMENT DATABASES"
+
+    def test_un_mensaje_sin_nada_argentino_no_genera_hallazgo(self) -> None:
+        from leaks.relevance.rules import extract_domains
+
+        item = self._item("Leak of some-random-company.co.za, 500k records")
+        assert "prevision-ejemplo.gob.ar" not in extract_domains(item)
