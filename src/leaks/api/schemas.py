@@ -52,6 +52,14 @@ class FindingOut(BaseModel):
     last_seen_at: datetime
 
 
+class ExportIn(BaseModel):
+    """Selección a exportar. Solo ids: el contenido sale de la base, no del cliente."""
+
+    #: Ids de los hallazgos tildados. El tope real lo pone `export_max_findings`;
+    #: este acota el cuerpo antes de que llegue a la base.
+    ids: list[int] = Field(min_length=1, max_length=5000)
+
+
 class FindingPage(BaseModel):
     """Página de hallazgos con el total, para paginar del lado del cliente."""
 

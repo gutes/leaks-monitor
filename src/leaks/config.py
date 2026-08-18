@@ -142,6 +142,10 @@ class Settings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     api_max_page_size: int = Field(default=200, ge=1, le=1000)
+    #: Tope de hallazgos por informe exportado. Es más alto que una página
+    #: porque la selección se acumula entre páginas, pero sigue teniendo tope:
+    #: un pedido con 100.000 ids no puede tumbar el proceso.
+    export_max_findings: int = Field(default=500, ge=1, le=5000)
     #: Permite editar watchlist y reglas desde la UI. Se puede cerrar en un
     #: despliegue compartido; el control de IP de salida NO se puede tocar por
     #: ninguna vía de la API, ni siquiera con esto en true.

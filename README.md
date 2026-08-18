@@ -161,6 +161,40 @@ contraseñas débiles.
 > payload no trae un solo email. Igual las URLs pasan por el redactor, porque
 > una query string puede arrastrar un identificador.
 
+### Exportar hallazgos a un informe
+
+Cada fila de Hallazgos tiene una casilla. Se tildan los que interesan —y la
+selección **sobrevive al paginado**, así que se pueden juntar de varias
+páginas— y "Exportar TXT" baja un informe con todos.
+
+El documento va ordenado **por fecha de ocurrencia del evento**, del más
+reciente al más antiguo, con los que no se pudieron fechar al final: un
+hallazgo sin fecha no es "viejo", es desconocido, y mezclarlo con los de 2020
+diría algo que no sabemos.
+
+Cada ficha lleva la ocurrencia (y de dónde salió esa fecha), cuándo lo declaró
+la fuente, cuándo lo vimos, víctima, dominio, sector, actor, fuente, severidad,
+la referencia, **las reglas de relevancia AR con su evidencia** y un resumen de
+la columna Datos:
+
+```
+  DATOS · Exposición por infostealers
+    15 sistemas comprometidos · 12 de empleados · 100.0% de contraseñas débiles
+
+      [ acceso ]   capturas  sistema
+      [EMPLEADO]       150  https://correo.registro-ejemplo.gob.ar/owa/auth/logon.aspx
+      [EMPLEADO]        49  https://intranet.registro-ejemplo.gob.ar
+      [usuario ]         5  https://tramites.registro-ejemplo.gob.ar/pasaporte/...
+```
+
+Se eligió TXT y no PDF porque el destino es un informe, un mail o un ticket: se
+pega en cualquier lado, no arrastra estilos y se puede leer dentro de veinte
+años. El archivo lo arma el backend (`src/leaks/export/report.py`, funciones
+puras) y el nombre no lleva nombres de víctima, porque el archivo circula.
+
+Como todo lo demás, **el informe solo contiene metadata**: no hay credenciales
+que exportar porque no se persisten, y el encabezado lo dice explícitamente.
+
 ### Antigüedad de los hallazgos
 
 El tablero distingue **cuándo ocurrió** un leak de **cuándo lo vimos**, que no

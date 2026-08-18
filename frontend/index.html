@@ -122,10 +122,27 @@
 
       <div id="active-filters" class="active-filters"></div>
 
+      <!-- Barra de exportación. La selección se acumula entre páginas: se
+           pueden tildar tres acá, pasar a la página 3, tildar dos más y
+           exportar los cinco juntos. Por eso el contador vive afuera de la
+           tabla y no se reinicia al paginar. -->
+      <div class="export-bar">
+        <span id="sel-count" class="hint">Ningún hallazgo seleccionado</span>
+        <button class="btn" id="sel-clear" type="button" disabled>Limpiar selección</button>
+        <button class="btn btn-primary" id="export-txt" type="button" disabled>
+          Exportar TXT
+        </button>
+      </div>
+
       <div class="table-wrap">
         <table id="findings">
           <thead>
             <tr>
+              <th class="col-sel">
+                <input type="checkbox" id="sel-page"
+                       aria-label="Seleccionar todos los de esta página"
+                       title="Seleccionar todos los de esta página" />
+              </th>
               <th title="Cuándo ocurrió el leak, no cuándo lo importamos">Ocurrió</th>
               <th>Víctima</th>
               <th>Sector</th>

@@ -42,7 +42,12 @@ modelan como dato inmutable que leen todos los consumidores.
 
 `SqlAlchemyFindingRepository` escribe; `FindingQueryService` lee. Son
 responsabilidades distintas y mezclarlas termina en un objeto que hace de todo.
-Además deja explícito que **la API no tiene ningún camino de escritura**.
+
+**La API no escribe en `findings`.** Sí escribe en las tablas de configuración
+—watchlist, reglas, toggle de PII— y dispara corridas, pero los hallazgos los
+produce únicamente el pipeline. La exportación a TXT
+(`POST /api/findings/export`) es POST por el tamaño del cuerpo, no porque
+escriba: manda solo ids y devuelve texto.
 
 ### Idempotencia por `dedup_hash`
 

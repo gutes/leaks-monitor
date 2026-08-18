@@ -374,3 +374,150 @@ test("la importación inicial se marca como tal", async () => {
 
   assert.match(textoDe(el("findings-body")), /importación inicial/);
 });
+
+/* -------------------------------------------------- Selección y exportación */
+
+/** Las casillas de las filas ya pintadas. */
+const casillas = (el) => buscar(el("findings-body"), (n) => n.className === "sel-box");
+
+/** Respuestas con N hallazgos en la página. */
+const conHallazgos = (...items) => ({
+  ...RESPUESTAS_BASE,
+  "/api/findings": { items, total: items.length, limit: 50, offset: 0 },
+});
+
+const RESPUESTA_EXPORT = {
+  __texto: "INFORME",
+  __headers: {
+    "Content-Disposition": 'attachment; filename="hallazgos-20260818-1530-2.txt"',
+    "X-Findings-Exported": "2",
+  },
+};
+
+test("no se puede exportar sin seleccionar nada", async () => {
+  const { el } = await cargarApp({ html: HTML, hash: "#/hallazgos", respuestas: RESPUESTAS_BASE });
+
+  assert.equal(el("export-txt").disabled, true);
+  assert.equal(el("sel-clear").disabled, true);
+  assert.match(textoDe(el("sel-count")), /Ningún hallazgo/);
+});
+
+test("tildar una fila habilita la exportación y la cuenta", async () => {
+  const { el } = await cargarApp({ html: HTML, hash: "#/hallazgos", respuestas: RESPUESTAS_BASE });
+
+  const caja = casillas(el)[0];
+  caja.checked = true;
+  await disparar(caja, "change");
+
+  assert.equal(el("export-txt").disabled, false);
+  assert.match(textoDe(el("sel-count")), /1 hallazgo seleccionado/);
+});
+
+test("la casilla del encabezado tilda toda la página", async () => {
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/hallazgos",
+    respuestas: conHallazgos(hallazgo({ id: 1 }), hallazgo({ id: 2 }), hallazgo({ id: 3 })),
+  });
+
+  await disparar(el("sel-page"), "change", { target: { checked: true } });
+
+  assert.equal(casillas(el).filter((c) => c.checked).length, 3);
+  assert.match(textoDe(el("sel-count")), /3 hallazgos seleccionados/);
+});
+
+test("la selección sobrevive al cambio de página", async () => {
+  // Es la razón de ser del Set: juntar hallazgos de varias páginas en un
+  // informe. Si se limpiara al paginar, el feature no serviría para nada.
+  const { el, esperar } = await cargarApp({
+    html: HTML,
+    hash: "#/hallazgos",
+    respuestas: conHallazgos(hallazgo({ id: 7 }), hallazgo({ id: 8 })),
+  });
+
+  const caja = casillas(el)[0];
+  caja.checked = true;
+  await disparar(caja, "change");
+
+  await disparar(el("next"), "click");
+  await esperar();
+
+  assert.match(textoDe(el("sel-count")), /1 hallazgo seleccionado/);
+  assert.equal(casillas(el)[0].checked, true, "la fila vuelve tildada");
+});
+
+test("limpiar deja la selección en cero", async () => {
+  const { el } = await cargarApp({ html: HTML, hash: "#/hallazgos", respuestas: RESPUESTAS_BASE });
+
+  const caja = casillas(el)[0];
+  caja.checked = true;
+  await disparar(caja, "change");
+  await disparar(el("sel-clear"), "click");
+
+  assert.equal(el("export-txt").disabled, true);
+  assert.equal(casillas(el)[0].checked, false);
+  assert.match(textoDe(el("sel-count")), /Ningún hallazgo/);
+});
+
+test("exportar manda los ids tildados y baja el archivo", async () => {
+  const { el, pedidos, cuerpos, descargas } = await cargarApp({
+    html: HTML,
+    hash: "#/hallazgos",
+    respuestas: {
+      ...conHallazgos(hallazgo({ id: 11 }), hallazgo({ id: 22 })),
+      "/api/findings/export": RESPUESTA_EXPORT,
+    },
+  });
+
+  await disparar(el("sel-page"), "change", { target: { checked: true } });
+  await disparar(el("export-txt"), "click");
+
+  assert.ok(pedidos.includes("/api/findings/export"), "tiene que pegarle al endpoint");
+  const cuerpo = cuerpos[pedidos.indexOf("/api/findings/export")];
+  assert.deepEqual(cuerpo, { ids: [11, 22] }, "manda solo ids, no contenido");
+  assert.equal(descargas.length, 1, "se dispara una descarga");
+  assert.match(textoDe(el("last-updated")), /2 hallazgos descargado/);
+});
+
+test("si algún hallazgo ya no existe se avisa en vez de entregar un informe corto", async () => {
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/hallazgos",
+    respuestas: {
+      ...conHallazgos(hallazgo({ id: 11 }), hallazgo({ id: 22 })),
+      "/api/findings/export": {
+        __texto: "INFORME",
+        __headers: { "X-Findings-Exported": "1" },
+      },
+    },
+  });
+
+  await disparar(el("sel-page"), "change", { target: { checked: true } });
+  await disparar(el("export-txt"), "click");
+
+  assert.match(textoDe(el("last-updated")), /Exportados 1 de 2/);
+});
+
+test("un error al exportar se informa y el botón vuelve a quedar usable", async () => {
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/hallazgos",
+    respuestas: {
+      ...RESPUESTAS_BASE,
+      "/api/findings/export": { __status: 403, detail: "Salida bloqueada" },
+    },
+  });
+
+  const caja = casillas(el)[0];
+  caja.checked = true;
+  await disparar(caja, "change");
+  await disparar(el("export-txt"), "click");
+
+  assert.match(textoDe(el("last-updated")), /No se pudo exportar/);
+  assert.equal(el("export-txt").disabled, false, "se puede reintentar");
+  assert.match(textoDe(el("export-txt")), /Exportar TXT/, "el botón vuelve a su rótulo");
+});
+
+test("el nombre del archivo se sanea antes de escribirlo en disco", async () => {
+  assert.match(APP, /replace\(\/\[\^A-Za-z0-9\._-\]\/g, "_"\)/);
+});

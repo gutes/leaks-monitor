@@ -41,6 +41,9 @@ const state = {
   // Cursor de la consola: el id del último evento ya pintado.
   lastEventId: 0,
   consoleLines: 0,
+  // Ids tildados para exportar. Es un Set y NO se limpia al paginar: la
+  // gracia es poder juntar hallazgos de varias páginas en un solo informe.
+  selected: new Set(),
   // Si el pipeline estuvo activo en el último poll, se refrescan los paneles.
   lastActivityAt: 0,
 };
@@ -297,6 +300,22 @@ async function loadFilterOptions() {
 function renderRow(f) {
   const tr = document.createElement("tr");
 
+  // Casilla de selección. Refleja el Set global, así que una fila que ya
+  // estaba tildada sigue tildada al volver a su página.
+  const sel = el("td", "", "col-sel");
+  const tilde = document.createElement("input");
+  tilde.type = "checkbox";
+  tilde.className = "sel-box";
+  tilde.checked = state.selected.has(f.id);
+  tilde.setAttribute("aria-label", `Seleccionar ${f.victim_name}`);
+  tilde.addEventListener("change", () => {
+    if (tilde.checked) state.selected.add(f.id);
+    else state.selected.delete(f.id);
+    renderSelection();
+  });
+  sel.append(tilde);
+  tr.append(sel);
+
   // La fecha del EVENTO, no la de importación. Sin fecha se dice "sin fecha":
   // fingir una es lo que hacía ver el histórico como novedad del día.
   const cuando = el("td");
@@ -537,6 +556,110 @@ function closeExposure() {
   $("exp-modal").hidden = true;
 }
 
+/* ------------------------------------------------- Selección y exportación */
+
+/** Refresca el contador, los botones y la casilla de "toda la página". */
+function renderSelection() {
+  const n = state.selected.size;
+  $("sel-count").textContent =
+    n === 0
+      ? "Ningún hallazgo seleccionado"
+      : n === 1
+        ? "1 hallazgo seleccionado"
+        : `${n} hallazgos seleccionados`;
+  $("sel-clear").disabled = n === 0;
+  $("export-txt").disabled = n === 0;
+
+  // La casilla del encabezado describe la página visible, no la selección
+  // entera: marcarla con hallazgos tildados en OTRA página sería mentira.
+  const cajas = Array.from(document.querySelectorAll("#findings-body .sel-box"));
+  const marcadas = cajas.filter((c) => c.checked).length;
+  const cabecera = $("sel-page");
+  cabecera.checked = cajas.length > 0 && marcadas === cajas.length;
+  cabecera.indeterminate = marcadas > 0 && marcadas < cajas.length;
+}
+
+/** Tilda o destilda todas las filas visibles, sin tocar el resto de la selección. */
+function togglePagina(marcar) {
+  for (const caja of document.querySelectorAll("#findings-body .sel-box")) {
+    if (caja.checked !== marcar) {
+      caja.checked = marcar;
+      caja.dispatchEvent(new Event("change"));
+    }
+  }
+}
+
+function limpiarSeleccion() {
+  state.selected.clear();
+  for (const caja of document.querySelectorAll("#findings-body .sel-box")) caja.checked = false;
+  renderSelection();
+}
+
+/**
+ * Pide el informe TXT y lo baja.
+ *
+ * El archivo lo arma el backend: el frontend tiene solo la página que está
+ * mirando, y la selección puede abarcar varias. Se manda la lista de ids y
+ * vuelve el texto ya formateado.
+ */
+async function exportarSeleccion() {
+  const ids = Array.from(state.selected);
+  if (!ids.length) return;
+
+  const boton = $("export-txt");
+  boton.disabled = true;
+  boton.textContent = "Exportando…";
+  try {
+    const res = await fetch(new URL("/api/findings/export", window.location.origin), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      throw new Error((data && data.detail) || `HTTP ${res.status}`);
+    }
+
+    const exportados = Number(res.headers.get("X-Findings-Exported") || ids.length);
+    const blob = await res.blob();
+    descargarBlob(blob, nombreDeArchivo(res) || "hallazgos.txt");
+
+    // Un id puede haber desaparecido entre que se tildó y se pidió el archivo:
+    // se avisa en vez de entregar un informe corto en silencio.
+    setStatus(
+      exportados < ids.length
+        ? `Exportados ${exportados} de ${ids.length}: el resto ya no está en la base.`
+        : `Informe con ${exportados} hallazgos descargado.`,
+      exportados < ids.length ? "warn" : "ok",
+    );
+  } catch (err) {
+    setStatus(`No se pudo exportar: ${err.message || err}`, "error");
+  } finally {
+    boton.textContent = "Exportar TXT";
+    renderSelection();
+  }
+}
+
+/** Nombre que propuso el backend en el Content-Disposition. */
+function nombreDeArchivo(res) {
+  const cabecera = res.headers.get("Content-Disposition") || "";
+  const m = /filename="([^"]+)"/.exec(cabecera);
+  // El nombre viene de nuestro backend, pero se sanea igual: es lo que va a
+  // terminar escrito en el disco del investigador.
+  return m ? m[1].replace(/[^A-Za-z0-9._-]/g, "_") : null;
+}
+
+function descargarBlob(blob, nombre) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nombre;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 async function loadFindings() {
   const body = $("findings-body");
   const page = await api("/api/findings", {
@@ -549,9 +672,10 @@ async function loadFindings() {
   if (!page) {
     const tr = document.createElement("tr");
     const td = el("td", "No se pudieron cargar los hallazgos.", "error");
-    td.colSpan = 9;
+    td.colSpan = 10;
     tr.append(td);
     body.append(tr);
+    renderSelection();
     return;
   }
 
@@ -559,7 +683,7 @@ async function loadFindings() {
   if (!(page.items || []).length) {
     const tr = document.createElement("tr");
     const td = el("td", "Sin hallazgos para este filtro.", "empty");
-    td.colSpan = 9;
+    td.colSpan = 10;
     tr.append(td);
     body.append(tr);
   } else {
@@ -571,6 +695,7 @@ async function loadFindings() {
   $("page-info").textContent = `${desde}–${hasta} de ${page.total}`;
   $("prev").disabled = state.offset === 0;
   $("next").disabled = hasta >= page.total;
+  renderSelection();
 }
 
 /* -------------------------------------------------- Corridas y actualización */
@@ -1359,6 +1484,9 @@ document.addEventListener("keydown", (e) => {
 });
 
 $("refresh").addEventListener("click", refreshNow);
+$("sel-page").addEventListener("change", (e) => togglePagina(e.target.checked));
+$("sel-clear").addEventListener("click", limpiarSeleccion);
+$("export-txt").addEventListener("click", exportarSeleccion);
 $("run-now").addEventListener("click", runNow);
 
 // -- Watchlist: alta y filtros

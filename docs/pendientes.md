@@ -111,7 +111,9 @@ Investigado el 2026-08-15: ver [sitios-que-cambian-de-dominio.md](sitios-que-cam
 
 - **Conectar "Actualizar" a `POST /api/runs`** (ver sección 0). Es lo más chico
   y lo más visible.
-- Export CSV/JSON.
+- ~~Exportar hallazgos seleccionados a TXT~~ ✅ hecho en la sesión 5
+  (`POST /api/findings/export`). **Falta** CSV/JSON, que es otro caso de uso:
+  el TXT es para leer, un CSV sería para cruzar con otra herramienta.
 - Vista de detalle por hallazgo.
 - Filtro por `ar_match_reason` en la UI (el dato está, falta el selector).
 - Timeline o gráfico de evolución.

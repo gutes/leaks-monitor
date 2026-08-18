@@ -1,9 +1,13 @@
-"""API de solo lectura que alimenta el frontend.
+"""API que alimenta el frontend.
 
-Es deliberadamente chica: cinco endpoints GET y ningún método de escritura. El
-pipeline escribe por su lado (CLI/scheduler); la API solo mira. Un endpoint que
-dispare una corrida sería una superficie de abuso gratuita en un servicio sin
-autenticación.
+**Ningún endpoint escribe en `findings`**: los hallazgos los produce solo el
+pipeline (CLI/scheduler). Lo que sí escribe la API es configuración —watchlist,
+reglas, el toggle de fuentes con PII— y puede disparar una corrida, que era
+imprescindible para que el botón "Actualizar" sirviera de algo.
+
+`POST /api/findings/export` es la excepción aparente: es POST por el tamaño del
+cuerpo (la selección se acumula entre páginas y puede ser de cientos de ids),
+no porque escriba nada. Manda ids y devuelve texto.
 
 Sobre autenticación: el prototipo se sirve en `127.0.0.1` y no la trae. Exponer
 esto a una red hay que hacerlo detrás de un proxy que autentique — está anotado
@@ -14,11 +18,11 @@ organismos públicos.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from leaks.adapters.egress import EgressResolver
@@ -29,6 +33,7 @@ from leaks.api.schemas import (
     EnabledIn,
     EventOut,
     EventPage,
+    ExportIn,
     FilterOptions,
     FindingOut,
     FindingPage,
@@ -50,6 +55,7 @@ from leaks.api.schemas import (
 from leaks.bootstrap import build_application
 from leaks.config import Settings, get_settings
 from leaks.domain.models import ArMatchReason
+from leaks.export.report import render_report, report_filename
 from leaks.pipeline.coordinator import RunCoordinator
 from leaks.pipeline.egress_guard import EgressGuard
 from leaks.storage.queries import FindingFilters, FindingQueryService
@@ -245,6 +251,41 @@ def create_app(
             total=pagina.total,
             limit=pagina.limit,
             offset=pagina.offset,
+        )
+
+    @app.post(
+        "/api/findings/export",
+        response_class=PlainTextResponse,
+        tags=["findings"],
+        responses={200: {"content": {"text/plain": {}}}},
+    )
+    def export_findings(payload: ExportIn, queries: Queries) -> PlainTextResponse:
+        """Arma un informe TXT con los hallazgos seleccionados.
+
+        Es POST y no GET aunque no escriba nada: la selección se acumula entre
+        páginas y puede ser de cientos de ids, que no entran cómodos en una
+        query string. El cuerpo manda **solo ids** — el contenido del informe
+        sale de la base, nunca de lo que diga el cliente, así que no hay forma
+        de inyectar texto en el archivo desde afuera.
+        """
+        seleccion = queries.find_by_ids(payload.ids, limit=config.export_max_findings)
+        if not seleccion:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Ninguno de los hallazgos seleccionados existe.",
+            )
+
+        ahora = datetime.now(UTC)
+        texto = render_report(seleccion, generated_at=ahora, fresh_days=config.freshness_days)
+        nombre = report_filename(ahora, len(seleccion))
+        return PlainTextResponse(
+            texto,
+            media_type="text/plain; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{nombre}"',
+                # El frontend lo usa para avisar si algún id ya no existía.
+                "X-Findings-Exported": str(len(seleccion)),
+            },
         )
 
     @app.get("/api/stats", response_model=StatsOut, tags=["findings"])

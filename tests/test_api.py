@@ -72,6 +72,75 @@ def client(settings: Settings, poblado: None) -> Iterator[TestClient]:
         yield c
 
 
+class TestExport:
+    """Exportación a TXT de una selección de hallazgos."""
+
+    @staticmethod
+    def _ids(client: TestClient) -> list[int]:
+        return [i["id"] for i in client.get("/api/findings").json()["items"]]
+
+    def _exportar(self, client: TestClient, ids: list[int]) -> Any:
+        return client.post("/api/findings/export", json={"ids": ids})
+
+    def test_devuelve_texto_plano_descargable(self, client: TestClient) -> None:
+        res = self._exportar(client, self._ids(client)[:1])
+        assert res.status_code == 200
+        assert res.headers["content-type"].startswith("text/plain")
+        assert res.headers["content-disposition"].startswith('attachment; filename="hallazgos-')
+
+    def test_exporta_solo_lo_seleccionado(self, client: TestClient) -> None:
+        todos = self._ids(client)
+        assert len(todos) == 3
+        texto = self._exportar(client, todos[:1]).text
+        assert "Hallazgos      : 1" in texto
+        assert "[1/1]" in texto and "[1/3]" not in texto
+
+    def test_exporta_varios_juntos_y_ordenados(self, client: TestClient) -> None:
+        """Es el caso que motivó el feature: varios hallazgos en un solo informe."""
+        ids = self._ids(client)
+        texto = self._exportar(client, ids).text
+        assert "Hallazgos      : 3" in texto
+        assert [texto.index(f"[{n}/3]") for n in (1, 2, 3)] == sorted(
+            texto.index(f"[{n}/3]") for n in (1, 2, 3)
+        )
+
+    def test_el_orden_en_que_se_tildan_no_importa(self, client: TestClient) -> None:
+        ids = self._ids(client)
+        assert self._exportar(client, ids).text == self._exportar(client, ids[::-1]).text
+
+    def test_un_id_repetido_no_duplica_la_ficha(self, client: TestClient) -> None:
+        uno = self._ids(client)[0]
+        assert "Hallazgos      : 1" in self._exportar(client, [uno, uno, uno]).text
+
+    def test_ignora_los_que_ya_no_existen_y_lo_informa(self, client: TestClient) -> None:
+        """Un hallazgo puede desaparecer entre que se tilda y se pide el archivo."""
+        res = self._exportar(client, [*self._ids(client)[:1], 999999])
+        assert res.status_code == 200
+        assert res.headers["X-Findings-Exported"] == "1"
+
+    def test_si_no_existe_ninguno_avisa_en_vez_de_bajar_un_archivo_vacio(
+        self, client: TestClient
+    ) -> None:
+        assert self._exportar(client, [999998, 999999]).status_code == 404
+
+    def test_una_seleccion_vacia_se_rechaza(self, client: TestClient) -> None:
+        assert self._exportar(client, []).status_code == 422
+
+    def test_el_cuerpo_tiene_tope(self, client: TestClient) -> None:
+        """Un pedido con 100.000 ids no puede tumbar el proceso."""
+        assert self._exportar(client, list(range(6000))).status_code == 422
+
+    def test_se_topea_la_cantidad_exportada(self, settings: Settings, poblado: None) -> None:
+        acotado = settings.model_copy(update={"export_max_findings": 2})
+        with TestClient(create_app(acotado, egress_guard=GuardPermisivo())) as c:  # type: ignore[arg-type]
+            texto = self._exportar(c, self._ids(c)).text
+        assert "Hallazgos      : 2" in texto
+
+    def test_el_informe_trae_la_columna_auditable(self, client: TestClient) -> None:
+        texto = self._exportar(client, self._ids(client)[:1]).text
+        assert "Relevancia AR" in texto
+
+
 class TestFindings:
     def test_lista_del_mas_nuevo_al_mas_viejo(self, client: TestClient) -> None:
         datos = client.get("/api/findings").json()
@@ -379,6 +448,7 @@ class TestBloqueoDeLaApi:
             ("get", "/api/watchlist"),
             ("get", "/api/rules"),
             ("post", "/api/runs"),
+            ("post", "/api/findings/export"),
         ],
     )
     def test_todo_devuelve_403(self, bloqueado: TestClient, metodo: str, ruta: str) -> None:

@@ -229,6 +229,33 @@ tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); 
 
 .pager { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
 
+/* -- Selección y exportación ---------------------------------------------- */
+
+.export-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 4px;
+  flex-wrap: wrap;
+}
+
+/* El contador empuja los botones a la derecha, para que no bailen de lugar
+   según el largo del texto. */
+.export-bar #sel-count { margin-right: auto; }
+
+.col-sel { width: 28px; text-align: center; padding-right: 0; }
+
+.sel-box, .col-sel input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+/* La fila tildada se marca: con la selección repartida entre páginas, tener
+   que mirar la casilla para saber qué entra al informe sería un problema. */
+#findings-body tr:has(.sel-box:checked) { background: #eef4ff; }
+
 footer {
   border-top: 1px solid var(--border);
   padding: 16px 24px;
@@ -713,6 +740,7 @@ body.is-blocked { overflow: hidden; }
 .last-updated-ok { color: var(--ok); }
 .last-updated-error { color: var(--error); }
 .last-updated-run { color: var(--accent); }
+.last-updated-warn { color: var(--warn); }
 
 /* El botón deshabilitado tiene que verse ocupado, no roto. */
 #run-now:disabled,

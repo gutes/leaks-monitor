@@ -85,6 +85,22 @@ class FindingQueryService:
                 offset=offset,
             )
 
+    def find_by_ids(self, ids: Sequence[int], *, limit: int) -> tuple[dict[str, Any], ...]:
+        """Hallazgos por id, para exportar una selección.
+
+        No se respeta el orden en que vinieron los ids: el informe reordena por
+        fecha de ocurrencia y el orden en que el usuario tildó las casillas no
+        significa nada. Los ids inexistentes se ignoran en silencio —el
+        exportador informa cuántos encontró— porque un hallazgo puede haber
+        desaparecido entre que se tildó y se pidió el archivo.
+        """
+        unicos = list(dict.fromkeys(int(i) for i in ids))[:limit]
+        if not unicos:
+            return ()
+        with session_scope(self._session_factory) as session:
+            filas = session.scalars(select(FindingRow).where(FindingRow.id.in_(unicos))).all()
+            return tuple(self._to_dict(f) for f in filas)
+
     @staticmethod
     def _apply(stmt: Select[Any], filters: FindingFilters) -> Select[Any]:
         """Aplica los filtros activos. Los `None` no filtran."""
