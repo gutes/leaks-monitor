@@ -81,6 +81,7 @@
     <a href="#/fuentes" data-view="fuentes">Fuentes<span id="nav-fuentes-badge"></span></a>
     <a href="#/sitios" data-view="sitios">Sitios</a>
     <a href="#/adyacentes" data-view="adyacentes">Adyacentes</a>
+    <a href="#/telegram" data-view="telegram">Telegram</a>
     <a href="#/consola" data-view="consola">Consola</a>
   </nav>
 
@@ -397,6 +398,103 @@
           </thead>
           <tbody id="adj-conf-body"></tbody>
         </table>
+      </div>
+    </section>
+    </section>
+
+    <section class="view" data-view="telegram">
+    <section class="panel">
+      <div class="console-head">
+        <div>
+          <h2>Canales de Telegram</h2>
+          <p class="hint">
+            Los colectivos hacktivistas que van contra el sector público argentino publican acá,
+            no en sitios de ransomware. Se leen por la vista previa pública
+            <code>t.me/s/&lt;canal&gt;</code>: sin cuenta, sin API key y sin Tor.
+            Un canal deshabilitado no se consulta.
+          </p>
+        </div>
+        <div id="tg-counts" class="wl-counts"></div>
+      </div>
+
+      <details class="adj-cobertura" id="tg-nota">
+        <summary>Por qué esta pantalla existe (leer una vez)</summary>
+        <div>
+          <p class="hint">
+            Chronus Team golpeó México el 30/01/2026 y Argentina el 30/03/2026 —el banco central,
+            ministerios, un poder judicial provincial, una obra social provincial— y este prototipo no tenía
+            ni una fila. No falló la watchlist: 9 de los 12 organismos ya estaban cubiertos.
+            Falló la clase de fuente.
+          </p>
+          <p class="hint">
+            Esta clase de actor además <strong>anuncia sus objetivos antes de atacar</strong>.
+            Chronus avisó en su canal con un mes de anticipación. Eso es aviso previo,
+            no post-mortem.
+          </p>
+          <p class="hint">
+            El catálogo público que se importa acá <strong>no trae a estos actores</strong>:
+            de 1.025 filas solo 344 son canales vivos, y 4 son de la región. Los canales que importan van cargados a mano.
+          </p>
+        </div>
+      </details>
+
+      <form class="filters" id="tg-add" autocomplete="off">
+        <label>Canal
+          <input type="text" id="tg-handle" placeholder="@canal o t.me/canal" maxlength="200" required />
+        </label>
+        <label>Actor
+          <input type="text" id="tg-actor" placeholder="Chronus Team" maxlength="128" />
+        </label>
+        <label>Tipo
+          <input type="text" id="tg-kind" placeholder="data_leak" maxlength="64" />
+        </label>
+        <label>Nota
+          <input type="text" id="tg-notes" placeholder="por qué lo seguimos" maxlength="1000" />
+        </label>
+        <button class="btn btn-primary" type="submit">Agregar</button>
+        <button class="btn" type="button" id="tg-import"
+                title="Importa el catálogo público de deepdarkCTI. Entran DESHABILITADOS: ninguno se consulta hasta que lo habilites.">
+          Importar catálogo
+        </button>
+      </form>
+      <p id="tg-error" class="error"></p>
+
+      <div class="filters">
+        <label>Buscar
+          <input type="search" id="tg-q" placeholder="canal o actor" maxlength="200" />
+        </label>
+        <label>Estado
+          <select id="tg-f-enabled">
+            <option value="">Todos</option>
+            <option value="true">Habilitados</option>
+            <option value="false">Deshabilitados</option>
+          </select>
+        </label>
+        <label>Origen
+          <select id="tg-f-origin">
+            <option value="">Todos</option>
+            <option value="user">Cargados a mano</option>
+            <option value="catalog">Del catálogo</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="table-wrap">
+        <table id="telegram">
+          <thead>
+            <tr>
+              <th>Estado</th><th>Canal</th><th>Actor</th><th>Tipo</th>
+              <th>Origen</th><th title="Último post procesado: el cursor incremental">Último post</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="tg-body"></tbody>
+        </table>
+      </div>
+
+      <div class="pager">
+        <button class="btn" id="tg-prev" type="button" disabled>← Anteriores</button>
+        <span id="tg-page-info" class="hint">—</span>
+        <button class="btn" id="tg-next" type="button" disabled>Siguientes →</button>
       </div>
     </section>
     </section>

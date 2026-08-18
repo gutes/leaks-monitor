@@ -20,6 +20,7 @@ from leaks.adapters import (
     mybb_forum,
     ransomlook,
     ransomware_live,
+    telegram,
 )
 from leaks.adapters.http import FeedHttpClient, build_client
 from leaks.config import Settings
@@ -39,11 +40,22 @@ class FeedDeps:
 
     #: Dado el nombre de un feed, dominios extra a consultar en esta corrida.
     extra_domains: Callable[[str], Sequence[str]] | None = None
+    #: Canales de Telegram habilitados. Van aparte de `extra_domains` porque no
+    #: son dominios: son *dónde mirar*, no *qué buscar*.
+    channels: Callable[[], Sequence[str]] | None = None
+    #: Último post visto por canal, para que la lectura sea incremental.
+    channel_cursors: Callable[[], dict[str, str]] | None = None
 
     def domains_for(self, feed: str) -> tuple[str, ...]:
         if self.extra_domains is None:
             return ()
         return tuple(self.extra_domains(feed))
+
+    def channels_enabled(self) -> tuple[str, ...]:
+        return () if self.channels is None else tuple(self.channels())
+
+    def cursors(self) -> dict[str, str]:
+        return {} if self.channel_cursors is None else dict(self.channel_cursors())
 
 
 FeedFactory = Callable[[Settings, FeedHttpClient, FeedDeps], FeedAdapter]
@@ -90,6 +102,12 @@ def _hudson_rock(settings: Settings, client: FeedHttpClient, deps: FeedDeps) -> 
     # ninguno de los dos no sale un solo request.
     dominios = (*settings.hudsonrock_domains, *deps.domains_for("hudsonrock"))
     return hudson_rock.HudsonRockAdapter(client, dominios)
+
+
+def _telegram(_settings: Settings, client: FeedHttpClient, deps: FeedDeps) -> FeedAdapter:
+    # Sin canales habilitados no sale un solo pedido: importar un catálogo no
+    # puede convertirse en cientos de consultas que nadie pidió.
+    return telegram.TelegramChannelAdapter(client, deps.channels_enabled(), cursors=deps.cursors())
 
 
 def _darkforums(settings: Settings, client: FeedHttpClient, _deps: FeedDeps) -> FeedAdapter:
@@ -158,6 +176,21 @@ FEED_REGISTRY: tuple[FeedSpec, ...] = (
             "Configurar LEAKS_BREACHFORUMS_BASE_URLS cuando reaparezca."
         ),
         tags=("foro", "pii", "metadata", "sin-dominio"),
+    ),
+    FeedSpec(
+        name="telegram",
+        leak_type=LeakType.FORUM_POST,
+        factory=_telegram,
+        license_note=telegram.LICENSE_NOTE,
+        docs_url="https://t.me/s/",
+        # Gobernado por el toggle de fuentes con PII, igual que los foros: lo
+        # que publican estos canales son volcados de datos. Aun habilitado no
+        # consulta nada por su cuenta — hacen falta canales dados de alta, así
+        # que son dos puertas explícitas y no una.
+        enabled_by_default=True,
+        requires_pii=True,
+        high_pii_surface=True,
+        tags=("telegram", "hacktivismo", "pii", "metadata"),
     ),
     FeedSpec(
         name="hudsonrock",

@@ -561,3 +561,50 @@ test("un error al exportar la watchlist se informa y el botón vuelve", async ()
   assert.equal(el("wl-export").disabled, false);
   assert.match(textoDe(el("wl-export")), /Exportar TXT/);
 });
+
+test("la pantalla de Telegram lista canales y dice por qué falla cada uno", async () => {
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/telegram",
+    respuestas: {
+      ...RESPUESTAS_BASE,
+      "/api/telegram": {
+        items: [
+          { id: 1, handle: "vivo", actor: "Grupo Vivo", kind: "data_leak",
+            origin: "user", enabled: true, last_post_id: "vivo/42", url: "https://t.me/s/vivo" },
+          { id: 2, handle: "muerto", actor: null, kind: null, origin: "catalog",
+            enabled: false, last_post_id: null, last_error: "el canal no existe",
+            url: "https://t.me/s/muerto" },
+        ],
+        counts: { total: 2, enabled: 1, disabled: 1, user: 1, catalog: 1 },
+        total: 2, limit: 50, offset: 0,
+      },
+    },
+  });
+
+  const texto = textoDe(el("tg-body"));
+  assert.match(texto, /t\.me\/s\/vivo/);
+  assert.match(texto, /vivo\/42/, "muestra el cursor incremental");
+  assert.match(texto, /error/, "un canal muerto se ve distinto de uno tranquilo");
+});
+
+test("la dirección del canal nunca se inserta como enlace", async () => {
+  // Es infraestructura de quien publica los volcados, igual que los .onion.
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/telegram",
+    respuestas: {
+      ...RESPUESTAS_BASE,
+      "/api/telegram": {
+        items: [{ id: 1, handle: "peligroso", origin: "user", enabled: true,
+                  url: "https://t.me/s/peligroso" }],
+        counts: {}, total: 1, limit: 50, offset: 0,
+      },
+    },
+  });
+
+  const enlaces = buscar(el("tg-body"), (n) => n.tag === "a");
+  assert.equal(enlaces.length, 0, "ningún <a> en la lista de canales");
+  const codes = buscar(el("tg-body"), (n) => n.tag === "code");
+  assert.ok(codes.length, "se muestra como texto seleccionable");
+});

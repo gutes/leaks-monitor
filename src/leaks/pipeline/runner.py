@@ -112,6 +112,8 @@ class PipelineRunner:
         alert_dispatcher: AlertDispatcher | None = None,
         site_collector: SiteCatalogCollector | None = None,
         adjacency_collector: AdjacencyCollector | None = None,
+        cursor_sink: Callable[[dict[str, str]], None] | None = None,
+        channel_error_sink: Callable[[dict[str, str]], None] | None = None,
         feed_deps: FeedDeps | None = None,
         pii_vault: PiiVault | None = None,
         event_sink: EventSink | None = None,
@@ -141,6 +143,10 @@ class PipelineRunner:
         self._alerts = alert_dispatcher
         self._sites = site_collector
         self._adjacency = adjacency_collector
+        # Cursores por canal (Telegram). Van aparte del cursor por fecha del
+        # feed: acá el cursor es un id de post, no un `discovered_at`.
+        self._cursor_sink = cursor_sink
+        self._channel_error_sink = channel_error_sink
         # Colaboradores que el registro no puede construir solo (por ejemplo,
         # qué dominios le toca consultar a Hudson Rock en esta corrida).
         self._feed_deps = feed_deps or FeedDeps()
@@ -521,6 +527,19 @@ class PipelineRunner:
 
             if cursor_nuevo is not None:
                 self._repository.set_cursor(spec.name, cursor_nuevo)
+
+            # Algunos adapters llevan su propio cursor —Telegram usa el id del
+            # último post por canal— porque filtrar por fecha no alcanza: un
+            # canal puede republicar y la página siempre trae los últimos 20.
+            propios = getattr(adapter, "nuevos_cursores", None)
+            if propios and self._cursor_sink is not None:
+                self._cursor_sink(dict(propios))
+
+            # Y por qué un canal no aportó nada: muerto, privado o sin novedades
+            # son tres cosas distintas y la UI tiene que poder distinguirlas.
+            fallos = getattr(adapter, "errores", None)
+            if fallos and self._channel_error_sink is not None:
+                self._channel_error_sink(dict(fallos))
 
             estado = SourceRunStatus.OK
             logger.info(

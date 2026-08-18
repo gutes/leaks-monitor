@@ -4,6 +4,64 @@ Estado verificado el **2026-08-14** consultando cada endpoint. Los feeds de
 este rubro cambian de modelo de acceso sin avisar: **reverificar antes de
 confiar**, y actualizar esta tabla en el mismo commit.
 
+## telegram — canales públicos de actores
+
+- **Endpoint:** `https://t.me/s/<canal>` — la vista previa web pública.
+- **Autenticación:** ninguna. Sin cuenta, sin API key y sin Tor.
+- **Estado:** verificado el 2026-08-18. HTTP 200, 20 mensajes por página, con
+  `datetime` real y `data-post` que sirve de cursor incremental.
+
+### Por qué existe
+
+Las tres fuentes de ransomware indexan **data leak sites de bandas de
+ransomware**. Los colectivos hacktivistas que van contra el sector público
+argentino publican por **Telegram**. Chronus Team golpeó México el 2026-01-30 y
+Argentina el 2026-03-30 —el banco central, ministerios, un poder judicial provincial,
+una obra social provincial— y la base no tenía ni una fila. Ver `docs/hueco-hacktivistas.md`.
+
+Además esta clase de actor **anuncia sus objetivos antes de atacar**: Chronus
+avisó en su canal con un mes de anticipación.
+
+### Qué se descartó y por qué
+
+- **MTProto / Telethon**: da más, pero exige `api_id` y un número de teléfono.
+  Es una identidad que quemar y una cuenta que se puede banear. Para leer
+  canales públicos no hace falta.
+- **Bot API**: un bot solo lee canales de los que es miembro. No sirve.
+
+### Qué se persiste
+
+- A `findings`, **metadata**: canal, fecha, URL del post y la **primera línea**
+  del mensaje, topeada en 300 caracteres y pasada por el redactor. El título es
+  la primera línea a propósito: un volcado de cien líneas de credenciales no
+  puede terminar en el nombre de la víctima.
+- El **cuerpo completo** viaja en `RawItem.payload` y va al vault cifrado, y
+  **solo con `STORE_PII=true`**. Sin clave se descarta; nunca se guarda en claro.
+
+### Gestión de canales
+
+Nada se consulta por defecto: hacen falta canales **dados de alta y
+habilitados**. Se administran desde la pantalla Telegram.
+
+Se rechazan antes de generar un pedido las direcciones que no se pueden leer en
+abierto: `t.me/+…` y `t.me/joinchat/…` son invitaciones a grupos privados.
+
+Un canal que no aporta nada anota **por qué**: `el canal no existe` (Telegram
+devuelve su página de "Contact") o `sin vista previa pública` (privado). Sin
+eso, un canal muerto se ve igual que uno tranquilo y nadie se entera.
+
+### El catálogo público
+
+Se importa de `fastfire/deepdarkCTI` (`telegram_threat_actors.md`). Medido el
+2026-08-18: **1.025 filas, 390 no marcadas como muertas, 344 canales públicos
+únicos**. De 25 canales de filtración verificados uno por uno, **16** tenían
+vista previa real.
+
+**El catálogo no trae a los actores que importan acá**: Chronus Team, Gov.eth,
+Sherlock, Dictadores y La Pampa Leaks no figuran; de 1.025 filas solo 4 son de
+la región. Por eso el alta manual es el mecanismo principal y esto una
+conveniencia. Los importados entran **deshabilitados**.
+
 ## Resumen
 
 | Feed | Auth | Formato | Verificado | Estado |

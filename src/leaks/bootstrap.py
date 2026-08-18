@@ -36,7 +36,9 @@ from leaks.storage.schema import ensure_schema
 from leaks.storage.session import create_db_engine, create_session_factory
 from leaks.storage.settings_store import SettingsStore
 from leaks.storage.site_repository import LeakSiteRepository
+from leaks.storage.telegram_repository import TelegramChannelRepository
 from leaks.storage.watchlist_repository import WatchlistRepository
+from leaks.telegram.catalog import LATAM_SEED
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +58,7 @@ class Application:
     alert_dispatcher: AlertDispatcher
     site_repo: LeakSiteRepository
     adjacency_repo: AdjacencyRepository
+    telegram_repo: TelegramChannelRepository
     pii_vault: PiiVault
     event_sink: SqlAlchemyEventSink
     egress_guard: EgressGuard
@@ -76,6 +79,13 @@ class Application:
         sembradas = self.watchlist_repo.seed_from_yaml(self.settings.watchlist_path)
         if sembradas:
             logger.info("Watchlist inicial cargada: %d entradas", sembradas)
+
+        # Los 4 canales de la región que trae el catálogo público, habilitados.
+        # El resto de los ~800 se importa a demanda y entra apagado: importar
+        # un catálogo no puede convertirse en cientos de pedidos por corrida.
+        canales = self.telegram_repo.seed([dict(c) for c in LATAM_SEED])
+        if canales:
+            logger.info("Canales de Telegram sembrados: %d", canales)
 
 
 def build_application(settings: Settings | None = None) -> Application:
@@ -151,7 +161,14 @@ def build_application(settings: Settings | None = None) -> Application:
         enabled=config.hudsonrock_from_watchlist,
         max_per_run=config.hudsonrock_max_per_run,
     )
-    feed_deps = FeedDeps(extra_domains=rotator.for_feed)
+    # Canales de Telegram: el adapter no lee la base por su cuenta, la recibe
+    # resuelta. Sin canales habilitados no sale un solo pedido.
+    telegram_repo = TelegramChannelRepository(session_factory)
+    feed_deps = FeedDeps(
+        extra_domains=rotator.for_feed,
+        channels=telegram_repo.enabled_handles,
+        channel_cursors=telegram_repo.cursors,
+    )
 
     site_repo = LeakSiteRepository(session_factory)
     # El colector usa la misma barrera de salida que los feeds: no hay motivo
@@ -187,6 +204,8 @@ def build_application(settings: Settings | None = None) -> Application:
         alert_dispatcher=alert_dispatcher,
         site_collector=site_collector,
         adjacency_collector=adjacency_collector,
+        cursor_sink=telegram_repo.save_cursors,
+        channel_error_sink=telegram_repo.save_errors,
         feed_deps=feed_deps,
         pii_vault=vault,
         event_sink=event_sink,
@@ -210,6 +229,7 @@ def build_application(settings: Settings | None = None) -> Application:
         alert_dispatcher=alert_dispatcher,
         site_repo=site_repo,
         adjacency_repo=adjacency_repo,
+        telegram_repo=telegram_repo,
         pii_vault=vault,
         event_sink=event_sink,
         egress_guard=egress_guard,

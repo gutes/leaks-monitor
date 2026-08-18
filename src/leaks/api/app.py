@@ -50,6 +50,10 @@ from leaks.api.schemas import (
     SourceOut,
     SourceRunOut,
     StatsOut,
+    TelegramChannelIn,
+    TelegramChannelOut,
+    TelegramImportOut,
+    TelegramOut,
     WatchlistCountsOut,
     WatchlistEntryIn,
     WatchlistEntryOut,
@@ -68,11 +72,16 @@ from leaks.storage.queries import FindingFilters, FindingQueryService
 from leaks.storage.session import create_db_engine, create_session_factory
 from leaks.storage.settings_store import SettingsStore
 from leaks.storage.site_repository import LeakSiteRepository
+from leaks.storage.telegram_repository import (
+    TelegramChannelRepository,
+    TelegramValidationError,
+)
 from leaks.storage.watchlist_repository import (
     KIND_DOMAIN,
     WatchlistRepository,
     WatchlistValidationError,
 )
+from leaks.telegram.catalog import fetch_catalog
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +130,13 @@ def _site_repo_dep(request: Request) -> LeakSiteRepository:
     return repo
 
 
+def _telegram_dep(request: Request) -> TelegramChannelRepository:
+    repo = request.app.state.telegram_repo
+    if not isinstance(repo, TelegramChannelRepository):  # pragma: no cover — invariante
+        raise RuntimeError("La app no fue construida con create_app().")
+    return repo
+
+
 def _adjacency_dep(request: Request) -> AdjacencyRepository:
     repo = request.app.state.adjacency_repo
     if not isinstance(repo, AdjacencyRepository):  # pragma: no cover — invariante
@@ -139,6 +155,7 @@ WatchlistRepo = Annotated[WatchlistRepository, Depends(_watchlist_dep)]
 SiteRepo = Annotated[LeakSiteRepository, Depends(_site_repo_dep)]
 Store = Annotated[SettingsStore, Depends(_settings_store_dep)]
 AdjacencyRepo = Annotated[AdjacencyRepository, Depends(_adjacency_dep)]
+TelegramRepo = Annotated[TelegramChannelRepository, Depends(_telegram_dep)]
 
 
 def create_app(
@@ -174,6 +191,7 @@ def create_app(
     app.state.settings_store = SettingsStore(session_factory)
     app.state.site_repo = LeakSiteRepository(session_factory)
     app.state.adjacency_repo = AdjacencyRepository(session_factory)
+    app.state.telegram_repo = TelegramChannelRepository(session_factory)
     # Coordinador de corridas manuales. Comparte la configuración del proceso,
     # así que el control de IP de salida se le aplica igual que al scheduler.
     app.state.runs = RunCoordinator(build_application(config).runner)
@@ -470,6 +488,115 @@ def create_app(
         )
 
     # -- Catálogo de sitios de leaks ------------------------------------------
+
+    # -- Canales de Telegram --------------------------------------------------
+
+    @app.get("/api/telegram", response_model=TelegramOut, tags=["telegram"])
+    def list_telegram(
+        repo: TelegramRepo,
+        enabled: bool | None = None,
+        origin: str | None = None,
+        q: Annotated[str | None, Query(max_length=200)] = None,
+        limit: Annotated[int, Query(ge=1)] = 50,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ) -> TelegramOut:
+        """Canales bajo vigilancia, con su estado y su cursor."""
+        acotado = min(limit, config.api_max_page_size)
+        canales = repo.list_channels(
+            enabled=enabled, origin=origin, q=q, limit=acotado, offset=offset
+        )
+        return TelegramOut(
+            items=[TelegramChannelOut.model_validate(c.as_dict()) for c in canales],
+            counts=repo.counts(),  # type: ignore[arg-type]
+            total=repo.count_channels(enabled=enabled, origin=origin, q=q),
+            limit=acotado,
+            offset=offset,
+        )
+
+    @app.post(
+        "/api/telegram",
+        response_model=TelegramChannelOut,
+        status_code=status.HTTP_201_CREATED,
+        tags=["telegram"],
+    )
+    def add_telegram(payload: TelegramChannelIn, repo: TelegramRepo) -> TelegramChannelOut:
+        """Da de alta un canal.
+
+        Rechaza lo que no se pueda leer en abierto: una invitación a grupo
+        privado (`t.me/+…`) necesita una cuenta, y este prototipo no usa una.
+        Fallar acá es mejor que descubrirlo con un 404 por corrida.
+        """
+        _require_editing()
+        try:
+            canal = repo.add(
+                payload.handle,
+                actor=payload.actor,
+                kind=payload.kind,
+                notes=payload.notes,
+                enabled=payload.enabled,
+            )
+        except TelegramValidationError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+            ) from exc
+        return TelegramChannelOut.model_validate(canal.as_dict())
+
+    @app.patch("/api/telegram/{channel_id}", response_model=TelegramChannelOut, tags=["telegram"])
+    def toggle_telegram(
+        channel_id: int, payload: EnabledIn, repo: TelegramRepo
+    ) -> TelegramChannelOut:
+        """Habilita o deshabilita un canal. Deshabilitado no se consulta."""
+        _require_editing()
+        canal = repo.set_enabled(channel_id, payload.enabled)
+        if canal is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No existe.")
+        return TelegramChannelOut.model_validate(canal.as_dict())
+
+    @app.delete(
+        "/api/telegram/{channel_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        tags=["telegram"],
+    )
+    def remove_telegram(channel_id: int, repo: TelegramRepo) -> Response:
+        _require_editing()
+        if not repo.remove(channel_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No existe.")
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @app.post("/api/telegram/import", response_model=TelegramImportOut, tags=["telegram"])
+    def import_telegram(repo: TelegramRepo) -> TelegramImportOut:
+        """Importa el catálogo público de canales, **deshabilitados**.
+
+        Entran apagados a propósito: habilitar ~800 canales serían ~800 pedidos
+        por corrida contra un servicio gratuito. El investigador filtra y
+        habilita lo que le sirve.
+
+        No pisa nada de lo ya cargado, ni siquiera el estado.
+        """
+        _require_editing()
+        cliente = build_client(
+            user_agent=config.http_user_agent,
+            timeout=config.http_timeout_seconds,
+            max_retries=config.http_max_retries,
+            backoff_base=config.http_backoff_base_seconds,
+            rate_limit_delay=config.http_rate_limit_delay_seconds,
+            source="telegram-catalog",
+        )
+        try:
+            entradas = fetch_catalog(cliente)
+        finally:
+            cliente.close()
+
+        importados = repo.import_many([e.as_dict() for e in entradas], enabled=False)
+        return TelegramImportOut(
+            imported=importados,
+            total=repo.counts()["total"],
+            available=len(entradas),
+            note=(
+                "Importados deshabilitados. Ninguno se consulta hasta que lo habilites. "
+                "Ojo: los actores que operan en Argentina no figuran en este catálogo."
+            ),
+        )
 
     # -- Adyacencia regional --------------------------------------------------
 

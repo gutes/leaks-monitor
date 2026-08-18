@@ -181,6 +181,64 @@ class EgressOut(BaseModel):
     block_reason: str | None = None
 
 
+class TelegramChannelOut(BaseModel):
+    """Un canal de Telegram bajo vigilancia."""
+
+    id: int
+    handle: str
+    actor: str | None = None
+    kind: str | None = None
+    notes: str | None = None
+    #: `catalog` (importado) o `user` (dado de alta a mano).
+    origin: str = "user"
+    enabled: bool = False
+    #: Último post procesado. Es el cursor incremental.
+    last_post_id: str | None = None
+    last_fetch_at: datetime | None = None
+    last_error: str | None = None
+    #: La vista previa pública. Se muestra como texto, nunca enlazada.
+    url: str = ""
+
+
+class TelegramCountsOut(BaseModel):
+    total: int = 0
+    enabled: int = 0
+    disabled: int = 0
+    user: int = 0
+    catalog: int = 0
+
+
+class TelegramOut(BaseModel):
+    """Página del listado de canales."""
+
+    items: list[TelegramChannelOut] = Field(default_factory=list)
+    counts: TelegramCountsOut = Field(default_factory=TelegramCountsOut)
+    total: int = 0
+    limit: int = 50
+    offset: int = 0
+
+
+class TelegramChannelIn(BaseModel):
+    """Alta de un canal. El handle se normaliza y valida en el servidor."""
+
+    #: Acepta `@x`, `t.me/x` o la URL completa; se normaliza a `x`.
+    handle: str = Field(min_length=1, max_length=200)
+    actor: str | None = Field(default=None, max_length=128)
+    kind: str | None = Field(default=None, max_length=64)
+    notes: str | None = Field(default=None, max_length=1000)
+    enabled: bool = True
+
+
+class TelegramImportOut(BaseModel):
+    """Resultado de importar el catálogo público."""
+
+    imported: int = 0
+    total: int = 0
+    #: Cuántos trae la fuente, para que se note si cambió de tamaño.
+    available: int = 0
+    note: str = ""
+
+
 class AdjacentActorOut(BaseModel):
     """Un actor de la sección de adyacencia."""
 

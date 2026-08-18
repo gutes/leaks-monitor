@@ -16,7 +16,18 @@ const FRESH_DAYS = 30;
 /** Filas por página en la watchlist. */
 const WL_PAGE_SIZE = 50;
 /** Vistas válidas del router. La primera es el default. */
-const VIEWS = ["hallazgos", "watchlist", "reglas", "fuentes", "sitios", "adyacentes", "consola"];
+const VIEWS = [
+  "hallazgos",
+  "watchlist",
+  "reglas",
+  "fuentes",
+  "sitios",
+  "adyacentes",
+  "telegram",
+  "consola",
+];
+/** Filas por página en la lista de canales. */
+const TG_PAGE_SIZE = 50;
 /** Filas por página en el catálogo de sitios. */
 const SITES_PAGE_SIZE = 50;
 /** Cada cuánto se pregunta por actividad nueva. */
@@ -38,6 +49,8 @@ const state = {
   wlTotal: 0,
   stOffset: 0,
   stTotal: 0,
+  tgOffset: 0,
+  tgTotal: 0,
   // Cursor de la consola: el id del último evento ya pintado.
   lastEventId: 0,
   consoleLines: 0,
@@ -863,8 +876,170 @@ function loadView(nombre) {
   if (nombre === "fuentes") return loadSources();
   if (nombre === "sitios") return loadSites();
   if (nombre === "adyacentes") return loadAdjacency();
+  if (nombre === "telegram") return loadTelegram();
   if (nombre === "consola") return pollEvents();
   return Promise.resolve();
+}
+
+/* ------------------------------------------------------- Canales de Telegram */
+
+function tgFilters() {
+  const estado = $("tg-f-enabled").value;
+  return {
+    q: $("tg-q").value.trim(),
+    origin: $("tg-f-origin").value,
+    ...(estado ? { enabled: estado } : {}),
+  };
+}
+
+async function loadTelegram() {
+  const datos = await api("/api/telegram", {
+    ...tgFilters(),
+    limit: TG_PAGE_SIZE,
+    offset: state.tgOffset,
+  });
+  const body = $("tg-body");
+  body.replaceChildren();
+  if (!datos) return;
+
+  const c = datos.counts || {};
+  $("tg-counts").replaceChildren(
+    el("span", `${c.enabled ?? 0} activos`, "pill pill-ok"),
+    el("span", `${c.disabled ?? 0} apagados`, "pill pill-skipped"),
+    el("span", `${c.user ?? 0} a mano`, "pill pill-low"),
+  );
+
+  state.tgTotal = datos.total ?? 0;
+  const items = Array.isArray(datos.items) ? datos.items : [];
+  if (!items.length) {
+    const tr = document.createElement("tr");
+    const td = el("td", "Sin canales para este filtro.", "empty");
+    td.colSpan = 7;
+    tr.append(td);
+    body.append(tr);
+  } else {
+    for (const canal of items) body.append(filaCanal(canal));
+  }
+
+  const desde = state.tgTotal === 0 ? 0 : state.tgOffset + 1;
+  const hasta = Math.min(state.tgOffset + TG_PAGE_SIZE, state.tgTotal);
+  $("tg-page-info").textContent = `${desde}–${hasta} de ${state.tgTotal}`;
+  $("tg-prev").disabled = state.tgOffset === 0;
+  $("tg-next").disabled = hasta >= state.tgTotal;
+}
+
+function filaCanal(canal) {
+  const tr = document.createElement("tr");
+
+  const estado = el("td");
+  const sw = el("label", "", "switch");
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.checked = canal.enabled;
+  input.disabled = !state.editingAllowed;
+  input.title = canal.enabled
+    ? "Habilitado: se consulta en cada corrida."
+    : "Deshabilitado: no se consulta.";
+  input.addEventListener("change", async () => {
+    const r = await apiWrite(`/api/telegram/${canal.id}`, "PATCH", { enabled: input.checked });
+    if (!r.ok) {
+      input.checked = !input.checked;
+      $("tg-error").textContent = r.error;
+    } else {
+      setStatus("Canal actualizado — aplica en la próxima corrida.", "run");
+      loadTelegram();
+    }
+  });
+  sw.append(input);
+  estado.append(sw);
+  tr.append(estado);
+
+  // La dirección se muestra como texto, nunca enlazada: es infraestructura de
+  // quien publica los volcados, igual que los .onion de los hallazgos.
+  const handle = el("td");
+  const code = document.createElement("code");
+  code.className = "onion-ref";
+  code.textContent = `t.me/s/${canal.handle}`;
+  code.title = "No es un enlace a propósito. Copiá y pegá si necesitás abrirlo.";
+  handle.append(code);
+  tr.append(handle);
+
+  tr.append(el("td", canal.actor || "—"), el("td", canal.kind || "—"));
+
+  const origen = el("td");
+  origen.append(
+    el("span", canal.origin === "user" ? "a mano" : "catálogo",
+       `pill pill-${canal.origin === "user" ? "low" : "skipped"}`),
+  );
+  tr.append(origen);
+
+  const cursor = el("td");
+  if (canal.last_post_id) {
+    cursor.append(el("span", canal.last_post_id, "hint"));
+    cursor.title = canal.last_fetch_at ? `Última lectura: ${fmtDate(canal.last_fetch_at)}` : "";
+  } else if (canal.last_error) {
+    cursor.append(el("span", "error", "pill pill-critical"));
+    cursor.title = canal.last_error;
+  } else {
+    cursor.append(el("span", "sin leer", "hint"));
+  }
+  tr.append(cursor);
+
+  const acciones = el("td");
+  const borrar = el("button", "Quitar", "btn btn-sm");
+  borrar.type = "button";
+  borrar.disabled = !state.editingAllowed;
+  borrar.addEventListener("click", async () => {
+    if (!confirm(`¿Quitar el canal ${canal.handle}?`)) return;
+    const r = await apiWrite(`/api/telegram/${canal.id}`, "DELETE", null);
+    if (!r.ok) $("tg-error").textContent = r.error;
+    else loadTelegram();
+  });
+  acciones.append(borrar);
+  tr.append(acciones);
+
+  return tr;
+}
+
+async function agregarCanal(evento) {
+  evento.preventDefault();
+  $("tg-error").textContent = "";
+  const cuerpo = {
+    handle: $("tg-handle").value.trim(),
+    actor: $("tg-actor").value.trim() || null,
+    kind: $("tg-kind").value.trim() || null,
+    notes: $("tg-notes").value.trim() || null,
+    enabled: true,
+  };
+  if (!cuerpo.handle) return;
+
+  const r = await apiWrite("/api/telegram", "POST", cuerpo);
+  if (!r.ok) {
+    $("tg-error").textContent = r.error;
+    return;
+  }
+  for (const id of ["tg-handle", "tg-actor", "tg-kind", "tg-notes"]) $(id).value = "";
+  setStatus("Canal agregado — se consulta en la próxima corrida.", "ok");
+  loadTelegram();
+}
+
+async function importarCatalogo() {
+  const boton = $("tg-import");
+  boton.disabled = true;
+  boton.textContent = "Importando…";
+  const r = await apiWrite("/api/telegram/import", "POST", {});
+  boton.textContent = "Importar catálogo";
+  boton.disabled = false;
+  if (!r.ok) {
+    $("tg-error").textContent = r.error;
+    return;
+  }
+  const d = r.data || {};
+  setStatus(
+    `${d.imported ?? 0} canales importados de ${d.available ?? 0} disponibles, deshabilitados.`,
+    "ok",
+  );
+  loadTelegram();
 }
 
 /* ---------------------------------------------------------- Leaks adyacentes */
@@ -1758,6 +1933,19 @@ $("sel-clear").addEventListener("click", limpiarSeleccion);
 $("export-txt").addEventListener("click", exportarSeleccion);
 $("wl-export").addEventListener("click", exportarWatchlist);
 $("adj-close").addEventListener("click", closeAdjacency);
+$("tg-add").addEventListener("submit", agregarCanal);
+$("tg-import").addEventListener("click", importarCatalogo);
+$("tg-q").addEventListener("input", () => { state.tgOffset = 0; loadTelegram(); });
+$("tg-f-enabled").addEventListener("change", () => { state.tgOffset = 0; loadTelegram(); });
+$("tg-f-origin").addEventListener("change", () => { state.tgOffset = 0; loadTelegram(); });
+$("tg-prev").addEventListener("click", () => {
+  state.tgOffset = Math.max(0, state.tgOffset - TG_PAGE_SIZE);
+  loadTelegram();
+});
+$("tg-next").addEventListener("click", () => {
+  state.tgOffset += TG_PAGE_SIZE;
+  loadTelegram();
+});
 $("run-now").addEventListener("click", runNow);
 
 // -- Watchlist: alta y filtros

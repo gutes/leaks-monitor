@@ -223,6 +223,54 @@ class LeakSiteRow(Base):
     )
 
 
+class TelegramChannelRow(Base):
+    """Un canal de Telegram bajo vigilancia.
+
+    Existe esta tabla y no una entrada más en la watchlist porque son cosas
+    distintas: la watchlist dice **qué buscar** (relevancia argentina), esto
+    dice **dónde mirar**. Mezclarlas haría que deshabilitar un canal se lea
+    como dejar de vigilar un organismo.
+
+    Se leen por la vista previa pública `t.me/s/<handle>`: HTTP plano, sin
+    cuenta, sin API key y sin Tor. Se descartó MTProto/Telethon a propósito —
+    exige un número de teléfono, o sea una identidad que quemar.
+
+    **Nada se consulta por defecto.** Un canal recién importado del catálogo
+    nace deshabilitado: cientos de canales habilitados serían cientos de pedidos
+    por corrida contra un servicio gratuito.
+    """
+
+    __tablename__ = "telegram_channels"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    #: El handle público, sin `@` ni URL: `durov`, no `https://t.me/durov`.
+    handle: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    #: A qué actor se le atribuye, si se sabe. Texto libre: los catálogos y los
+    #: informes no coinciden en cómo lo escriben.
+    actor: Mapped[str | None] = mapped_column(String(128))
+    #: Qué publica: `data_leak`, `ddos`, `infostealer`, `forum`… tal como lo
+    #: declare el catálogo de origen.
+    kind: Mapped[str | None] = mapped_column(String(64))
+    #: Por qué está en la lista. Lo escribe el investigador.
+    notes: Mapped[str | None] = mapped_column(Text)
+    #: `catalog` (importado) o `user` (dado de alta a mano).
+    origin: Mapped[str] = mapped_column(String(16), default="user", nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    #: Último `data-post` visto (`canal/1234`). Hace la corrida incremental de
+    #: verdad: sin esto se reprocesaría la página entera en cada pasada.
+    last_post_id: Mapped[str | None] = mapped_column(String(160))
+    #: Cuándo se lo consultó por última vez con éxito, y qué pasó la última vez.
+    last_fetch_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        Index("ix_telegram_channels_enabled", "enabled"),
+        Index("ix_telegram_channels_actor", "actor"),
+    )
+
+
 class RegionalVictimRow(Base):
     """Una víctima de la región. **No es un hallazgo argentino.**
 
