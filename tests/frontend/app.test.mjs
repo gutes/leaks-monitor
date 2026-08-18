@@ -116,22 +116,31 @@ test("un href de feed solo se acepta si es http(s)", async () => {
   assert.equal(enlaces.length, 0, "un javascript: no puede convertirse en enlace");
 });
 
-test("los .onion se muestran pero no se enlazan", async () => {
+test("los .onion se muestran enteros pero no se enlazan", async () => {
+  // Regresión: al dejar de enlazarlos se los reemplazó por una píldora que
+  // decía "onion" y ocultaba la dirección. No enlazar es correcto; esconder el
+  // dato que el investigador necesita copiar, no.
+  const direccion = "http://abcdef1234567890.onion/post/ministerio";
   const { el } = await cargarApp({
     html: HTML,
     hash: "#/hallazgos",
     respuestas: {
       ...RESPUESTAS_BASE,
       "/api/findings": {
-        items: [hallazgo({ raw_ref: "http://abc.onion/post" })],
+        items: [hallazgo({ raw_ref: direccion })],
         total: 1,
         limit: 50,
         offset: 0,
       },
     },
   });
-  const texto = textoDe(el("findings-body"));
-  assert.match(texto, /onion/);
+
+  const celdas = buscar(el("findings-body"), (n) => n.className === "onion-ref");
+  assert.equal(celdas.length, 1, "la dirección tiene que estar en la tabla");
+  assert.equal(celdas[0].textContent, direccion, "y tiene que estar completa");
+
+  const enlaces = buscar(el("findings-body"), (n) => n.tag === "a");
+  assert.equal(enlaces.length, 0, "pero no puede ser un enlace");
 });
 
 /* --------------------------------------------------- Bloqueo de OPSEC */

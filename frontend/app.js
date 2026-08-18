@@ -326,8 +326,17 @@ function renderRow(f) {
     a.rel = "noopener noreferrer nofollow";
     ref.append(a);
   } else if (f.raw_ref) {
-    // .onion y demás: se muestra que existe, sin enlazar.
-    ref.append(el("span", "onion", "chip"));
+    // .onion y demás: la dirección se muestra COMPLETA como texto, nunca como
+    // enlace. Que no sea clickeable es deliberado —es el sitio de extorsión, y
+    // el navegador tampoco lo resuelve sin Tor— pero ocultarla sería peor:
+    // es justo el dato que el investigador necesita copiar.
+    const code = document.createElement("code");
+    code.className = "onion-ref";
+    code.textContent = f.raw_ref;
+    code.title =
+      `${f.raw_ref}\n\n` +
+      "No es un enlace a propósito. Copiá y pegá si necesitás abrirlo (requiere Tor).";
+    ref.append(code);
   } else {
     ref.append(el("span", "—"));
   }
