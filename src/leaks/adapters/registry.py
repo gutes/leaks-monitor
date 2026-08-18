@@ -11,7 +11,7 @@ consulta.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from leaks.adapters import (
@@ -26,7 +26,27 @@ from leaks.config import Settings
 from leaks.domain.models import LeakType, RunEvent
 from leaks.domain.ports import FeedAdapter
 
-FeedFactory = Callable[[Settings, FeedHttpClient], FeedAdapter]
+
+@dataclass(frozen=True)
+class FeedDeps:
+    """Colaboradores que el registro no puede construir por su cuenta.
+
+    El registro solo conoce `Settings`; algunas fuentes necesitan algo que se
+    resuelve contra la base (por ejemplo, qué dominios consultar en esta
+    corrida). Se inyectan acá en vez de que el registro importe storage, que
+    invertiría la dirección de las dependencias.
+    """
+
+    #: Dado el nombre de un feed, dominios extra a consultar en esta corrida.
+    extra_domains: Callable[[str], Sequence[str]] | None = None
+
+    def domains_for(self, feed: str) -> tuple[str, ...]:
+        if self.extra_domains is None:
+            return ()
+        return tuple(self.extra_domains(feed))
+
+
+FeedFactory = Callable[[Settings, FeedHttpClient, FeedDeps], FeedAdapter]
 
 
 @dataclass(frozen=True)
@@ -53,27 +73,30 @@ class FeedSpec:
     tags: tuple[str, ...] = field(default_factory=tuple)
 
 
-def _ransomware_live(_settings: Settings, client: FeedHttpClient) -> FeedAdapter:
+def _ransomware_live(_settings: Settings, client: FeedHttpClient, _deps: FeedDeps) -> FeedAdapter:
     return ransomware_live.RansomwareLiveAdapter(client)
 
 
-def _ransomlook(_settings: Settings, client: FeedHttpClient) -> FeedAdapter:
+def _ransomlook(_settings: Settings, client: FeedHttpClient, _deps: FeedDeps) -> FeedAdapter:
     return ransomlook.RansomLookAdapter(client)
 
 
-def _dls_monitor(_settings: Settings, client: FeedHttpClient) -> FeedAdapter:
+def _dls_monitor(_settings: Settings, client: FeedHttpClient, _deps: FeedDeps) -> FeedAdapter:
     return dls_monitor.DlsMonitorAdapter(client)
 
 
-def _hudson_rock(settings: Settings, client: FeedHttpClient) -> FeedAdapter:
-    return hudson_rock.HudsonRockAdapter(client, settings.hudsonrock_domains)
+def _hudson_rock(settings: Settings, client: FeedHttpClient, deps: FeedDeps) -> FeedAdapter:
+    # Los explícitos del entorno más el lote que toque en esta corrida. Sin
+    # ninguno de los dos no sale un solo request.
+    dominios = (*settings.hudsonrock_domains, *deps.domains_for("hudsonrock"))
+    return hudson_rock.HudsonRockAdapter(client, dominios)
 
 
-def _darkforums(settings: Settings, client: FeedHttpClient) -> FeedAdapter:
+def _darkforums(settings: Settings, client: FeedHttpClient, _deps: FeedDeps) -> FeedAdapter:
     return mybb_forum.MyBBForumAdapter(client, "darkforums", settings.darkforums_base_urls)
 
 
-def _breachforums(settings: Settings, client: FeedHttpClient) -> FeedAdapter:
+def _breachforums(settings: Settings, client: FeedHttpClient, _deps: FeedDeps) -> FeedAdapter:
     return mybb_forum.MyBBForumAdapter(client, "breachforums", settings.breachforums_base_urls)
 
 
@@ -199,6 +222,7 @@ def build_adapter(
     settings: Settings,
     emit: Callable[[RunEvent], None] | None = None,
     before_request: Callable[[], None] | None = None,
+    deps: FeedDeps | None = None,
 ) -> tuple[FeedAdapter, FeedHttpClient]:
     """Instancia el adapter con el cliente HTTP que le corresponde.
 
@@ -217,4 +241,4 @@ def build_adapter(
         source=spec.name,
         before_request=before_request,
     )
-    return spec.factory(settings, client), client
+    return spec.factory(settings, client, deps or FeedDeps()), client

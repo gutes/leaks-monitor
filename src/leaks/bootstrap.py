@@ -17,8 +17,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from leaks.adapters.egress import EgressResolver
 from leaks.adapters.http import build_client
+from leaks.adapters.registry import FeedDeps
 from leaks.alerts.dispatcher import AlertDispatcher, build_channels
 from leaks.config import Settings, get_settings
+from leaks.pipeline.domain_rotation import WatchlistDomainRotator
 from leaks.pipeline.egress_guard import EgressBlockedError, EgressGuard
 from leaks.pipeline.runner import PipelineRunner
 from leaks.relevance.watchlist import Watchlist, get_watchlist
@@ -138,6 +140,16 @@ def build_application(settings: Settings | None = None) -> Application:
             before_request=barrera,
         )
 
+    # Lote rotativo de dominios para Hudson Rock. Apagado por defecto: sin él
+    # solo se consultan los de `LEAKS_HUDSONROCK_DOMAINS`.
+    rotator = WatchlistDomainRotator(
+        watchlist_repo,
+        settings_store,
+        enabled=config.hudsonrock_from_watchlist,
+        max_per_run=config.hudsonrock_max_per_run,
+    )
+    feed_deps = FeedDeps(extra_domains=rotator.for_feed)
+
     site_repo = LeakSiteRepository(session_factory)
     # El colector usa la misma barrera de salida que los feeds: no hay motivo
     # para que este pedido salga desde una IP bloqueada si los otros no pueden.
@@ -161,6 +173,7 @@ def build_application(settings: Settings | None = None) -> Application:
         settings=config,
         alert_dispatcher=alert_dispatcher,
         site_collector=site_collector,
+        feed_deps=feed_deps,
         pii_vault=vault,
         event_sink=event_sink,
         egress_guard=egress_guard,

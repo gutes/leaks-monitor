@@ -66,7 +66,7 @@ def spec_for(adapter: FakeAdapter, *, requires_pii: bool = False) -> FeedSpec:
     return FeedSpec(
         name=adapter.name,
         leak_type=adapter.leak_type,
-        factory=lambda _s, _c: adapter,
+        factory=lambda _s, _c, _d: adapter,
         requires_pii=requires_pii,
     )
 

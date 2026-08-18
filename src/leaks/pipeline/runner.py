@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from leaks.adapters.registry import FeedSpec, build_adapter, resolve_enabled
+from leaks.adapters.registry import FeedDeps, FeedSpec, build_adapter, resolve_enabled
 from leaks.alerts.dispatcher import AlertDispatcher
 from leaks.config import Settings
 from leaks.domain.models import (
@@ -107,6 +107,7 @@ class PipelineRunner:
         settings: Settings,
         alert_dispatcher: AlertDispatcher | None = None,
         site_collector: SiteCatalogCollector | None = None,
+        feed_deps: FeedDeps | None = None,
         pii_vault: PiiVault | None = None,
         event_sink: EventSink | None = None,
         egress_guard: EgressGuard | None = None,
@@ -134,6 +135,9 @@ class PipelineRunner:
         self._pii_vault = pii_vault
         self._alerts = alert_dispatcher
         self._sites = site_collector
+        # Colaboradores que el registro no puede construir solo (por ejemplo,
+        # qué dominios le toca consultar a Hudson Rock en esta corrida).
+        self._feed_deps = feed_deps or FeedDeps()
 
     def run(self, specs: Sequence[tuple[FeedSpec, str | None]] | None = None) -> RunReport:
         """Corre todos los feeds habilitados."""
@@ -426,7 +430,11 @@ class PipelineRunner:
 
         try:
             adapter, cliente = build_adapter(
-                spec, self._settings, self.emit_event, self._assert_egress_allowed
+                spec,
+                self._settings,
+                self.emit_event,
+                self._assert_egress_allowed,
+                self._feed_deps,
             )
             desde = self._repository.get_cursor(spec.name)
             hallazgos: list[Finding] = []

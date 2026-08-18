@@ -74,6 +74,13 @@ class Settings(BaseSettings):
     # NO lee la watchlist a propósito: cada dominio que se consulta es una
     # decisión explícita, no un efecto secundario de la watchlist.
     hudsonrock_domains: CsvTuple = ()
+    #: Derivar además los dominios de la watchlist, por lotes rotativos.
+    #: Apagado por defecto: cada consulta le revela a un proveedor extranjero
+    #: qué organismo estás vigilando, así que es una decisión explícita.
+    hudsonrock_from_watchlist: bool = False
+    #: Cuántos dominios de la watchlist se consultan por corrida. Con ~2 s por
+    #: dominio, 25 mantiene la corrida corta y cubre 173 dominios en una semana.
+    hudsonrock_max_per_run: int = Field(default=25, ge=0)
 
     # --- Alertas -------------------------------------------------------------
     #: Severidad mínima para avisar. Con `high` no molesta por cada .com.ar.

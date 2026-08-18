@@ -65,8 +65,20 @@ con API usable.
   equipos comprometidos, de los que se persistieron **solo los conteos**.
 - **No corre solo.** Hacen falta **dos** decisiones explícitas:
   1. habilitar las fuentes con PII (el toggle de la UI o `STORE_PII=true`);
-  2. listar los dominios en `LEAKS_HUDSONROCK_DOMAINS`. Vacío —el default— no
-     genera un solo request.
+  2. decirle qué dominios consultar. Dos caminos, combinables:
+     * `LEAKS_HUDSONROCK_DOMAINS` — a mano, siempre los mismos.
+     * `LEAKS_HUDSONROCK_FROM_WATCHLIST=true` — recorre la watchlist por
+       **lotes rotativos** de `LEAKS_HUDSONROCK_MAX_PER_RUN` (default 25),
+       avanzando un cursor que se guarda en la base.
+
+     Con los dos vacíos/apagados no sale un solo request.
+
+**Por qué lotes y no la watchlist entera.** Cada consulta le revela al proveedor
+qué organismo estás vigilando: mandarle los 173 dominios todos los días le
+entrega el mapa completo de la investigación. Y son ~2 s por dominio con
+timeouts intermitentes, así que la corrida se iría a ~6 minutos martillando un
+endpoint gratuito. La rotación cubre todo en unos días sin ninguna de las dos
+cosas. Cada dominio va aislado: un timeout no se lleva puesto el lote.
 - **Diferencia de fondo con el resto:** todos los demás feeds se bajan enteros
   y se filtran localmente. Este exige **mandarle un dominio al proveedor**, que
   es un tercero comercial extranjero. Como la regla del proyecto es no filtrar

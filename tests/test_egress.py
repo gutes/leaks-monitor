@@ -420,7 +420,7 @@ class TestElRunnerCableaLaBarrera:
         from leaks.adapters.registry import FeedSpec
         from leaks.domain.models import LeakType
 
-        def factory(_settings: object, client: object) -> object:
+        def factory(_settings: object, client: object, _deps: object) -> object:
             capturado["cliente"] = client
             return FakeAdapter([payload_ar()])
 
