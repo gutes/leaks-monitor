@@ -299,7 +299,7 @@ antes de confiar.
 | [dls-monitor](https://github.com/cyberiskvision/dls-monitor) | ✅ activo | ransomware | Histórico completo (~14k posts) vía `posts.json`. |
 | [DarkForums](https://darkforums.ru) | ✅ activo | foro | Atom público. **Fuente con PII**: detrás del toggle. |
 | BreachForums | ❌ **incautado** | foro | Todos los dominios conocidos muestran el cartel de incautación. |
-| [Hudson Rock](https://docs.hudsonrock.com/) | ⚠️ **sin verificar** | infostealer | No respondía (timeout 60 s). Deshabilitado + `STORE_PII`. |
+| [Hudson Rock](https://docs.hudsonrock.com/) | ✅ activo | infostealer | Verificado 2026-08-18. Detrás del toggle **y** de `LEAKS_HUDSONROCK_DOMAINS`. |
 | [ecrime.ch](https://ecrime.ch/) | ❌ no integrable | ransomware | Solo búsqueda web por nombre de archivo; sin API pública. |
 | [WhiteIntel](https://whiteintel.io/) | ❌ no integrable | infostealer | El tier free exige cuenta; sin API pública documentada. |
 

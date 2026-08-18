@@ -142,13 +142,14 @@ FEED_REGISTRY: tuple[FeedSpec, ...] = (
         factory=_hudson_rock,
         license_note=hudson_rock.LICENSE_NOTE,
         docs_url="https://docs.hudsonrock.com/",
-        enabled_by_default=False,
+        # Verificado el 2026-08-18: el endpoint responde (el 2026-08-14 daba
+        # timeout). Queda gobernado por el toggle de fuentes con PII, igual que
+        # los foros. Igual no consulta nada por su cuenta: sin dominios en
+        # `LEAKS_HUDSONROCK_DOMAINS` no sale un solo request, así que son dos
+        # puertas explícitas —habilitar PII y listar dominios— y no una.
+        enabled_by_default=True,
         requires_pii=True,
-        disabled_reason=(
-            "record-level con PII (requiere STORE_PII=true) y endpoint sin verificar: "
-            "no respondía al 2026-08-14"
-        ),
-        tags=("infostealer", "pii", "no-verificado"),
+        tags=("infostealer", "pii"),
     ),
 )
 

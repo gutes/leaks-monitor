@@ -58,14 +58,15 @@ con API usable.
   todo — eso es el backfill, y es correcto.
 - Solo trae `post_title`, `group_name` y `discovered`.
 
-## Hudson Rock Cavalier — ⚠️ sin verificar
+## Hudson Rock Cavalier — ✅ verificado el 2026-08-18
 
-- **Estado:** al 2026-08-14 `search-by-domain` no responde (timeout a los 60 s,
-  cero bytes). **El adapter está escrito contra la forma documentada del
-  payload pero no se pudo probar contra el servicio real.**
-- **Viene deshabilitado** por dos razones independientes:
-  1. Es record-level con PII → `requires_pii=True`, exige `STORE_PII=true`.
-  2. El modelo de acceso no está confirmado.
+- **Estado:** `search-by-domain` responde. (El 2026-08-14 daba timeout a los
+  60 s; no era el adapter.) Probado contra `prevision-ejemplo.gob.ar`: devolvió 225.375
+  equipos comprometidos, de los que se persistieron **solo los conteos**.
+- **No corre solo.** Hacen falta **dos** decisiones explícitas:
+  1. habilitar las fuentes con PII (el toggle de la UI o `STORE_PII=true`);
+  2. listar los dominios en `LEAKS_HUDSONROCK_DOMAINS`. Vacío —el default— no
+     genera un solo request.
 - **Diferencia de fondo con el resto:** todos los demás feeds se bajan enteros
   y se filtran localmente. Este exige **mandarle un dominio al proveedor**, que
   es un tercero comercial extranjero. Como la regla del proyecto es no filtrar

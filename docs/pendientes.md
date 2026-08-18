@@ -68,7 +68,7 @@ Las tomé yo para no bloquear. Todas son reversibles.
 |---|---|---|
 | 1 | **Alertas — no existe nada.** | El ejemplo del bootstrap termina en *"Alerta emitida"*. Hoy el hallazgo se persiste y se ve en el tablero, nada más. Sin email, sin webhook, sin Telegram. **Es lo único del spec original que falta entero.** |
 | 2 | **Watchlist ampliada, todavía sin validar contra el CNC.** | Pasó de 69 a 284 entradas (11 sectores: + provincias, municipios, universidades, salud, nuclear). Los 8 dominios estatales huérfanos quedaron cubiertos y 18 hallazgos existentes ganaron sector. **No se pudo verificar por DNS**: el nodo VPN no alcanza sitios `.ar`. Falta la validación contra el inventario del CNC. |
-| 3 | **Hudson Rock sin verificar.** | Adapter escrito contra la forma documentada, nunca probado: el endpoint no respondía (timeout 60 s). |
+| 3 | ~~Hudson Rock sin verificar~~ ✅ | Verificado el 2026-08-18: el endpoint responde. Probado contra `prevision-ejemplo.gob.ar` (225.375 equipos comprometidos, solo conteos persistidos). Queda detrás del toggle de PII y de `LEAKS_HUDSONROCK_DOMAINS`. |
 | 4 | **Fase 2 sin implementar.** | GitHub secret scanning sobre orgs `.gob.ar`, Telegram (MTProto), paste sites. Los hooks están listos: es un adapter más una entrada en el registro. |
 
 ---

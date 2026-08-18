@@ -146,10 +146,11 @@ class TestFuentes:
         assert {"ransomware.live", "ransomlook", "dls-monitor", "hudsonrock"} <= nombres
 
     def test_el_feed_con_pii_aparece_deshabilitado_y_con_motivo(self, client: TestClient) -> None:
+        """Con el toggle apagado no corre, y la UI explica por qué."""
         hudson = next(s for s in client.get("/api/sources").json() if s["name"] == "hudsonrock")
         assert hudson["enabled"] is False
         assert hudson["requires_pii"] is True
-        assert "STORE_PII" in (hudson["skip_reason"] or "")
+        assert "PII" in (hudson["skip_reason"] or "")
 
     def test_la_licencia_es_visible(self, client: TestClient) -> None:
         """La limitación del tier free tiene que estar a la vista, no solo en el README."""
