@@ -138,6 +138,29 @@ Los enlaces se extraen del **HTML crudo** del post —viven en atributos `href` 
 `src`, así que quitar las etiquetas se los lleva puestos— y se guardan aunque el
 cuerpo del post se descarte por contener PII.
 
+### Exposición por infostealers
+
+Los hallazgos de Hudson Rock traen un icono 🔎 que abre el detalle de **qué
+sistemas** se comprometieron, no solo cuántos equipos:
+
+```
+[empleado]  89 capturas   https://siar.nuclear-ejemplo.gob.ar/sslvpn_logon.shtml
+[empleado]  64 capturas   https://webmail.nuclear-ejemplo.gob.ar
+[usuario]  515.965        https://portal.prevision-ejemplo.gob.ar/clavelogon/logon.aspx
+```
+
+Son las URLs contra las que se estaba autenticando la víctima al infectarse. La
+distinción **empleado vs. usuario** es la que importa: una VPN institucional con
+credenciales de empleado no es lo mismo que el portal público de trámites.
+Además se guardan las familias de malware predominantes y el porcentaje de
+contraseñas débiles.
+
+> **Las credenciales no están, ni acá ni en otro lado accesible.** El tier
+> gratuito del proveedor devuelve solo agregados; los registros
+> (email:contraseña, cookies, tokens) son su producto comercial. Verificado: el
+> payload no trae un solo email. Igual las URLs pasan por el redactor, porque
+> una query string puede arrastrar un identificador.
+
 ### Antigüedad de los hallazgos
 
 El tablero distingue **cuándo ocurrió** un leak de **cuándo lo vimos**, que no

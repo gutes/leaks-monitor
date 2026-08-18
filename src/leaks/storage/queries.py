@@ -151,6 +151,7 @@ class FindingQueryService:
             "occurred_at_basis": row.occurred_at_basis or "sin_dato",
             "backfill": bool(row.backfill),
             "download_links": row.download_links or [],
+            "exposure_detail": row.exposure_detail or None,
             "first_seen_at": _as_utc(row.first_seen_at),
             "last_seen_at": _as_utc(row.last_seen_at),
         }

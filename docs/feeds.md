@@ -86,7 +86,14 @@ cosas. Cada dominio va aislado: un timeout no se lleva puesto el lote.
   dominios listados a mano en `LEAKS_HUDSONROCK_DOMAINS`. Consultar un dominio
   es una decisión explícita, no un efecto secundario de la watchlist.
 - **Qué se persiste:** conteos agregados (cuántos equipos, cuántos empleados,
-  cuántos usuarios). Identidades y credenciales, jamás en `findings`.
+  cuántos usuarios) **y el detalle de exposición**: qué URLs de login se
+  capturaron y si eran de empleados o de usuarios, qué familias de malware
+  predominan y qué porcentaje de contraseñas es débil. Todo eso es metadata del
+  organismo, no de personas.
+- **Las credenciales no vienen.** Verificado el 2026-08-18 sobre el payload
+  completo: cero emails, cero contraseñas. `employeePasswords`/`userPasswords`
+  son distribuciones de fortaleza, no claves. Los registros son el producto
+  comercial del proveedor. Identidades y credenciales, jamás en `findings`.
 
 ## DarkForums / BreachForums (foros MyBB)
 

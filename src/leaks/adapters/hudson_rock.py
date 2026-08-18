@@ -35,6 +35,7 @@ from typing import Any
 from leaks.adapters.http import FeedHttpClient
 from leaks.domain.models import LeakType, NormalizedItem, RawItem
 from leaks.extraction.dating import newest_sane
+from leaks.extraction.exposure import ExposureDetail, build_exposure
 from leaks.pipeline.egress_guard import EgressBlockedError
 
 BASE_URL = "https://cavalier.hudsonrock.com/api/json/v2/osint-tools"
@@ -66,6 +67,20 @@ PII_KEYS = frozenset(
 #: ISO— y por eso el adapter fechaba todo con `now()` y el histórico se veía
 #: como novedad del día. Se usan para fechar, nunca se persisten como texto.
 DATE_KEYS = ("last_employee_compromised", "last_user_compromised")
+
+
+def _describir(total: int, empleados: int, usuarios: int, exposicion: ExposureDetail | None) -> str:
+    """Resumen legible. Destaca los sistemas de empleados, que es lo grave."""
+    partes = [
+        f"Infostealers: {total} equipos comprometidos ({empleados} empleados, {usuarios} usuarios)."
+    ]
+    if exposicion:
+        internos = exposicion.employee_urls
+        if internos:
+            partes.append(f"{len(internos)} sistemas con credenciales de empleados.")
+        if exposicion.weak_password_pct:
+            partes.append(f"{exposicion.weak_password_pct}% de contraseñas débiles.")
+    return " ".join(partes)
 
 
 def _as_count(value: Any) -> int | None:
@@ -149,6 +164,10 @@ class HudsonRockAdapter:
         # es lo que hacía ver todo el histórico como nuevo.
         ocurrido = newest_sane(*(payload.get(k) for k in DATE_KEYS))
 
+        # Lo que hace accionable el hallazgo: qué sistemas se comprometieron y
+        # cuáles eran de empleados. Sin esto queda solo un número grande.
+        exposicion = build_exposure(payload)
+
         return NormalizedItem(
             source=self.name,
             leak_type=self.leak_type,
@@ -160,12 +179,10 @@ class HudsonRockAdapter:
             # `discovered_at` es cuándo lo supimos: la consulta es hoy.
             discovered_at=datetime.now(UTC),
             occurred_at=ocurrido,
+            exposure=exposicion,
             published_at=None,
             raw_ref=f"{self._base_url}/search-by-domain?domain={dominio}",
             # Texto derivado por nosotros a partir de conteos: sin PII por
             # construcción, no por filtrado.
-            description=(
-                f"Infostealers: {total} equipos comprometidos "
-                f"({empleados} empleados, {usuarios} usuarios)."
-            ),
+            description=_describir(total, empleados, usuarios, exposicion),
         )

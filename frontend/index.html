@@ -362,6 +362,30 @@
     </div>
   </div>
 
+  <!-- Detalle de exposición por infostealers. Metadata agregada: qué sistemas
+       se comprometieron y con qué malware. Sin credenciales — el tier gratuito
+       del proveedor no las devuelve, y no las querríamos. -->
+  <div id="exp-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="exp-title" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2 id="exp-title">Exposición por infostealers</h2>
+        <button type="button" class="btn" id="exp-close" aria-label="Cerrar">✕</button>
+      </div>
+      <p class="hint" id="exp-victim"></p>
+      <div id="exp-summary" class="exp-summary"></div>
+      <h3 class="exp-h3">Sistemas comprometidos</h3>
+      <p class="hint">
+        Son las URLs contra las que se estaba autenticando la víctima al infectarse.
+        Las de <strong>empleados</strong> van primero: implican acceso interno.
+      </p>
+      <div id="exp-urls" class="dl-list"></div>
+      <h3 class="exp-h3">Familias de malware</h3>
+      <div id="exp-families" class="exp-chips"></div>
+      <h3 class="exp-h3">Otros dominios donde reaparecen esas credenciales</h3>
+      <div id="exp-third" class="exp-chips"></div>
+    </div>
+  </div>
+
   <footer>
     <p>
       Prototipo OSINT sobre feeds públicos. Persiste solo metadata no sensible.

@@ -23,6 +23,7 @@ from leaks.domain.models import (
 )
 from leaks.extraction.dating import DateBasis
 from leaks.extraction.downloads import DownloadLink
+from leaks.extraction.exposure import ExposureDetail
 from leaks.storage.models import FindingRow, SourceRunRow, SourceStateRow
 from leaks.storage.session import session_scope
 
@@ -67,6 +68,7 @@ class SqlAlchemyFindingRepository:
                         FindingRow.dedup_hash,
                         FindingRow.download_links,
                         FindingRow.occurred_at,
+                        FindingRow.exposure_detail,
                     ).where(FindingRow.dedup_hash.in_(list(unique)))
                 ).all()
             }
@@ -86,6 +88,12 @@ class SqlAlchemyFindingRepository:
                     # Un hallazgo sin fechar puede *adquirir* fecha: la fuente
                     # empezó a informarla, o la migración limpió una inventada.
                     # No se pisa una fecha que ya estaba.
+                    # El detalle de exposición se refresca siempre: a diferencia
+                    # de la fecha, es una foto del estado actual y la de hoy es
+                    # mejor que la de la semana pasada.
+                    if finding.exposure is not None:
+                        valores["exposure_detail"] = finding.exposure.as_dict()
+
                     if finding.occurred_at is not None and previo.occurred_at is None:
                         valores["occurred_at"] = finding.occurred_at
                         valores["occurred_at_basis"] = str(finding.occurred_at_basis)
@@ -119,6 +127,7 @@ class SqlAlchemyFindingRepository:
             severity=str(finding.severity),
             description=finding.description,
             occurred_at=finding.occurred_at,
+            exposure_detail=finding.exposure.as_dict() if finding.exposure else None,
             occurred_at_basis=str(finding.occurred_at_basis),
             backfill=finding.backfill,
             download_links=[{"url": link.url, "kind": link.kind} for link in finding.download_links]
@@ -217,6 +226,9 @@ class SqlAlchemyFindingRepository:
             severity=Severity(row.severity),
             dedup_hash=row.dedup_hash,
             occurred_at=_as_utc(row.occurred_at) if row.occurred_at else None,
+            exposure=(
+                ExposureDetail.model_validate(row.exposure_detail) if row.exposure_detail else None
+            ),
             occurred_at_basis=DateBasis(row.occurred_at_basis or "sin_dato"),
             backfill=bool(row.backfill),
             download_links=tuple(

@@ -8,7 +8,7 @@ por accidente. Todo lo que sale de acá es metadata no sensible.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -44,6 +44,10 @@ class FindingOut(BaseModel):
     #: Referencias a los datos filtrados y a las muestras: `[{url, kind}]`.
     #: El frontend las muestra NO clickeables, para copiar y pegar.
     download_links: list[dict[str, str]] = Field(default_factory=list)
+    #: Detalle de exposición por infostealers: qué sistemas se comprometieron,
+    #: qué malware y qué tan débiles son las contraseñas. Sin credenciales:
+    #: el tier gratuito del proveedor no las devuelve.
+    exposure_detail: dict[str, Any] | None = None
     first_seen_at: datetime
     last_seen_at: datetime
 

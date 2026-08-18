@@ -391,9 +391,25 @@ function renderRow(f) {
     if (conData) boton.classList.add("dl-btn-data");
     boton.addEventListener("click", () => openDownloads(f));
     datos.append(boton);
-  } else {
-    datos.append(el("span", "—", "hint"));
   }
+
+  // Exposición por infostealers: qué sistemas se comprometieron.
+  const exp = f.exposure_detail;
+  if (exp && (exp.urls || []).length) {
+    const internos = (exp.urls || []).filter((u) => u.kind === "employee").length;
+    const boton = el("button", "", "dl-btn");
+    boton.type = "button";
+    boton.append(el("span", "🔎", "dl-icon"), el("span", String(exp.urls.length)));
+    boton.title = internos
+      ? `${exp.urls.length} sistemas comprometidos (${internos} de empleados)`
+      : `${exp.urls.length} sistemas comprometidos`;
+    // Con credenciales de empleados se destaca: es acceso interno.
+    if (internos) boton.classList.add("dl-btn-data");
+    boton.addEventListener("click", () => openExposure(f));
+    datos.append(boton);
+  }
+
+  if (!datos.children.length) datos.append(el("span", "—", "hint"));
   tr.append(datos);
 
   return tr;
@@ -455,6 +471,70 @@ function openDownloads(f) {
 
 function closeDownloads() {
   $("dl-modal").hidden = true;
+}
+
+/**
+ * Pop-up con el detalle de exposición por infostealers.
+ *
+ * Las URLs son de sistemas del propio organismo, así que acá sí se pueden
+ * enlazar… pero no se hace: son superficies de login comprometidas y el valor
+ * está en leerlas, no en visitarlas. Se muestran como texto, igual que el
+ * resto.
+ */
+function openExposure(f) {
+  const exp = f.exposure_detail || {};
+  $("exp-victim").textContent = `${f.victim_name}${f.victim_domain ? ` · ${f.victim_domain}` : ""}`;
+
+  const resumen = $("exp-summary");
+  resumen.replaceChildren();
+  const urls = exp.urls || [];
+  const internos = urls.filter((u) => u.kind === "employee");
+  resumen.append(
+    el("span", `${urls.length} sistemas`, "pill pill-low"),
+    el(
+      "span",
+      `${internos.length} de empleados`,
+      `pill pill-${internos.length ? "critical" : "low"}`,
+    ),
+  );
+  if (exp.weak_password_pct) {
+    resumen.append(el("span", `${exp.weak_password_pct}% contraseñas débiles`, "pill pill-high"));
+  }
+
+  const lista = $("exp-urls");
+  lista.replaceChildren();
+  for (const u of urls) {
+    const fila = el("div", "", `dl-item ${u.kind === "employee" ? "dl-data" : "dl-sample"}`);
+    const cab = el("div", "", "dl-item-head");
+    cab.append(
+      el("span", u.kind === "employee" ? "empleado" : "usuario",
+         `pill pill-${u.kind === "employee" ? "critical" : "low"}`),
+    );
+    if (u.occurrences) cab.append(el("span", `${u.occurrences.toLocaleString()} capturas`, "hint"));
+    fila.append(cab);
+    const code = document.createElement("code");
+    code.textContent = u.url;
+    fila.append(code);
+    lista.append(fila);
+  }
+
+  const fam = $("exp-families");
+  fam.replaceChildren();
+  for (const [nombre, n] of Object.entries(exp.stealer_families || {})) {
+    fam.append(el("span", `${nombre} · ${n.toLocaleString()}`, "chip"));
+  }
+  if (!fam.children.length) fam.append(el("span", "sin datos", "hint"));
+
+  const terceros = $("exp-third");
+  terceros.replaceChildren();
+  for (const d of exp.third_party_domains || []) terceros.append(el("span", d, "chip"));
+  if (!terceros.children.length) terceros.append(el("span", "sin datos", "hint"));
+
+  $("exp-modal").hidden = false;
+}
+
+function closeExposure() {
+  $("exp-modal").hidden = true;
 }
 
 async function loadFindings() {
@@ -1260,6 +1340,11 @@ $("next").addEventListener("click", () => {
   loadFindings();
 });
 
+$("exp-close").addEventListener("click", closeExposure);
+$("exp-modal").addEventListener("click", (e) => {
+  if (e.target === $("exp-modal")) closeExposure();
+});
+
 $("dl-close").addEventListener("click", closeDownloads);
 $("dl-modal").addEventListener("click", (e) => {
   // Click fuera de la tarjeta cierra. Este modal sí se puede cerrar: no es el
@@ -1267,7 +1352,10 @@ $("dl-modal").addEventListener("click", (e) => {
   if (e.target === $("dl-modal")) closeDownloads();
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !state.blocked) closeDownloads();
+  if (e.key === "Escape" && !state.blocked) {
+    closeDownloads();
+    closeExposure();
+  }
 });
 
 $("refresh").addEventListener("click", refreshNow);

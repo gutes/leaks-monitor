@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from leaks.extraction.dating import DateBasis
 from leaks.extraction.downloads import DownloadLink
+from leaks.extraction.exposure import ExposureDetail
 
 
 class LeakType(StrEnum):
@@ -100,6 +101,9 @@ class NormalizedItem(BaseModel):
     #: Cuándo ocurrió el evento, no cuándo lo vimos. `None` = no se pudo
     #: fechar, y eso se dice: nunca se rellena con la fecha de la consulta.
     occurred_at: datetime | None = None
+    #: Detalle de exposición por infostealers: qué sistemas se comprometieron,
+    #: si fueron de empleados o de usuarios, qué malware. Metadata, sin PII.
+    exposure: ExposureDetail | None = None
 
     @field_validator("discovered_at", "published_at", "occurred_at")
     @classmethod

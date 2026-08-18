@@ -8,6 +8,7 @@ cifrado, y solo existe contenido ahí si `STORE_PII=true`.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     JSON,
@@ -61,6 +62,11 @@ class FindingRow(Base):
 
     # Texto libre: solo si sobrevivió al scrubber
     description: Mapped[str | None] = mapped_column(Text)
+
+    #: Detalle de exposición por infostealers: URLs comprometidas, familias de
+    #: malware, fortaleza de contraseñas. Metadata agregada, nunca credenciales
+    #: (el tier gratuito del proveedor no las devuelve, y no las querríamos).
+    exposure_detail: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
     #: Enlaces a los datos filtrados y a las muestras: `[{url, kind}]`.
     #: Son referencias, no datos: el prototipo nunca descarga el contenido.
