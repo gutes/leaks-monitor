@@ -150,6 +150,11 @@ class Settings(BaseSettings):
     #: exportarla. Acota la memoria del informe sin acotar la watchlist:
     #: las entradas salen todas, lo que se topea es el historial de cada una.
     export_coverage_scan: int = Field(default=5000, ge=1, le=50000)
+
+    #: Si la corrida diaria trae víctimas regionales y repuntúa actores.
+    #: Son ~18 requests por corrida a un endpoint gratuito, así que se puede
+    #: apagar sin tocar nada más del pipeline.
+    adjacency_enabled: bool = True
     #: Permite editar watchlist y reglas desde la UI. Se puede cerrar en un
     #: despliegue compartido; el control de IP de salida NO se puede tocar por
     #: ninguna vía de la API, ni siquiera con esto en true.

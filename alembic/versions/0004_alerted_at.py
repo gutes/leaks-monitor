@@ -19,9 +19,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "findings", sa.Column("alerted_at", sa.DateTime(timezone=True), nullable=True)
-    )
+    op.add_column("findings", sa.Column("alerted_at", sa.DateTime(timezone=True), nullable=True))
     op.create_index("ix_findings_alerted_at", "findings", ["alerted_at"])
 
 

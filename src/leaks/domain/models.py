@@ -170,6 +170,7 @@ class EventKind(StrEnum):
     EGRESS_BLOCKED = "egress_blocked"
     ALERT = "alert"
     SITE_CATALOG = "site_catalog"
+    ADJACENCY = "adjacency"
 
 
 class RunEvent(BaseModel):

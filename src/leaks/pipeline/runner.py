@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from leaks.adapters.registry import FeedDeps, FeedSpec, build_adapter, resolve_enabled
+from leaks.adjacency.collector import AdjacencyCollector
 from leaks.alerts.dispatcher import AlertDispatcher
 from leaks.config import Settings
 from leaks.domain.models import (
@@ -65,6 +66,8 @@ class RunReport:
     alerts_sent: int = 0
     #: Ubicaciones nuevas en el catálogo de sitios.
     sites_new: int = 0
+    #: Víctimas regionales nuevas de la sección de adyacencia.
+    adjacency_new: int = 0
 
     @property
     def blocked(self) -> bool:
@@ -108,6 +111,7 @@ class PipelineRunner:
         settings: Settings,
         alert_dispatcher: AlertDispatcher | None = None,
         site_collector: SiteCatalogCollector | None = None,
+        adjacency_collector: AdjacencyCollector | None = None,
         feed_deps: FeedDeps | None = None,
         pii_vault: PiiVault | None = None,
         event_sink: EventSink | None = None,
@@ -136,6 +140,7 @@ class PipelineRunner:
         self._pii_vault = pii_vault
         self._alerts = alert_dispatcher
         self._sites = site_collector
+        self._adjacency = adjacency_collector
         # Colaboradores que el registro no puede construir solo (por ejemplo,
         # qué dominios le toca consultar a Hudson Rock en esta corrida).
         self._feed_deps = feed_deps or FeedDeps()
@@ -199,6 +204,10 @@ class PipelineRunner:
         # señal por sí sola y conviene tenerla registrada.
         reporte.sites_new = self._collect_sites()
 
+        # La adyacencia después del catálogo y antes de alertar: recalcula
+        # los perfiles de actor con lo que se acaba de traer.
+        reporte.adjacency_new = self._collect_adjacency()
+
         # Alertas antes de la retención: avisar es lo urgente.
         reporte.alerts_sent = self._dispatch_alerts()
 
@@ -224,6 +233,41 @@ class PipelineRunner:
             duration_ms=int(duracion * 1000),
         )
         return reporte
+
+    # -- Adyacencia regional -----------------------------------------------------
+
+    def _collect_adjacency(self) -> int:
+        """Trae víctimas regionales y repuntúa los actores. Nunca lanza.
+
+        Es enriquecimiento: si falla, la corrida argentina no se entera. Lo
+        único que sí corta es el bloqueo de salida, y eso lo maneja el colector.
+        """
+        if self._adjacency is None:
+            return 0
+        try:
+            resultado = self._adjacency.collect()
+        except Exception as exc:
+            logger.warning("La adyacencia falló: %s", type(exc).__name__)
+            self._emit(
+                EventKind.ADJACENCY,
+                f"Adyacencia: falló ({type(exc).__name__})",
+                level=EventLevel.WARN,
+            )
+            return 0
+
+        detalle = (
+            f"{resultado.victimas_totales} víctimas regionales "
+            f"({resultado.victimas_nuevas} nuevas), {resultado.actores} actores: "
+            f"{resultado.confirmados} ya golpearon AR, {resultado.candidatos} todavía no"
+        )
+        if resultado.paises_fallidos:
+            detalle += f" · sin respuesta: {', '.join(resultado.paises_fallidos[:5])}"
+        self._emit(
+            EventKind.ADJACENCY,
+            detalle,
+            level=EventLevel.WARN if resultado.paises_fallidos else EventLevel.INFO,
+        )
+        return resultado.victimas_nuevas
 
     # -- Catálogo de sitios ------------------------------------------------------
 

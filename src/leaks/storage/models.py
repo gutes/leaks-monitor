@@ -14,6 +14,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -219,6 +220,98 @@ class LeakSiteRow(Base):
         Index("ix_leak_sites_group", "group_name"),
         Index("ix_leak_sites_first_seen", "first_seen_at"),
         Index("ix_leak_sites_available", "available"),
+    )
+
+
+class RegionalVictimRow(Base):
+    """Una víctima de la región. **No es un hallazgo argentino.**
+
+    Vive en su propia tabla y no en `findings` por tres razones concretas, no
+    por prolijidad:
+
+    * `findings.dedup_hash` tiene unique global: mezclarlas colisionaría.
+    * `Finding.ar_match_reason` exige `min_length=1`. Un hallazgo argentino
+      **no puede existir** sin una razón argentina, y estas no la tienen.
+    * `queries.stats()` y `list_pending_alerts()` recorren la tabla entera. Con
+      una columna `scope` habría que acordarse del filtro en cada consulta, y
+      olvidarse una sola vez mezcla los datos en silencio.
+
+    Es insumo del perfil de actor, no algo para mirar de a una: son ~1.500
+    filas de empresas que no son argentinas. Metadata solamente.
+    """
+
+    __tablename__ = "regional_victims"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    #: Nombre del grupo en minúsculas. `lockbit3` y `lockbit5` cuentan
+    #: separado: son campañas distintas y el feed las nombra distinto.
+    actor: Mapped[str] = mapped_column(String(128), nullable=False)
+    #: ISO-3166 alfa-2. Siempre uno del catálogo de `adjacency/countries.py`.
+    country: Mapped[str] = mapped_column(String(2), nullable=False)
+    victim_name: Mapped[str] = mapped_column(String(512), nullable=False)
+    victim_domain: Mapped[str | None] = mapped_column(String(255))
+    #: Rubro tal como lo declara el feed, sin normalizar: se usa para medir
+    #: afinidad sectorial contra lo que se golpea en Argentina.
+    sector: Mapped[str | None] = mapped_column(String(128))
+    #: Cuándo ocurrió, con la misma postura que en `findings`: si no se puede
+    #: fechar, no se inventa. Sin fecha la víctima no puntúa.
+    occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    source: Mapped[str] = mapped_column(String(64), nullable=False)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        # Clave natural. El feed republica lo mismo en cada corrida, así que
+        # sin esto la tabla crecería sola en cada pasada.
+        UniqueConstraint(
+            "actor", "country", "victim_name", "occurred_at", name="uq_regional_victim"
+        ),
+        Index("ix_regional_victims_actor", "actor"),
+        Index("ix_regional_victims_country", "country"),
+        Index("ix_regional_victims_occurred", "occurred_at"),
+    )
+
+
+class AdjacentActorRow(Base):
+    """El perfil de un actor: el producto de la sección de adyacencia.
+
+    La unidad es el **actor**, no la víctima. Las víctimas regionales son el
+    insumo; esto es lo que se mira.
+
+    `hit_ar` parte la tabla en dos poblaciones que no se comparan entre sí:
+
+    * **Confirmados** (`hit_ar=True`): ya golpearon Argentina. No llevan score
+      — una probabilidad de que le peguen a AR no significa nada para quien ya
+      lo hizo. Se ordenan por actividad reciente.
+    * **Candidatos** (`hit_ar=False`): todavía no. Son los únicos puntuados.
+    """
+
+    __tablename__ = "adjacent_actors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    actor: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    victims_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: Códigos de país donde tiene víctimas: `["BR", "CL"]`.
+    countries: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    first_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: Ya golpeó Argentina. Se deriva de `findings`, que es donde vive eso.
+    hit_ar: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    ar_victims: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: 0-100. Siempre 0 para los confirmados: no se les calcula.
+    score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    #: Cuánto aportó cada componente, más la confianza. Es lo que hace al
+    #: número discutible en vez de un veredicto opaco.
+    score_breakdown: Mapped[dict[str, float]] = mapped_column(JSON, nullable=False)
+    #: El score de la corrida anterior. Es lo que hace el score *vivo*: permite
+    #: mostrar la variación y alertar por salto, no solo por umbral absoluto.
+    score_prev: Mapped[float | None] = mapped_column(Float)
+    score_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: Última vez que se avisó por este actor, para no repetir el aviso.
+    alerted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("ix_adjacent_actors_score", "score"),
+        Index("ix_adjacent_actors_hit_ar", "hit_ar"),
     )
 
 

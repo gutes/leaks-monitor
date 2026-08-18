@@ -211,6 +211,29 @@ class FindingQueryService:
                 ),
             }
 
+    def actor_counts(self) -> dict[str, int]:
+        """Actor -> cuántas víctimas argentinas tiene.
+
+        Es lo ÚNICO que la sección de adyacencia le pide al lado argentino, y
+        es de solo lectura: con esto parte a los actores en confirmados (ya
+        golpearon acá) y candidatos (todavía no).
+        """
+        with session_scope(self._session_factory) as session:
+            conteos = self._count_by(session, FindingRow.actor)
+        return {k.strip().lower(): v for k, v in conteos.items() if k and k.strip()}
+
+    def sector_values(self) -> tuple[str, ...]:
+        """Sectores de los hallazgos argentinos, con repetición.
+
+        Con repetición a propósito: la afinidad sectorial del score necesita
+        saber cuáles se golpean MÁS, no cuáles existen.
+        """
+        with session_scope(self._session_factory) as session:
+            filas = session.scalars(
+                select(FindingRow.sector).where(FindingRow.sector.is_not(None))
+            ).all()
+        return tuple(f for f in filas if f)
+
     @staticmethod
     def _count_by(session: Session, column: Any) -> dict[str, int]:
         filas = session.execute(

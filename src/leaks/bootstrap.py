@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from leaks.adapters.egress import EgressResolver
 from leaks.adapters.http import build_client
 from leaks.adapters.registry import FeedDeps
+from leaks.adjacency.collector import AdjacencyCollector
 from leaks.alerts.dispatcher import AlertDispatcher, build_channels
 from leaks.config import Settings, get_settings
 from leaks.pipeline.domain_rotation import WatchlistDomainRotator
@@ -25,6 +26,7 @@ from leaks.pipeline.egress_guard import EgressBlockedError, EgressGuard
 from leaks.pipeline.runner import PipelineRunner
 from leaks.relevance.watchlist import Watchlist, get_watchlist
 from leaks.sites.collector import SiteCatalogCollector
+from leaks.storage.adjacency_repository import AdjacencyRepository
 from leaks.storage.crypto import build_cipher
 from leaks.storage.event_sink import SqlAlchemyEventSink
 from leaks.storage.pii_vault import PiiVault
@@ -53,6 +55,7 @@ class Application:
     queries: FindingQueryService
     alert_dispatcher: AlertDispatcher
     site_repo: LeakSiteRepository
+    adjacency_repo: AdjacencyRepository
     pii_vault: PiiVault
     event_sink: SqlAlchemyEventSink
     egress_guard: EgressGuard
@@ -155,6 +158,16 @@ def build_application(settings: Settings | None = None) -> Application:
     # para que este pedido salga desde una IP bloqueada si los otros no pueden.
     site_collector = SiteCatalogCollector(site_repo, _cliente_de_alertas)
 
+    # Adyacencia regional. Comparte la barrera de salida y el cliente de los
+    # demás, pero no comparte tablas con el pipeline argentino: `queries` entra
+    # como contexto de solo lectura para saber quién ya golpeó acá.
+    adjacency_repo = AdjacencyRepository(session_factory)
+    adjacency_collector = (
+        AdjacencyCollector(adjacency_repo, _cliente_de_alertas, queries)
+        if config.adjacency_enabled
+        else None
+    )
+
     alert_dispatcher = AlertDispatcher(build_channels(config, _cliente_de_alertas))
     if alert_dispatcher.enabled:
         logger.info("Canales de alerta activos: %s", ", ".join(alert_dispatcher.channel_names))
@@ -173,6 +186,7 @@ def build_application(settings: Settings | None = None) -> Application:
         settings=config,
         alert_dispatcher=alert_dispatcher,
         site_collector=site_collector,
+        adjacency_collector=adjacency_collector,
         feed_deps=feed_deps,
         pii_vault=vault,
         event_sink=event_sink,
@@ -195,6 +209,7 @@ def build_application(settings: Settings | None = None) -> Application:
         queries=queries,
         alert_dispatcher=alert_dispatcher,
         site_repo=site_repo,
+        adjacency_repo=adjacency_repo,
         pii_vault=vault,
         event_sink=event_sink,
         egress_guard=egress_guard,
