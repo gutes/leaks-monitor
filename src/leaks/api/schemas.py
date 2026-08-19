@@ -287,6 +287,55 @@ class AlertChannelOut(BaseModel):
     missing: list[str] = Field(default_factory=list)
 
 
+class AlertItemOut(BaseModel):
+    """Una alerta, tal como la consume otro software.
+
+    Es un hallazgo que llega al umbral de severidad. Se devuelve haya sido
+    despachado o no: `notified` y `alerted_at` dicen en qué estado está, y el
+    consumidor decide.
+    """
+
+    id: int
+    #: Clave estable del hallazgo. Sirve para deduplicar del lado del consumidor.
+    dedup_hash: str
+    source: str
+    leak_type: str
+    victim_name: str
+    victim_domain: str | None = None
+    country: str | None = None
+    sector: str | None = None
+    actor: str | None = None
+    severity: str
+    ar_match_reason: list[str] = Field(default_factory=list)
+    #: Cuándo ocurrió el evento. `None` si no se pudo fechar — no se inventa.
+    occurred_at: datetime | None = None
+    occurred_at_basis: str = "sin_dato"
+    discovered_at: datetime
+    #: Cuándo lo vimos nosotros. Es el único campo **monótono** y el que hay
+    #: que usar para paginar incrementalmente.
+    first_seen_at: datetime
+    alerted_at: datetime | None = None
+    #: Si ya salió por algún canal configurado.
+    notified: bool = False
+    #: Entró con la importación inicial de su fuente: histórico, no novedad.
+    backfill: bool = False
+    raw_ref: str | None = None
+
+
+class AlertFeedOut(BaseModel):
+    """Página del feed de alertas para integraciones."""
+
+    items: list[AlertItemOut] = Field(default_factory=list)
+    #: Total que coincide con el filtro, no el total de alertas.
+    total: int = 0
+    limit: int = 50
+    offset: int = 0
+    #: Por qué campo se filtró y ordenó. Va en la respuesta para que el
+    #: consumidor no tenga que asumirlo.
+    campo: str = "first_seen"
+    min_severity: str = "high"
+
+
 class AlertStatusOut(BaseModel):
     """Estado de las alertas, para que la UI no mienta por omisión.
 

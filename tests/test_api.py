@@ -623,3 +623,109 @@ class TestAlertStatus:
     def test_no_cuenta_como_pendiente_la_importacion_inicial(self, client: TestClient) -> None:
         """Si contara el backfill, diría que hay cientos esperando cuando es histórico."""
         assert client.get("/api/alerts").json()["pending"] >= 0
+
+
+class TestAlertFeed:
+    """El feed que consume otro software."""
+
+    def test_devuelve_las_ultimas(self, client: TestClient) -> None:
+        d = client.get("/api/alerts/feed", params={"limit": 2}).json()
+        assert len(d["items"]) <= 2
+        assert d["total"] >= len(d["items"])
+
+    def test_devuelve_despachadas_y_no_despachadas(self, client: TestClient) -> None:
+        """Que un canal las haya mandado es un dato, no un filtro implícito."""
+        d = client.get("/api/alerts/feed", params={"limit": 50}).json()
+        assert all("notified" in i and "alerted_at" in i for i in d["items"])
+        todas = d["total"]
+        pendientes = client.get(
+            "/api/alerts/feed", params={"estado": "pendientes", "limit": 50}
+        ).json()["total"]
+        assert todas >= pendientes
+
+    def test_ordena_de_la_mas_reciente_a_la_mas_vieja(self, client: TestClient) -> None:
+        items = client.get("/api/alerts/feed", params={"limit": 50}).json()["items"]
+        fechas = [i["first_seen_at"] for i in items]
+        assert fechas == sorted(fechas, reverse=True)
+
+    def test_acepta_solo_desde(self, client: TestClient) -> None:
+        """`hasta` es opcional: se puede pedir todo lo posterior a una fecha."""
+        futuro = client.get(
+            "/api/alerts/feed", params={"desde": "2099-01-01T00:00:00", "limit": 50}
+        ).json()
+        assert futuro["total"] == 0
+        pasado = client.get(
+            "/api/alerts/feed", params={"desde": "2000-01-01T00:00:00", "limit": 50}
+        ).json()
+        assert pasado["total"] > 0
+
+    def test_acepta_solo_hasta(self, client: TestClient) -> None:
+        d = client.get(
+            "/api/alerts/feed", params={"hasta": "2000-01-01T00:00:00", "limit": 50}
+        ).json()
+        assert d["total"] == 0
+
+    def test_acepta_un_rango_cerrado(self, client: TestClient) -> None:
+        d = client.get(
+            "/api/alerts/feed",
+            params={
+                "desde": "2000-01-01T00:00:00",
+                "hasta": "2099-01-01T00:00:00",
+                "limit": 50,
+            },
+        ).json()
+        assert d["total"] > 0
+
+    def test_una_fecha_sin_zona_horaria_se_asume_utc(self, client: TestClient) -> None:
+        """Sin esto el filtro compararía naive contra aware y correría el rango."""
+        naive = client.get(
+            "/api/alerts/feed", params={"desde": "2000-01-01T00:00:00", "limit": 50}
+        ).json()
+        aware = client.get(
+            "/api/alerts/feed", params={"desde": "2000-01-01T00:00:00+00:00", "limit": 50}
+        ).json()
+        assert naive["total"] == aware["total"]
+
+    def test_el_campo_de_fecha_se_elige_y_se_declara(self, client: TestClient) -> None:
+        d = client.get("/api/alerts/feed", params={"campo": "occurred"}).json()
+        assert d["campo"] == "occurred"
+
+    def test_first_seen_es_el_default(self, client: TestClient) -> None:
+        """Es el único monótono: paginar por `occurred` se saltea alertas."""
+        assert client.get("/api/alerts/feed").json()["campo"] == "first_seen"
+
+    def test_un_campo_invalido_se_rechaza(self, client: TestClient) -> None:
+        assert client.get("/api/alerts/feed", params={"campo": "inventado"}).status_code == 422
+
+    def test_el_umbral_se_puede_bajar(self, client: TestClient) -> None:
+        altas = client.get("/api/alerts/feed", params={"min_severity": "critical"}).json()
+        todas = client.get("/api/alerts/feed", params={"min_severity": "low"}).json()
+        assert todas["total"] >= altas["total"]
+
+    def test_trae_lo_que_un_integrador_necesita(self, client: TestClient) -> None:
+        (item, *_) = client.get("/api/alerts/feed", params={"limit": 1}).json()["items"]
+        for campo in (
+            "dedup_hash",  # para deduplicar del lado del consumidor
+            "severity",
+            "ar_match_reason",  # por qué es argentino
+            "occurred_at",
+            "first_seen_at",
+            "notified",
+            "backfill",  # histórico recién importado vs. novedad
+            "raw_ref",
+        ):
+            assert campo in item, campo
+
+    def test_el_limite_tiene_tope(self, client: TestClient) -> None:
+        assert client.get("/api/alerts/feed", params={"limit": 99999}).json()["limit"] <= 1000
+
+    def test_pagina(self, client: TestClient) -> None:
+        primera = client.get("/api/alerts/feed", params={"limit": 1}).json()["items"]
+        segunda = client.get("/api/alerts/feed", params={"limit": 1, "offset": 1}).json()["items"]
+        assert primera and segunda
+        assert primera[0]["id"] != segunda[0]["id"]
+
+    def test_lo_corta_el_bloqueo_de_salida(self, settings: Settings, poblado: None) -> None:
+        """No queda exento por ser una integración."""
+        with TestClient(create_app(settings, egress_guard=GuardBloqueante())) as c:  # type: ignore[arg-type]
+            assert c.get("/api/alerts/feed").status_code == 403

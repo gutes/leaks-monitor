@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, ClassVar
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -259,6 +259,102 @@ class FindingQueryService:
             return tuple(str(v) for v in valores if v is not None)
 
     # -- Salud de las fuentes ------------------------------------------------
+
+    #: Campos por los que un consumidor puede acotar el feed de alertas.
+    #:
+    #: `first_seen` es el default y el único **monótono**: es cuándo lo
+    #: insertamos nosotros. `occurred` puede retroceder —una importación
+    #: inicial mete eventos de 2020 hoy— así que un integrador que pagine por
+    #: ahí se saltea alertas sin enterarse.
+    CAMPOS_FECHA: ClassVar[dict[str, Any]] = {
+        "first_seen": FindingRow.first_seen_at,
+        "occurred": FindingRow.occurred_at,
+        "alerted": FindingRow.alerted_at,
+        "discovered": FindingRow.discovered_at,
+    }
+
+    def alert_feed(
+        self,
+        *,
+        min_severity: str,
+        limit: int,
+        offset: int = 0,
+        desde: datetime | None = None,
+        hasta: datetime | None = None,
+        campo: str = "first_seen",
+        estado: str = "todas",
+    ) -> Page:
+        """Alertas para que las consuma otro software.
+
+        Una «alerta» es un hallazgo que llega al umbral de severidad. Se
+        devuelven **independientemente de si se despacharon o no**: que un
+        canal las haya mandado es un dato del hallazgo (`alerted_at`), no un
+        filtro implícito. Un integrador que corre en paralelo a los canales
+        quiere verlas todas.
+
+        A diferencia del despachador, acá **no** se excluye la importación
+        inicial ni lo que no se pudo fechar: eso es política de a-quién-
+        interrumpir, y un consumidor que pide un rango explícito quiere lo que
+        hay. Cada ítem trae `backfill` y `occurred_at` para que decida solo.
+        """
+        piso = SEVERITY_RANK.get(min_severity.lower(), 0)
+        alcanzan = [s for s, rango in SEVERITY_RANK.items() if rango >= piso]
+        columna = self.CAMPOS_FECHA.get(campo, FindingRow.first_seen_at)
+
+        def acotar(stmt: Select[Any]) -> Select[Any]:
+            stmt = stmt.where(FindingRow.severity.in_(alcanzan))
+            if estado == "pendientes":
+                stmt = stmt.where(FindingRow.alerted_at.is_(None))
+            elif estado == "enviadas":
+                stmt = stmt.where(FindingRow.alerted_at.is_not(None))
+            if desde is not None:
+                stmt = stmt.where(columna.is_not(None), columna >= desde)
+            if hasta is not None:
+                stmt = stmt.where(columna.is_not(None), columna <= hasta)
+            return stmt
+
+        with session_scope(self._session_factory) as session:
+            total = session.scalar(acotar(select(func.count()).select_from(FindingRow)))
+            filas = session.scalars(
+                acotar(select(FindingRow))
+                # Más reciente primero: "las últimas alertas" es el caso normal.
+                # `nullslast` para que un campo vacío no encabece la lista.
+                .order_by(columna.desc().nullslast(), FindingRow.id.desc())
+                .limit(limit)
+                .offset(offset)
+            ).all()
+            return Page(
+                items=tuple(self._to_alert(f) for f in filas),
+                total=int(total or 0),
+                limit=limit,
+                offset=offset,
+            )
+
+    @staticmethod
+    def _to_alert(row: FindingRow) -> dict[str, Any]:
+        """Proyección para consumo externo. Explícita, como la del listado."""
+        return {
+            "id": row.id,
+            "dedup_hash": row.dedup_hash,
+            "source": row.source,
+            "leak_type": row.leak_type,
+            "victim_name": row.victim_name,
+            "victim_domain": row.victim_domain,
+            "country": row.country,
+            "sector": row.sector,
+            "actor": row.actor,
+            "severity": row.severity,
+            "ar_match_reason": list(row.ar_match_reason or []),
+            "occurred_at": _as_utc(row.occurred_at) if row.occurred_at else None,
+            "occurred_at_basis": row.occurred_at_basis or "sin_dato",
+            "discovered_at": _as_utc(row.discovered_at),
+            "first_seen_at": _as_utc(row.first_seen_at),
+            #: Cuándo se despachó por los canales. `None` = todavía no.
+            "alerted_at": _as_utc(row.alerted_at) if row.alerted_at else None,
+            "notified": row.alerted_at is not None,
+            "backfill": bool(row.backfill),
+            "raw_ref": row.raw_ref,
+        }
 
     def alert_status(self, *, min_severity: str, max_age_days: int | None = None) -> dict[str, Any]:
         """Cuántos hallazgos esperan aviso y cuándo se avisó por última vez.

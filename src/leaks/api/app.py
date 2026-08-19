@@ -34,6 +34,8 @@ from leaks.api.schemas import (
     AdjacencyOut,
     AdjacentActorOut,
     AlertChannelOut,
+    AlertFeedOut,
+    AlertItemOut,
     AlertStatusOut,
     EgressOut,
     EnabledIn,
@@ -95,6 +97,18 @@ logger = logging.getLogger(__name__)
 #: Son las que hacen falta para *salir* del bloqueo: si se cerrara
 #: `/api/egress`, el frontend no tendría cómo enterarse de que ya se puede
 #: volver a operar, y el modal quedaría trabado para siempre.
+def _a_utc(valor: datetime | None) -> datetime | None:
+    """Un instante sin zona horaria se asume UTC.
+
+    Toda la base guarda UTC. Sin esto, un consumidor que mande
+    `desde=2026-08-01T00:00:00` compararía naive contra aware y el filtro
+    fallaría o —peor— devolvería un rango corrido varias horas sin avisar.
+    """
+    if valor is None:
+        return None
+    return valor if valor.tzinfo else valor.replace(tzinfo=UTC)
+
+
 def _configurada(config: Settings, variable: str) -> bool:
     """Si esa variable de entorno tiene valor en la configuración vigente.
 
@@ -829,6 +843,60 @@ def create_app(
         return EventPage(items=items, last_id=items[-1].id if items else after_id)
 
     # -- Salud de las fuentes ------------------------------------------------
+
+    @app.get("/api/alerts/feed", response_model=AlertFeedOut, tags=["alerts"])
+    def alert_feed(
+        queries: Queries,
+        limit: Annotated[int, Query(ge=1)] = 50,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        desde: datetime | None = None,
+        hasta: datetime | None = None,
+        campo: Annotated[
+            str, Query(pattern="^(first_seen|occurred|alerted|discovered)$")
+        ] = "first_seen",
+        estado: Annotated[str, Query(pattern="^(todas|pendientes|enviadas)$")] = "todas",
+        min_severity: Annotated[str | None, Query(pattern="^(low|medium|high|critical)$")] = None,
+    ) -> AlertFeedOut:
+        """Alertas para que las consuma otro software.
+
+        Una «alerta» es un hallazgo que llega al umbral de severidad. Se
+        devuelven **haya o no salido por los canales**: que se hayan despachado
+        es un dato de cada ítem (`notified`, `alerted_at`), no un filtro
+        implícito. Un integrador que corre en paralelo a los canales las quiere
+        todas.
+
+        **Para paginar incrementalmente, usar `campo=first_seen`** (el default)
+        y guardar el `first_seen_at` más alto de la última página. Es el único
+        campo monótono: `occurred` retrocede cuando una importación inicial
+        mete eventos de 2020, y un consumidor que pagine por ahí se saltea
+        alertas sin enterarse.
+
+        `desde` y `hasta` son opcionales e independientes: se puede pedir solo
+        `desde` (todo lo posterior), solo `hasta`, o ninguno con `limit` para
+        llevarse las últimas N. Aceptan ISO-8601; sin zona horaria se asume UTC.
+
+        Cada ítem trae `dedup_hash` para deduplicar del lado del consumidor, y
+        `backfill` para distinguir el histórico que recién importamos de una
+        novedad real.
+        """
+        acotado = min(limit, config.api_max_page_size)
+        pagina = queries.alert_feed(
+            min_severity=min_severity or config.alert_min_severity,
+            limit=acotado,
+            offset=offset,
+            desde=_a_utc(desde),
+            hasta=_a_utc(hasta),
+            campo=campo,
+            estado=estado,
+        )
+        return AlertFeedOut(
+            items=[AlertItemOut.model_validate(i) for i in pagina.items],
+            total=pagina.total,
+            limit=pagina.limit,
+            offset=pagina.offset,
+            campo=campo,
+            min_severity=min_severity or config.alert_min_severity,
+        )
 
     @app.get("/api/alerts", response_model=AlertStatusOut, tags=["sources"])
     def alert_status(queries: Queries) -> AlertStatusOut:

@@ -339,6 +339,54 @@ El criterio de reintento es `alerted_at IS NULL` y no "recién insertado": si un
 envío falla, el hallazgo sigue pendiente y se reintenta en la corrida siguiente
 en vez de perderse.
 
+**Para probar sin gastar alertas:** `LEAKS_ALERT_DRY_RUN=true` arma el aviso,
+registra en la consola qué se habría mandado y por qué canales, y no envía ni
+marca nada. Existe por un incidente real: verificar el cableado contra un
+webhook de terceros mandó metadata de 7 hallazgos argentinos afuera y además los
+consumió, porque quedaron marcados como avisados sin que nadie los recibiera.
+
+### Consumir las alertas desde otro software
+
+`GET /api/alerts/feed` devuelve las alertas para que las procese otra
+herramienta. Una alerta es un hallazgo que llega al umbral de severidad, y se
+devuelve **haya salido o no por los canales**: `notified` y `alerted_at` dicen
+en qué estado está y el consumidor decide.
+
+| Parámetro | Default | Para qué |
+|---|---|---|
+| `limit` / `offset` | 50 / 0 | Cuántas como máximo, y paginado |
+| `desde` / `hasta` | — | Rango ISO-8601. **Los dos opcionales e independientes** |
+| `campo` | `first_seen` | Sobre qué fecha filtrar y ordenar |
+| `estado` | `todas` | `pendientes` o `enviadas` para acotar por despacho |
+| `min_severity` | el configurado | Bajar o subir el umbral para esta consulta |
+
+```bash
+# Las últimas 20, sin importar si se despacharon
+curl 'localhost:8000/api/alerts/feed?limit=20'
+
+# Todo lo posterior a una fecha (sin `hasta`)
+curl 'localhost:8000/api/alerts/feed?desde=2026-08-01T00:00:00&limit=200'
+
+# Un mes cerrado, por fecha del EVENTO y no de importación
+curl 'localhost:8000/api/alerts/feed?desde=2026-07-01T00:00:00&hasta=2026-07-31T23:59:59&campo=occurred'
+```
+
+**Para paginar incrementalmente usá `campo=first_seen`** (el default) y guardá
+el `first_seen_at` más alto de la última página. Es el único campo monótono:
+`occurred` retrocede cuando una importación inicial mete eventos de 2020, y un
+consumidor que pagine por ahí se saltea alertas sin enterarse.
+
+Cada ítem trae `dedup_hash` para deduplicar del lado del consumidor, y
+`backfill` para distinguir el histórico que recién importamos de una novedad.
+
+> El feed **no** aplica los filtros del despachador: incluye la importación
+> inicial y lo que no se pudo fechar. Eso es política de a-quién-interrumpir, y
+> un consumidor que pide un rango explícito quiere lo que hay. Por eso el mismo
+> umbral puede dar 35 acá y 7 en el panel de estado.
+
+> **No hay autenticación.** Este endpoint está pensado para que lo consuma otro
+> software, así que si sale de loopback hace falta un proxy que autentique.
+
 ### Consola de actividad
 
 Abajo del tablero hay una consola en vivo que muestra **a qué sitio le está
