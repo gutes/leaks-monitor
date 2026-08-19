@@ -18,6 +18,7 @@ from typing import Any
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from leaks.domain.models import SEVERITY_RANK
 from leaks.storage.models import FindingRow, RunEventRow, SourceRunRow
 from leaks.storage.session import session_scope
 
@@ -258,6 +259,49 @@ class FindingQueryService:
             return tuple(str(v) for v in valores if v is not None)
 
     # -- Salud de las fuentes ------------------------------------------------
+
+    def alert_status(self, *, min_severity: str, max_age_days: int | None = None) -> dict[str, Any]:
+        """Cuántos hallazgos esperan aviso y cuándo se avisó por última vez.
+
+        Existe para que la UI pueda decir la verdad incómoda: sin canales
+        configurados el pipeline descarta los avisos en silencio, y hasta que
+        esto no se mostró nadie se enteraba de que había hallazgos críticos
+        esperando a nadie.
+
+        Mismo criterio que `list_pending_alerts`: se excluye la importación
+        inicial y lo que no se pudo fechar, o el número diría que hay 200
+        pendientes cuando son histórico.
+        """
+        piso = SEVERITY_RANK.get(min_severity.lower(), 0)
+        alcanzan = [s for s, rango in SEVERITY_RANK.items() if rango >= piso]
+
+        with session_scope(self._session_factory) as session:
+            stmt = (
+                select(func.count())
+                .select_from(FindingRow)
+                .where(
+                    FindingRow.alerted_at.is_(None),
+                    FindingRow.severity.in_(alcanzan),
+                    FindingRow.backfill.is_(False),
+                    FindingRow.occurred_at.is_not(None),
+                )
+            )
+            if max_age_days is not None:
+                stmt = stmt.where(
+                    FindingRow.occurred_at >= datetime.now(UTC) - timedelta(days=max_age_days)
+                )
+            pendientes = int(session.scalar(stmt) or 0)
+            enviados = int(
+                session.scalar(
+                    select(func.count())
+                    .select_from(FindingRow)
+                    .where(FindingRow.alerted_at.is_not(None))
+                )
+                or 0
+            )
+            ultimo = session.scalar(select(func.max(FindingRow.alerted_at)))
+
+        return {"pending": pendientes, "sent_total": enviados, "last_sent_at": _as_utc(ultimo)}
 
     def latest_runs(self) -> tuple[dict[str, Any], ...]:
         """Última corrida de cada fuente.

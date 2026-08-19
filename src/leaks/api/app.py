@@ -29,9 +29,12 @@ from leaks.adapters.egress import EgressResolver
 from leaks.adapters.http import build_client
 from leaks.adapters.registry import FEED_REGISTRY, resolve_enabled
 from leaks.adjacency.countries import COUNTRY_CODES
+from leaks.alerts.channels import CHANNEL_REGISTRY
 from leaks.api.schemas import (
     AdjacencyOut,
     AdjacentActorOut,
+    AlertChannelOut,
+    AlertStatusOut,
     EgressOut,
     EnabledIn,
     EventOut,
@@ -86,11 +89,31 @@ from leaks.telegram.catalog import fetch_catalog
 
 logger = logging.getLogger(__name__)
 
+
 #: Rutas que siguen respondiendo con el bloqueo de OPSEC activo.
 #:
 #: Son las que hacen falta para *salir* del bloqueo: si se cerrara
 #: `/api/egress`, el frontend no tendría cómo enterarse de que ya se puede
 #: volver a operar, y el modal quedaría trabado para siempre.
+def _configurada(config: Settings, variable: str) -> bool:
+    """Si esa variable de entorno tiene valor en la configuración vigente.
+
+    `LEAKS_ALERT_WEBHOOK_URL` -> atributo `alert_webhook_url`. Se mira el
+    valor real y no `os.environ` porque la configuración puede venir de un
+    `.env` o de un default, y lo que importa es si el canal va a poder mandar.
+
+    **Nunca devuelve el valor**: solo si está o no. Un token de Telegram no
+    puede salir por la API aunque sea para diagnosticar.
+    """
+    atributo = variable.removeprefix("LEAKS_").lower()
+    valor = getattr(config, atributo, None)
+    if valor is None:
+        return False
+    # Los secretos son `SecretStr`: se pregunta si tienen contenido, no cuál.
+    crudo = valor.get_secret_value() if hasattr(valor, "get_secret_value") else valor
+    return bool(str(crudo).strip())
+
+
 _RUTAS_SIEMPRE_ABIERTAS = ("/api/egress", "/api/health")
 
 
@@ -806,6 +829,33 @@ def create_app(
         return EventPage(items=items, last_id=items[-1].id if items else after_id)
 
     # -- Salud de las fuentes ------------------------------------------------
+
+    @app.get("/api/alerts", response_model=AlertStatusOut, tags=["sources"])
+    def alert_status(queries: Queries) -> AlertStatusOut:
+        """Si las alertas están realmente funcionando, y qué falta si no.
+
+        El pipeline descarta los avisos en silencio cuando no hay canales. Sin
+        este endpoint la UI no podía distinguir «todo tranquilo» de «hay 35
+        hallazgos críticos esperando a nadie», que es exactamente la diferencia
+        que importa.
+        """
+        estado = queries.alert_status(
+            min_severity=config.alert_min_severity,
+            max_age_days=config.alert_max_age_days,
+        )
+
+        canales = []
+        for spec in CHANNEL_REGISTRY:
+            faltan = [v for v in spec.requires if not _configurada(config, v)]
+            canales.append(AlertChannelOut(name=spec.name, configured=not faltan, missing=faltan))
+
+        return AlertStatusOut(
+            enabled=any(c.configured for c in canales),
+            channels=canales,
+            min_severity=config.alert_min_severity,
+            max_age_days=config.alert_max_age_days,
+            **estado,
+        )
 
     @app.get("/api/sources", response_model=list[SourceOut], tags=["sources"])
     def sources(queries: Queries, store: Store) -> list[SourceOut]:

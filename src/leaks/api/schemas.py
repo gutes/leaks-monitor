@@ -278,6 +278,35 @@ class AdjacencyCoverageOut(BaseModel):
     medido_el: str = "2026-08-18"
 
 
+class AlertChannelOut(BaseModel):
+    """Un canal de alerta y si está listo para usarse."""
+
+    name: str
+    configured: bool = False
+    #: Variables de entorno que le faltan. Es lo que hay que setear.
+    missing: list[str] = Field(default_factory=list)
+
+
+class AlertStatusOut(BaseModel):
+    """Estado de las alertas, para que la UI no mienta por omisión.
+
+    Sin canales configurados el pipeline descarta los avisos en silencio. Este
+    endpoint existe para que eso se vea: `pending` con `enabled=false` significa
+    que hay hallazgos esperando a nadie.
+    """
+
+    enabled: bool = False
+    channels: list[AlertChannelOut] = Field(default_factory=list)
+    #: Severidad mínima que dispara aviso.
+    min_severity: str = "high"
+    #: No se avisa de eventos más viejos que esto.
+    max_age_days: int = 30
+    #: Hallazgos que llegan al umbral y todavía no se avisaron.
+    pending: int = 0
+    sent_total: int = 0
+    last_sent_at: datetime | None = None
+
+
 class RegionalVictimOut(BaseModel):
     """Una víctima regional de infraestructura crítica."""
 

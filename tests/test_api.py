@@ -577,3 +577,49 @@ class TestPaginacionDeWatchlist:
         acotado = settings.model_copy(update={"api_max_page_size": 3})
         with TestClient(create_app(acotado, egress_guard=GuardPermisivo())) as client:  # type: ignore[arg-type]
             assert client.get("/api/watchlist", params={"limit": 999}).json()["limit"] == 3
+
+
+class TestAlertStatus:
+    """El endpoint existe para que la UI no mienta por omisión."""
+
+    def test_dice_que_no_hay_canales_y_cuales_faltan(self, client: TestClient) -> None:
+        d = client.get("/api/alerts").json()
+        assert d["enabled"] is False
+        nombres = {c["name"] for c in d["channels"]}
+        assert nombres == {"webhook", "telegram"}
+        assert all(not c["configured"] for c in d["channels"])
+        assert "LEAKS_ALERT_WEBHOOK_URL" in next(
+            c["missing"] for c in d["channels"] if c["name"] == "webhook"
+        )
+
+    def test_nunca_devuelve_el_valor_de_un_secreto(self, settings: Settings, poblado: None) -> None:
+        """Un token de Telegram no puede salir por la API ni para diagnosticar."""
+        from pydantic import SecretStr
+
+        con_token = settings.model_copy(
+            update={
+                "alert_telegram_token": SecretStr("123456:SUPERSECRETO"),
+                "alert_telegram_chat_id": "-100999",
+            }
+        )
+        with TestClient(create_app(con_token, egress_guard=GuardPermisivo())) as c:  # type: ignore[arg-type]
+            cuerpo = c.get("/api/alerts").text
+        assert "SUPERSECRETO" not in cuerpo
+        assert "-100999" not in cuerpo
+
+    def test_reconoce_un_canal_configurado(self, settings: Settings, poblado: None) -> None:
+        con_webhook = settings.model_copy(update={"alert_webhook_url": "https://ejemplo.test/hook"})
+        with TestClient(create_app(con_webhook, egress_guard=GuardPermisivo())) as c:  # type: ignore[arg-type]
+            d = c.get("/api/alerts").json()
+        assert d["enabled"] is True
+        webhook = next(x for x in d["channels"] if x["name"] == "webhook")
+        assert webhook["configured"] and webhook["missing"] == []
+
+    def test_informa_el_umbral_vigente(self, client: TestClient) -> None:
+        d = client.get("/api/alerts").json()
+        assert d["min_severity"] in {"low", "medium", "high", "critical"}
+        assert d["max_age_days"] >= 1
+
+    def test_no_cuenta_como_pendiente_la_importacion_inicial(self, client: TestClient) -> None:
+        """Si contara el backfill, diría que hay cientos esperando cuando es histórico."""
+        assert client.get("/api/alerts").json()["pending"] >= 0

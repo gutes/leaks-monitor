@@ -179,6 +179,56 @@ async function loadStats() {
 
 /* --------------------------------------------------------- Salud de feeds */
 
+/**
+ * Estado de las alertas.
+ *
+ * El caso que este panel existe para evitar: sin canales configurados el
+ * pipeline descarta los avisos en silencio. Antes de esto, la única forma de
+ * saber que había hallazgos críticos esperando a nadie era leer la base.
+ */
+async function loadAlerts() {
+  const d = await api("/api/alerts");
+  const estado = $("alerts-estado");
+  const canales = $("alerts-canales");
+  estado.replaceChildren();
+  canales.replaceChildren();
+  if (!d) return;
+
+  const pendientes = d.pending ?? 0;
+
+  if (!d.enabled) {
+    // El estado que importa: apagadas Y con cosas esperando.
+    estado.append(
+      el("span", "sin canales", `pill pill-${pendientes ? "critical" : "medium"}`),
+    );
+    $("alerts-resumen").textContent = pendientes
+      ? `${pendientes} hallazgos ${d.min_severity}+ están esperando un aviso que no se va a enviar. ` +
+        "Configurá al menos un canal o esa señal se pierde."
+      : "No hay ningún canal configurado: si aparece un hallazgo grave, nadie se entera.";
+  } else {
+    estado.append(
+      el("span", `${d.sent_total ?? 0} enviadas`, "pill pill-ok"),
+      el("span", `${pendientes} pendientes`, `pill pill-${pendientes ? "high" : "low"}`),
+    );
+    const ultima = d.last_sent_at ? `Última: ${fmtDate(d.last_sent_at)}.` : "Todavía sin enviar ninguna.";
+    $("alerts-resumen").textContent =
+      `Se avisa de ${d.min_severity} en adelante, de eventos de hasta ${d.max_age_days} días. ${ultima}`;
+  }
+
+  for (const c of d.channels || []) {
+    const fila = el("div", "", `alert-canal ${c.configured ? "" : "alert-canal-off"}`);
+    fila.append(
+      el("span", c.configured ? "listo" : "falta", `pill pill-${c.configured ? "ok" : "skipped"}`),
+      el("span", c.name, "alert-canal-nombre"),
+    );
+    if (!c.configured && (c.missing || []).length) {
+      // Se nombra la variable, nunca su valor: un token no sale por la API.
+      fila.append(el("code", c.missing.join(" · ")));
+    }
+    canales.append(fila);
+  }
+}
+
 async function loadSources() {
   const sources = await api("/api/sources");
 
@@ -873,7 +923,7 @@ function loadView(nombre) {
   if (nombre === "hallazgos") return Promise.all([loadStats(), loadFilterOptions(), loadFindings()]);
   if (nombre === "watchlist") return loadWatchlist();
   if (nombre === "reglas") return loadRules();
-  if (nombre === "fuentes") return loadSources();
+  if (nombre === "fuentes") return Promise.all([loadSources(), loadAlerts()]);
   if (nombre === "sitios") return loadSites();
   if (nombre === "adyacentes") return loadAdjacency();
   if (nombre === "telegram") return loadTelegram();

@@ -615,3 +615,47 @@ test("la sección de adyacentes se anuncia como beta en el menú", async () => {
   assert.match(HTML, /data-view="adyacentes">Adyacentes<span class="nav-beta"/);
   assert.match(HTML, /46%/, "el aviso dice cuánto es el punto ciego");
 });
+
+test("sin canales de alerta y con hallazgos esperando, el panel lo dice", async () => {
+  // El caso que este panel existe para evitar: el pipeline descarta los avisos
+  // en silencio y nadie se entera de que hay señal perdiéndose.
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/fuentes",
+    respuestas: {
+      ...RESPUESTAS_BASE,
+      "/api/alerts": {
+        enabled: false,
+        channels: [
+          { name: "webhook", configured: false, missing: ["LEAKS_ALERT_WEBHOOK_URL"] },
+          { name: "telegram", configured: false, missing: ["LEAKS_ALERT_TELEGRAM_TOKEN"] },
+        ],
+        min_severity: "high", max_age_days: 30, pending: 7, sent_total: 0,
+      },
+    },
+  });
+
+  assert.match(textoDe(el("alerts-resumen")), /7 hallazgos high\+ están esperando/);
+  assert.match(textoDe(el("alerts-estado")), /sin canales/);
+  assert.match(textoDe(el("alerts-canales")), /LEAKS_ALERT_WEBHOOK_URL/,
+    "dice qué variable falta");
+});
+
+test("con canales configurados el panel informa el estado real", async () => {
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/fuentes",
+    respuestas: {
+      ...RESPUESTAS_BASE,
+      "/api/alerts": {
+        enabled: true,
+        channels: [{ name: "webhook", configured: true, missing: [] }],
+        min_severity: "high", max_age_days: 30, pending: 0, sent_total: 12,
+        last_sent_at: "2026-08-18T10:00:00Z",
+      },
+    },
+  });
+
+  assert.match(textoDe(el("alerts-estado")), /12 enviadas/);
+  assert.match(textoDe(el("alerts-resumen")), /Última:/);
+});

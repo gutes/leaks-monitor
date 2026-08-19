@@ -265,6 +265,21 @@
     </section>
 
     <section class="view" data-view="fuentes">
+
+    <!-- Las alertas eran invisibles: sin canales el pipeline las descarta en
+         silencio, y nadie se enteraba de que había hallazgos esperando a nadie.
+         Este panel existe para que eso no vuelva a pasar. -->
+    <section class="panel" id="alerts-panel">
+      <div class="console-head">
+        <div>
+          <h2>Alertas</h2>
+          <p class="hint" id="alerts-resumen">—</p>
+        </div>
+        <div id="alerts-estado" class="wl-counts"></div>
+      </div>
+      <div id="alerts-canales" class="alert-canales"></div>
+    </section>
+
     <!-- Colapsable nativo: <details> no necesita JS para abrir y cerrar.
          El resumen se ve igual estando cerrado, así que ocupa una línea sin
          esconder si hay una fuente caída. -->

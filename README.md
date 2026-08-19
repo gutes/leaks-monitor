@@ -313,30 +313,31 @@ catálogo no puede costar la corrida.
 
 ### Alertas
 
-Al terminar cada corrida se avisa de los hallazgos **nuevos** que llegan al
-umbral (`LEAKS_ALERT_MIN_SEVERITY`, default `high`).
+Se avisa de los hallazgos que llegan al umbral (`LEAKS_ALERT_MIN_SEVERITY`,
+default `high`) por los canales configurados: webhook genérico y Telegram.
 
-| Canal | Qué necesita |
-|---|---|
-| **Webhook** | `LEAKS_ALERT_WEBHOOK_URL` — sirve para Slack, Discord, n8n o uno propio |
-| **Telegram** | `LEAKS_ALERT_TELEGRAM_TOKEN` + `LEAKS_ALERT_TELEGRAM_CHAT_ID` |
+**El estado se ve en la pantalla Fuentes.** Ese panel existe por un problema
+concreto: sin canales configurados el pipeline descarta los avisos **en
+silencio**, y antes de tenerlo la única forma de darse cuenta de que había
+hallazgos críticos esperando a nadie era leer la base a mano. El panel dice
+cuántos están pendientes, cuántos se enviaron, cuándo fue el último y —si falta
+un canal— **qué variable de entorno hay que setear**.
 
-Sin canales configurados no se manda nada, y eso no es un error.
+Nunca devuelve el valor de un secreto: solo si está o no. Un token de Telegram
+no sale por la API ni para diagnosticar, y hay un test que lo verifica.
 
-Tres propiedades que vale la pena conocer:
+Qué NO dispara aviso, a propósito:
 
-- **No repite.** Cada hallazgo se avisa una sola vez. El marcado va *después*
-  del envío: si todos los canales fallan, el hallazgo queda pendiente y se
-  reintenta en la corrida siguiente en vez de perderse.
-- **No tumba la corrida.** Un canal caído se registra en la consola y el resto
-  sigue.
-- **No lleva PII.** Sale la misma metadata que se persiste — organismo,
-  dominio, actor, fuente, severidad, fecha y el enlace a la publicación. Ni un
-  campo más. Un canal de alertas es un tercero, así que vale la misma regla que
-  para los feeds. Las alertas también pasan por el control de IP de salida.
+- La **importación inicial** de una fuente. Entra su histórico entero de golpe y
+  serían cientos de avisos de cosas que no son novedad.
+- Los eventos **más viejos** que `LEAKS_ALERT_MAX_AGE_DAYS` (default 30).
+- Los hallazgos **sin fecha**: no se puede afirmar que sean recientes.
+- Las **víctimas regionales** de la sección de adyacencia: serían 1.355 avisos
+  de cosas que no son nuestras. De ahí solo se avisa por **salto de score**.
 
-Sumar un canal es implementar la interfaz y agregar una entrada al registro
-(`src/leaks/alerts/channels.py`); el despachador no se toca.
+El criterio de reintento es `alerted_at IS NULL` y no "recién insertado": si un
+envío falla, el hallazgo sigue pendiente y se reintenta en la corrida siguiente
+en vez de perderse.
 
 ### Consola de actividad
 
