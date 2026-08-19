@@ -386,6 +386,23 @@ class PipelineRunner:
         if not pendientes:
             return 0
 
+        # Ensayo: se dice qué se habría mandado y no sale nada. Ni se marca,
+        # así que los hallazgos siguen pendientes para cuando haya un canal de
+        # verdad. Probar el cableado no puede costar alertas reales.
+        if self._settings.alert_dry_run:
+            victimas = ", ".join(f.victim_name[:40] for f in pendientes[:5])
+            self._emit(
+                EventKind.ALERT,
+                (
+                    f"ENSAYO: se habría avisado de {len(pendientes)} hallazgos "
+                    f"por {', '.join(self._alerts.channel_names)} ({victimas}"
+                    f"{'…' if len(pendientes) > 5 else ''}). "
+                    "No se envió nada y siguen pendientes."
+                ),
+                level=EventLevel.WARN,
+            )
+            return 0
+
         resultado = self._alerts.dispatch(pendientes)
 
         if not resultado.delivered:

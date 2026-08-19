@@ -7,6 +7,8 @@ PII.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 import pytest
@@ -291,3 +293,68 @@ class TestNoSeAlertaLoViejo:
             ]
         )
         assert repository.list_pending_alerts(min_severity="high", limit=50, max_age_days=30) == []
+
+
+class TestEnsayo:
+    """El modo ensayo existe por un incidente, no por prolijidad.
+
+    Verificar el cableado apuntando un webhook real a un servicio de terceros
+    mandó metadata de 7 hallazgos argentinos afuera —qué organismos vigilamos y
+    cuáles están comprometidos— y además los consumió: quedaron marcados como
+    avisados sin que nadie los recibiera.
+    """
+
+    def _runner(self, repository: Any, watchlist: Any, canales: Any, *, ensayo: bool) -> Any:
+        from leaks.config import Settings
+        from leaks.pipeline.runner import PipelineRunner
+
+        return PipelineRunner(
+            repository=repository,
+            watchlist=watchlist,
+            settings=Settings(
+                database_url="sqlite://", alert_min_severity="high", alert_dry_run=ensayo
+            ),
+            alert_dispatcher=canales,
+        )
+
+    def test_en_ensayo_no_sale_nada(
+        self, repository: Any, watchlist: Any, monkeypatch: Any
+    ) -> None:
+        repository.upsert_many(
+            [make_finding(severity=Severity.CRITICAL, occurred_at=datetime.now(UTC))]
+        )
+        canal = CanalDePrueba()
+        dispatcher = AlertDispatcher([canal])
+
+        enviados = self._runner(repository, watchlist, dispatcher, ensayo=True)._dispatch_alerts()
+
+        assert enviados == 0
+        assert canal.recibidos == [], "en ensayo no puede salir un solo mensaje"
+
+    def test_en_ensayo_los_hallazgos_siguen_pendientes(
+        self, repository: Any, watchlist: Any
+    ) -> None:
+        """Si se marcaran, el ensayo consumiría alertas reales."""
+        repository.upsert_many(
+            [make_finding(severity=Severity.CRITICAL, occurred_at=datetime.now(UTC))]
+        )
+        self._runner(
+            repository, watchlist, AlertDispatcher([CanalDePrueba()]), ensayo=True
+        )._dispatch_alerts()
+
+        assert repository.list_pending_alerts(min_severity="high", limit=10), (
+            "el ensayo no puede consumir lo que no envió"
+        )
+
+    def test_sin_ensayo_sale_y_se_marca(self, repository: Any, watchlist: Any) -> None:
+        repository.upsert_many(
+            [make_finding(severity=Severity.CRITICAL, occurred_at=datetime.now(UTC))]
+        )
+        canal = CanalDePrueba()
+        enviados = self._runner(
+            repository, watchlist, AlertDispatcher([canal]), ensayo=False
+        )._dispatch_alerts()
+
+        assert enviados == 1
+        assert canal.recibidos
+        assert not repository.list_pending_alerts(min_severity="high", limit=10)

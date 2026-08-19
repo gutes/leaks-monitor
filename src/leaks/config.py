@@ -97,6 +97,16 @@ class Settings(BaseSettings):
     #: no cosas que recién pasaron.
     alert_max_age_days: int = Field(default=30, ge=1)
 
+    #: Ensayo: se arma el aviso y se registra qué se habría mandado, pero NO
+    #: sale nada ni se marca nada como avisado.
+    #:
+    #: Existe por un incidente concreto: verificar el cableado apuntando un
+    #: webhook real a un servicio de terceros mandó metadata de 7 hallazgos
+    #: argentinos afuera —qué organismos vigilamos y cuáles están
+    #: comprometidos— y además los consumió, porque quedaron marcados como
+    #: avisados sin que nadie los recibiera. Probar no puede costar eso.
+    alert_dry_run: bool = False
+
     #: Umbral para clasificar un hallazgo como reciente o histórico.
     freshness_days: int = Field(default=30, ge=1)
 

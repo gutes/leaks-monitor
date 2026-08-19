@@ -74,6 +74,10 @@ def make_finding(
     reasons: tuple[ArMatchReason, ...] = (ArMatchReason.WATCHLIST,),
     severity: Severity = Severity.HIGH,
     description: str | None = None,
+    #: Cuándo ocurrió. Sin esto el hallazgo NO alerta: el despachador
+    #: excluye lo que no se pudo fechar, y no se puede afirmar que sea
+    #: reciente.
+    occurred_at: datetime | None = None,
 ) -> Finding:
     """Constructor de hallazgos para tests, con dedup_hash coherente."""
     discovered = discovered_at or datetime(2026, 8, 13, 12, 0, tzinfo=UTC)
@@ -90,6 +94,7 @@ def make_finding(
         description=description,
         ar_match_reason=reasons,
         severity=severity,
+        occurred_at=occurred_at,
         dedup_hash=compute_dedup_hash(
             source=source,
             victim_name=victim_name,
