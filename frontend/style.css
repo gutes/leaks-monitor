@@ -236,8 +236,16 @@ tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); 
   margin-left: 6px;
   padding: 1px 5px;
   border-radius: 6px;
-  background: var(--warn);
-  color: #fff;
+  /* Misma convención que las pills: tinte translúcido y texto del color. Un
+     fondo lleno con texto blanco fallaba en tema oscuro, donde `--warn` es un
+     naranja claro.
+
+     El tinte es 8% y no el 16-18% de las pills porque este texto es de 9.5px:
+     con 18% el contraste en tema claro daba 4.1:1, por debajo del mínimo de
+     4.5. Medido, no estimado. */
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+  color: var(--warn);
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.4px;
@@ -291,12 +299,34 @@ tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); 
 }
 
 /* La fila tildada se marca: con la selección repartida entre páginas, tener
-   que mirar la casilla para saber qué entra al informe sería un problema. */
-#findings-body tr:has(.sel-box:checked) { background: #eef4ff; }
+   que mirar la casilla para saber qué entra al informe sería un problema.
+
+   El tinte sale de `color-mix` sobre la variable del tema y NO de un color
+   fijo: había un `#eef4ff` acá que en modo oscuro pintaba la fila casi blanca
+   con el texto claro encima, o sea ilegible. */
+#findings-body tr:has(.sel-box:checked) {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
 
 /* Un actor que ya golpeó Argentina atacando gobierno regional: es la señal más
-   fuerte de la sección, y tiene que verse antes de leer la fila. */
-#adj-crit-body tr.adj-fila-critica { background: #fdf0ef; }
+   fuerte de la sección, y tiene que verse antes de leer la fila.
+
+   Dos marcas y no una: el borde izquierdo se ve en cualquier tema y con
+   cualquier contraste, y el tinte lo refuerza. El tinte sale de `color-mix`
+   sobre la variable del tema — antes era un `#fdf0ef` fijo que en modo oscuro
+   dejaba la fila casi blanca con texto claro encima. */
+#adj-crit-body tr.adj-fila-critica td {
+  background: color-mix(in srgb, var(--critical) 12%, transparent);
+}
+
+#adj-crit-body tr.adj-fila-critica td:first-child {
+  box-shadow: inset 3px 0 0 var(--critical);
+}
+
+/* El hover tiene que seguir ganando, o la fila marcada no responde al mouse. */
+#adj-crit-body tr.adj-fila-critica:hover td {
+  background: color-mix(in srgb, var(--critical) 20%, transparent);
+}
 
 footer {
   border-top: 1px solid var(--border);

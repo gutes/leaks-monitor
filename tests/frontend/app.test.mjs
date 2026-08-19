@@ -659,3 +659,25 @@ test("con canales configurados el panel informa el estado real", async () => {
   assert.match(textoDe(el("alerts-estado")), /12 enviadas/);
   assert.match(textoDe(el("alerts-resumen")), /Última:/);
 });
+
+test("ningún resaltado de fila usa un color fijo", async () => {
+  // Hubo dos: `#eef4ff` en la fila seleccionada y `#fdf0ef` en la fila crítica.
+  // En tema oscuro pintaban la fila casi blanca con el texto claro encima, o
+  // sea ilegible. Los colores tienen que salir de las variables del tema.
+  const CSS = readFileSync(new URL("../../frontend/style.css", import.meta.url), "utf8");
+
+  const fondosFijos = CSS.split("\n")
+    .map((linea, i) => [i + 1, linea])
+    .filter(([, l]) => /background:\s*#[0-9a-fA-F]{3,8}\b/.test(l))
+    // La perilla del interruptor es blanca a propósito, sobre una vía de color.
+    .filter(([, l]) => !l.includes("#fff"));
+
+  assert.deepEqual(fondosFijos, [], `colores fijos en: ${JSON.stringify(fondosFijos)}`);
+});
+
+test("el resaltado de la fila crítica se ve aunque falle el tinte", async () => {
+  // Dos marcas y no una: el borde izquierdo sobrevive a cualquier tema y a
+  // cualquier ajuste de contraste del sistema.
+  const CSS = readFileSync(new URL("../../frontend/style.css", import.meta.url), "utf8");
+  assert.match(CSS, /adj-fila-critica td:first-child\s*\{[^}]*box-shadow:\s*inset/);
+});
