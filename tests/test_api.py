@@ -203,6 +203,60 @@ class TestFindings:
         fechas = [i["discovered_at"] for i in datos["items"]]
         assert fechas == sorted(fechas, reverse=True)
 
+    def test_ordena_por_fecha_de_ocurrencia(
+        self, settings: Settings, repository: SqlAlchemyFindingRepository
+    ) -> None:
+        """Lo más nuevo arriba según cuándo OCURRIÓ, no cuándo lo importamos.
+
+        Se importan en orden inverso a propósito: si se ordenara por
+        `discovered_at` el resultado saldría al revés y el test pasaría por la
+        razón equivocada.
+        """
+        base = datetime(2026, 8, 10, 12, 0, tzinfo=UTC)
+        repository.upsert_many(
+            [
+                make_finding(
+                    victim_name="Viejo",
+                    victim_domain="viejo.gob.ar",
+                    discovered_at=base + timedelta(days=5),
+                    occurred_at=datetime(2021, 1, 1, tzinfo=UTC),
+                ),
+                make_finding(
+                    victim_name="Nuevo",
+                    victim_domain="nuevo.gob.ar",
+                    discovered_at=base,
+                    occurred_at=datetime(2026, 8, 1, tzinfo=UTC),
+                ),
+            ]
+        )
+        with TestClient(create_app(settings, egress_guard=GuardPermisivo())) as c:  # type: ignore[arg-type]
+            nombres = [i["victim_name"] for i in c.get("/api/findings").json()["items"]]
+        assert nombres.index("Nuevo") < nombres.index("Viejo")
+
+    def test_los_sin_fecha_van_al_final(
+        self, settings: Settings, repository: SqlAlchemyFindingRepository
+    ) -> None:
+        """Sin fecha no es reciente: es desconocido. Encabezar la lista mentiría."""
+        repository.upsert_many(
+            [
+                make_finding(
+                    victim_name="Sin fecha",
+                    victim_domain="sinfecha.gob.ar",
+                    discovered_at=datetime(2026, 8, 20, tzinfo=UTC),
+                    occurred_at=None,
+                ),
+                make_finding(
+                    victim_name="Con fecha",
+                    victim_domain="confecha.gob.ar",
+                    discovered_at=datetime(2026, 8, 1, tzinfo=UTC),
+                    occurred_at=datetime(2026, 8, 1, tzinfo=UTC),
+                ),
+            ]
+        )
+        with TestClient(create_app(settings, egress_guard=GuardPermisivo())) as c:  # type: ignore[arg-type]
+            nombres = [i["victim_name"] for i in c.get("/api/findings").json()["items"]]
+        assert nombres.index("Con fecha") < nombres.index("Sin fecha")
+
     def test_expone_la_razon_del_match(self, client: TestClient) -> None:
         """La columna auditable tiene que llegar al frontend."""
         item = client.get("/api/findings").json()["items"][0]

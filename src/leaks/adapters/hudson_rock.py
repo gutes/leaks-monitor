@@ -176,8 +176,20 @@ class HudsonRockAdapter:
             country=None,
             sector=None,
             actor=None,
-            # `discovered_at` es cuándo lo supimos: la consulta es hoy.
-            discovered_at=datetime.now(UTC),
+            # La fecha que DECLARA el proveedor, no la de la consulta.
+            #
+            # Poner `now()` acá parecía honesto —"lo supimos hoy"— pero rompía
+            # la deduplicación: `compute_dedup_hash` usa `discovered_at.date()`,
+            # así que cada día que se consultaba el mismo dominio nacía un
+            # hallazgo nuevo. Con 13 dominios eso fueron 13 duplicados en una
+            # sola corrida.
+            #
+            # Con la fecha del proveedor el hash es estable mientras la
+            # exposición no cambie, y cuando aparece un compromiso nuevo la
+            # fecha avanza y se crea otro hallazgo — que es lo correcto,
+            # porque es otro evento. `first_seen_at` sigue registrando cuándo
+            # lo vimos nosotros.
+            discovered_at=ocurrido or datetime.now(UTC),
             occurred_at=ocurrido,
             exposure=exposicion,
             published_at=None,

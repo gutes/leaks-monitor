@@ -68,14 +68,28 @@ class FindingQueryService:
     # -- Listado -------------------------------------------------------------
 
     def list_findings(self, filters: FindingFilters, *, limit: int, offset: int) -> Page:
-        """Hallazgos ordenados por fecha de descubrimiento, del más nuevo al más viejo."""
+        """Hallazgos por fecha de OCURRENCIA, del más nuevo al más viejo.
+
+        Se ordena por cuándo ocurrió el evento y no por cuándo lo importamos:
+        son cosas distintas y confundirlas era el problema original —una fuente
+        que trae su histórico de golpe ponía leaks de 2020 arriba de todo solo
+        porque los bajamos hoy.
+
+        Los que no se pudieron fechar van al final, no primero: un hallazgo sin
+        fecha no es reciente, es desconocido. `nullslast` lo garantiza; sin él
+        SQLite pone los `NULL` donde le queda cómodo.
+        """
         with session_scope(self._session_factory) as session:
             total = session.scalar(
                 self._apply(select(func.count()).select_from(FindingRow), filters)
             )
             filas = session.scalars(
                 self._apply(select(FindingRow), filters)
-                .order_by(FindingRow.discovered_at.desc(), FindingRow.id.desc())
+                .order_by(
+                    FindingRow.occurred_at.desc().nullslast(),
+                    FindingRow.discovered_at.desc(),
+                    FindingRow.id.desc(),
+                )
                 .limit(limit)
                 .offset(offset)
             ).all()

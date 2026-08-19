@@ -14,7 +14,8 @@ Lo que se verifica en todos por igual:
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from typing import Any, ClassVar
 
 import httpx
 import pytest
@@ -323,3 +324,100 @@ class TestFechadoDeHudsonRock:
         assert "last_employee_compromised" in DATE_KEYS
         # Lo que sí es PII sigue estándolo.
         assert "credentials" in PII_KEYS
+
+
+class TestHudsonRockDeduplicacion:
+    """Consultar el mismo dominio dos días seguidos no puede duplicar.
+
+    `compute_dedup_hash` usa `discovered_at.date()`. Con `now()` ahí, cada
+    corrida creaba un hallazgo nuevo del mismo dominio: 13 duplicados en una
+    sola pasada, encontrados en producción.
+    """
+
+    PAYLOAD: ClassVar[dict[str, Any]] = {
+        "_queried_domain": "aguas-ejemplo.com.ar",
+        "total": 100,
+        "employees": 10,
+        "users": 90,
+        "last_employee_compromised": "2026-07-30T07:54:00Z",
+        "last_user_compromised": "2026-08-18T23:35:54Z",
+    }
+
+    def _normalizar(self) -> Any:
+        from leaks.adapters.hudson_rock import HudsonRockAdapter
+        from leaks.domain.models import RawItem
+
+        adapter = HudsonRockAdapter(client=None, domains=())  # type: ignore[arg-type]
+        return adapter.normalize(RawItem(source="hudsonrock", payload=dict(self.PAYLOAD)))
+
+    def test_la_fecha_declarada_manda_sobre_la_de_consulta(self) -> None:
+        item = self._normalizar()
+        assert item is not None
+        # La más reciente de las dos que informa el proveedor.
+        assert item.discovered_at.date() == date(2026, 8, 18)
+        assert item.occurred_at == item.discovered_at
+
+    def test_el_hash_es_estable_entre_corridas(self) -> None:
+        """Es la propiedad que importa: dos consultas, un solo hallazgo."""
+        from leaks.storage.dedup import compute_dedup_hash
+
+        hashes = set()
+        for _ in range(2):
+            item = self._normalizar()
+            assert item is not None
+            hashes.add(
+                compute_dedup_hash(
+                    source=item.source,
+                    victim_name=item.victim_name,
+                    victim_domain=item.victim_domain,
+                    actor=item.actor,
+                    discovered_at=item.discovered_at,
+                )
+            )
+        assert len(hashes) == 1
+
+    def test_un_compromiso_nuevo_sí_es_un_hallazgo_nuevo(self) -> None:
+        """Cuando la fecha del proveedor avanza, es otro evento."""
+        from leaks.adapters.hudson_rock import HudsonRockAdapter
+        from leaks.domain.models import RawItem
+        from leaks.storage.dedup import compute_dedup_hash
+
+        adapter = HudsonRockAdapter(client=None, domains=())  # type: ignore[arg-type]
+
+        def hash_de(fecha: str) -> str:
+            item = adapter.normalize(
+                RawItem(
+                    source="hudsonrock",
+                    payload={**self.PAYLOAD, "last_user_compromised": fecha},
+                )
+            )
+            assert item is not None
+            return compute_dedup_hash(
+                source=item.source,
+                victim_name=item.victim_name,
+                victim_domain=item.victim_domain,
+                actor=item.actor,
+                discovered_at=item.discovered_at,
+            )
+
+        assert hash_de("2026-08-18T00:00:00Z") != hash_de("2026-08-25T00:00:00Z")
+
+    def test_sin_fecha_creíble_no_se_cuelga(self) -> None:
+        from leaks.adapters.hudson_rock import HudsonRockAdapter
+        from leaks.domain.models import RawItem
+
+        adapter = HudsonRockAdapter(client=None, domains=())  # type: ignore[arg-type]
+        item = adapter.normalize(
+            RawItem(
+                source="hudsonrock",
+                payload={
+                    "_queried_domain": "x.gob.ar",
+                    "total": 5,
+                    "last_employee_compromised": "1970-01-01T00:00:00Z",
+                    "last_user_compromised": "1970-01-01T00:00:00Z",
+                },
+            )
+        )
+        assert item is not None
+        assert item.occurred_at is None, "el centinela epoch no es una fecha"
+        assert item.discovered_at is not None
