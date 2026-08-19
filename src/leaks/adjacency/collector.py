@@ -22,6 +22,7 @@ from typing import Protocol
 
 from leaks.adapters.http import FeedHttpClient
 from leaks.adjacency.countries import COUNTRY_CODES
+from leaks.adjacency.regional_watchlist import RegionalWatchlists
 from leaks.adjacency.registries import REGIONAL_SOURCES, RegionalVictim, RegistryFetcher
 from leaks.adjacency.scoring import VictimaRegional, calcular, sectores_frecuentes
 from leaks.pipeline.egress_guard import EgressBlockedError
@@ -50,6 +51,10 @@ class AdjacencyResult:
 
     victimas_nuevas: int = 0
     victimas_totales: int = 0
+    #: Cuántas son infraestructura crítica según la watchlist de su país. Es la
+    #: lista corta que un investigador quiere leer.
+    victimas_criticas: int = 0
+    reclasificadas: int = 0
     actores: int = 0
     confirmados: int = 0
     candidatos: int = 0
@@ -65,12 +70,14 @@ class AdjacencyCollector:
         client_factory: Callable[[], FeedHttpClient],
         ar_context: ArContext,
         *,
+        regional_watchlists: RegionalWatchlists | None = None,
         countries: Sequence[str] = COUNTRY_CODES,
         sources: Sequence[tuple[str, RegistryFetcher]] = REGIONAL_SOURCES,
     ) -> None:
         self._repository = repository
         self._client_factory = client_factory
         self._ar = ar_context
+        self._regional = regional_watchlists
         self._countries = tuple(countries)
         self._sources = tuple(sources)
 
@@ -78,16 +85,37 @@ class AdjacencyCollector:
         """Pasada completa: traer, guardar y repuntuar."""
         victimas, fallidos = self._traer()
         guardado = self._repository.upsert_victims(victimas)
+
+        # Antes de puntuar: la criticidad alimenta la afinidad sectorial, y
+        # además se recalcula sobre TODO lo guardado para que editar una
+        # watchlist regional reclasifique sin volver a bajar nada.
+        reclasificadas = self._reclasificar()
+
         perfiles = self._repuntuar(self._ar.actor_counts(), self._ar.sector_values())
 
         return AdjacencyResult(
             victimas_nuevas=guardado.nuevas,
             victimas_totales=self._repository.count_victims(),
+            victimas_criticas=self._repository.count_critical(),
+            reclasificadas=reclasificadas,
             actores=perfiles[0],
             confirmados=perfiles[1],
             candidatos=perfiles[2],
             paises_fallidos=tuple(fallidos),
         )
+
+    def _reclasificar(self) -> int:
+        """Marca qué víctimas son infraestructura crítica en su propio país."""
+        if self._regional is None:
+            return 0
+
+        def evaluar(country: str, domain: str | None) -> tuple[bool, str | None]:
+            return (
+                self._regional.es_critica(country, domain),  # type: ignore[union-attr]
+                self._regional.match(country, domain),  # type: ignore[union-attr]
+            )
+
+        return self._repository.reclasificar(evaluar)
 
     def _traer(self) -> tuple[list[RegionalVictim], list[str]]:
         """Un país por request, aislado. Un cliente para toda la pasada."""

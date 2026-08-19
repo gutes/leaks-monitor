@@ -8,7 +8,7 @@ víctimas regionales es el punto, no un efecto colateral.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -22,6 +22,9 @@ from leaks.storage.models import AdjacentActorRow, RegionalVictimRow
 from leaks.storage.session import session_scope
 
 logger = logging.getLogger(__name__)
+
+#: Centinela para comparar contra `alerted_at` cuando no hay fecha.
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 
 def _as_utc(valor: datetime | None) -> datetime | None:
@@ -150,16 +153,83 @@ class AdjacencyRepository:
                     RegionalVictimRow.country,
                     RegionalVictimRow.occurred_at,
                     RegionalVictimRow.sector,
+                    RegionalVictimRow.victim_domain,
+                    RegionalVictimRow.critical,
                 ).where(RegionalVictimRow.occurred_at.is_not(None))
             ).all()
-        for actor, country, ocurrido, sector in filas:
+        for actor, country, ocurrido, sector, dominio, critica in filas:
             momento = _as_utc(ocurrido)
             if momento is None:
                 continue
             salida.setdefault(actor, []).append(
-                VictimaRegional(country=country, occurred_at=momento.date(), sector=sector or "")
+                VictimaRegional(
+                    country=country,
+                    occurred_at=momento.date(),
+                    sector=sector or "",
+                    victim_domain=dominio,
+                    critica=bool(critica),
+                )
             )
         return salida
+
+    def reclasificar(self, es_critica: Callable[[str, str | None], tuple[bool, str | None]]) -> int:
+        """Recalcula la criticidad de TODAS las víctimas. Devuelve cuántas cambiaron.
+
+        Corre en cada pasada y no solo al insertar, para que editar
+        `data/watchlist-regional/<cc>.yaml` reclasifique lo ya guardado sin
+        tener que volver a bajar 1.353 filas.
+        """
+        cambios = 0
+        with session_scope(self._session_factory) as session:
+            for fila in session.scalars(select(RegionalVictimRow)).all():
+                critica, sector = es_critica(fila.country, fila.victim_domain)
+                if bool(fila.critical) != critica or fila.regional_sector != sector:
+                    fila.critical = critica
+                    fila.regional_sector = sector
+                    cambios += 1
+        return cambios
+
+    def critical_victims(self, *, limit: int = 100, offset: int = 0) -> tuple[dict[str, Any], ...]:
+        """Las víctimas regionales que SÍ importan: infraestructura crítica.
+
+        De ~1.350 víctimas regionales, la mayoría son empresas privadas que no
+        dicen nada sobre el riesgo argentino. Éstas son las pocas que sí: un
+        ministerio, un banco central, una petrolera estatal.
+
+        Es la lista que un investigador quiere leer, y la razón real de que
+        exista la watchlist regional — mover el score fue lo de menos.
+        """
+        with session_scope(self._session_factory) as session:
+            filas = session.scalars(
+                select(RegionalVictimRow)
+                .where(RegionalVictimRow.critical.is_(True))
+                .order_by(RegionalVictimRow.occurred_at.desc().nullslast())
+                .limit(limit)
+                .offset(offset)
+            ).all()
+            return tuple(
+                {
+                    "actor": f.actor,
+                    "country": f.country,
+                    "victim_name": f.victim_name,
+                    "victim_domain": f.victim_domain,
+                    "sector": f.regional_sector,
+                    "occurred_at": _as_utc(f.occurred_at),
+                    "source": f.source,
+                }
+                for f in filas
+            )
+
+    def count_critical(self) -> int:
+        with session_scope(self._session_factory) as session:
+            return int(
+                session.scalar(
+                    select(func.count())
+                    .select_from(RegionalVictimRow)
+                    .where(RegionalVictimRow.critical.is_(True))
+                )
+                or 0
+            )
 
     def sectores_regionales(self) -> tuple[str, ...]:
         with session_scope(self._session_factory) as session:
@@ -232,6 +302,52 @@ class AdjacencyRepository:
                 fila.score_updated_at = ahora
             fila.score = valor
             fila.score_breakdown = desglose
+
+    def pending_jumps(self, *, min_jump: float, min_score: float) -> tuple[PerfilActor, ...]:
+        """Candidatos cuyo score saltó lo suficiente y todavía no se avisaron.
+
+        Tres condiciones y todas necesarias:
+
+        * **No haber golpeado Argentina.** A los confirmados no se les calcula
+          score, así que un "salto" suyo no significa nada.
+        * **Haber saltado** `min_jump` respecto de la corrida anterior. Se avisa
+          por movimiento y no por umbral absoluto: un actor alto y quieto no es
+          novedad, y avisar por umbral lo repetiría en cada corrida.
+        * **Estar por encima del piso.** Un salto de 5 a 20 es un salto, pero
+          no amerita interrumpir a nadie.
+
+        `score_prev IS NULL` queda afuera: es la primera vez que se lo puntúa y
+        no hay salto que medir — contra qué compararlo sería inventado.
+        """
+        with session_scope(self._session_factory) as session:
+            filas = session.scalars(
+                select(AdjacentActorRow)
+                .where(
+                    AdjacentActorRow.hit_ar.is_(False),
+                    AdjacentActorRow.score_prev.is_not(None),
+                    AdjacentActorRow.score >= min_score,
+                    AdjacentActorRow.score - AdjacentActorRow.score_prev >= min_jump,
+                )
+                .order_by((AdjacentActorRow.score - AdjacentActorRow.score_prev).desc())
+            ).all()
+            # Se avisa una vez por salto: si ya se avisó y el score no volvió a
+            # moverse, no se repite.
+            return tuple(
+                _to_perfil(f)
+                for f in filas
+                if f.alerted_at is None or (f.score_updated_at or _EPOCH) > f.alerted_at
+            )
+
+    def mark_alerted(self, actores: Sequence[str]) -> None:
+        """Anota que ya se avisó, para no repetir el mismo salto."""
+        if not actores:
+            return
+        ahora = datetime.now(UTC)
+        with session_scope(self._session_factory) as session:
+            for fila in session.scalars(
+                select(AdjacentActorRow).where(AdjacentActorRow.actor.in_(list(actores)))
+            ).all():
+                fila.alerted_at = ahora
 
     def list_actors(
         self,

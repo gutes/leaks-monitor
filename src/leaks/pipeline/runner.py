@@ -42,6 +42,7 @@ from leaks.relevance.rules import evaluate
 from leaks.relevance.severity import derive_severity
 from leaks.relevance.watchlist import Watchlist
 from leaks.sites.collector import SiteCatalogCollector
+from leaks.storage.adjacency_repository import AdjacencyRepository
 from leaks.storage.dedup import compute_dedup_hash
 from leaks.storage.event_sink import NullEventSink
 from leaks.storage.pii_vault import PiiVault
@@ -112,6 +113,7 @@ class PipelineRunner:
         alert_dispatcher: AlertDispatcher | None = None,
         site_collector: SiteCatalogCollector | None = None,
         adjacency_collector: AdjacencyCollector | None = None,
+        adjacency_repo: AdjacencyRepository | None = None,
         cursor_sink: Callable[[dict[str, str]], None] | None = None,
         channel_error_sink: Callable[[dict[str, str]], None] | None = None,
         feed_deps: FeedDeps | None = None,
@@ -143,6 +145,7 @@ class PipelineRunner:
         self._alerts = alert_dispatcher
         self._sites = site_collector
         self._adjacency = adjacency_collector
+        self._adjacency_repo = adjacency_repo
         # Cursores por canal (Telegram). Van aparte del cursor por fecha del
         # feed: acá el cursor es un id de post, no un `discovered_at`.
         self._cursor_sink = cursor_sink
@@ -266,6 +269,10 @@ class PipelineRunner:
             f"({resultado.victimas_nuevas} nuevas), {resultado.actores} actores: "
             f"{resultado.confirmados} ya golpearon AR, {resultado.candidatos} todavía no"
         )
+
+        # Lo que amerita interrumpir a alguien no es un actor con score alto
+        # —eso es una lista, no una novedad— sino uno que se MOVIÓ.
+        self._avisar_saltos()
         if resultado.paises_fallidos:
             detalle += f" · sin respuesta: {', '.join(resultado.paises_fallidos[:5])}"
         self._emit(
@@ -274,6 +281,43 @@ class PipelineRunner:
             level=EventLevel.WARN if resultado.paises_fallidos else EventLevel.INFO,
         )
         return resultado.victimas_nuevas
+
+    def _avisar_saltos(self) -> None:
+        """Avisa de los candidatos cuyo score pegó un salto. Nunca lanza.
+
+        No se avisa por víctima regional: serían 1.353 avisos de cosas que no
+        son nuestras. Se avisa por movimiento del perfil, que es la señal.
+        """
+        if self._adjacency_repo is None or self._alerts is None or not self._alerts.enabled:
+            return
+        try:
+            saltos = self._adjacency_repo.pending_jumps(
+                min_jump=self._settings.adjacency_alert_jump,
+                min_score=self._settings.adjacency_alert_min_score,
+            )
+        except Exception as exc:  # pragma: no cover — defensivo
+            logger.warning("No se pudieron leer los saltos: %s", type(exc).__name__)
+            return
+        if not saltos:
+            return
+
+        lineas = [
+            f"• {p.actor}: {p.score:.0f} (antes {p.score_prev:.0f}, "
+            f"{p.variacion:+.0f}) — {p.victims_total} víctimas en {len(p.countries)} países"
+            for p in saltos[:10]
+        ]
+        aviso = (
+            "📈 Actores regionales que subieron su probabilidad de apuntar a Argentina:\n"
+            + "\n".join(lineas)
+            + "\n\nTodavía NO golpearon Argentina. Ver la sección Adyacentes."
+        )
+        self._alerts.dispatch_notice(aviso)
+        self._adjacency_repo.mark_alerted([p.actor for p in saltos])
+        self._emit(
+            EventKind.ADJACENCY,
+            f"Aviso enviado: {len(saltos)} actores saltaron de score",
+            level=EventLevel.WARN,
+        )
 
     # -- Catálogo de sitios ------------------------------------------------------
 

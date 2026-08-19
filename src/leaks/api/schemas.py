@@ -278,6 +278,21 @@ class AdjacencyCoverageOut(BaseModel):
     medido_el: str = "2026-08-18"
 
 
+class RegionalVictimOut(BaseModel):
+    """Una víctima regional de infraestructura crítica."""
+
+    actor: str
+    country: str
+    victim_name: str
+    victim_domain: str | None = None
+    #: Sector según la watchlist de SU país, no el rubro que declara el feed.
+    sector: str | None = None
+    occurred_at: datetime | None = None
+    source: str = ""
+    #: Si ese actor ya golpeó Argentina. Es lo que convierte la fila en señal.
+    actor_hit_ar: bool = False
+
+
 class AdjacencyOut(BaseModel):
     """La sección completa: perfiles más el alcance declarado."""
 
@@ -286,6 +301,10 @@ class AdjacencyOut(BaseModel):
     total_confirmados: int = 0
     total_candidatos: int = 0
     victimas_regionales: int = 0
+    #: De todas las regionales, cuántas son infraestructura crítica.
+    victimas_criticas: int = 0
+    #: Las críticas más recientes: la lista corta que sí vale leer.
+    criticas: list[RegionalVictimOut] = Field(default_factory=list)
     paises: list[str] = Field(default_factory=list)
     cobertura: AdjacencyCoverageOut = Field(default_factory=AdjacencyCoverageOut)
     limit: int = 50

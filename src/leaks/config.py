@@ -155,6 +155,15 @@ class Settings(BaseSettings):
     #: Son ~18 requests por corrida a un endpoint gratuito, así que se puede
     #: apagar sin tocar nada más del pipeline.
     adjacency_enabled: bool = True
+
+    #: Cuánto tiene que saltar el score de un candidato para que se avise.
+    #: Se alerta por SALTO y no por umbral absoluto porque un actor que ya está
+    #: alto y quieto no es novedad: lo que interesa es que se mueva.
+    adjacency_alert_jump: float = Field(default=10.0, ge=1.0, le=100.0)
+    #: Piso: por debajo de esto un salto no amerita interrumpir a nadie.
+    adjacency_alert_min_score: float = Field(default=40.0, ge=0.0, le=100.0)
+    #: Directorio con una watchlist por país (`br.yaml`, `cl.yaml`…).
+    regional_watchlist_dir: Path = PROJECT_ROOT / "data" / "watchlist-regional"
     #: Permite editar watchlist y reglas desde la UI. Se puede cerrar en un
     #: despliegue compartido; el control de IP de salida NO se puede tocar por
     #: ninguna vía de la API, ni siquiera con esto en true.

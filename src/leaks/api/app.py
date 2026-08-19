@@ -44,6 +44,7 @@ from leaks.api.schemas import (
     LeakSiteCountsOut,
     LeakSiteOut,
     LeakSitePage,
+    RegionalVictimOut,
     RuleOut,
     RulesOut,
     RunStateOut,
@@ -620,12 +621,25 @@ def create_app(
         acotado = min(limit, config.api_max_page_size)
         confirmados = repo.list_actors(hit_ar=True, limit=acotado, offset=offset)
         candidatos = repo.list_actors(hit_ar=False, limit=acotado, offset=offset)
+        # Quién ya golpeó Argentina, para marcarlo en la lista de víctimas
+        # críticas: una petrolera colombiana caída es un dato; que la haya
+        # tumbado el mismo grupo que nos golpeó a nosotros es una señal.
+        confirmados_set = {a.actor for a in repo.list_actors(hit_ar=True)}
+        criticas = repo.critical_victims(limit=acotado)
+
         return AdjacencyOut(
             confirmados=[AdjacentActorOut.model_validate(a.as_dict()) for a in confirmados],
             candidatos=[AdjacentActorOut.model_validate(a.as_dict()) for a in candidatos],
             total_confirmados=repo.count_actors(hit_ar=True),
             total_candidatos=repo.count_actors(hit_ar=False),
             victimas_regionales=repo.count_victims(),
+            victimas_criticas=repo.count_critical(),
+            criticas=[
+                RegionalVictimOut.model_validate(
+                    {**v, "actor_hit_ar": v["actor"] in confirmados_set}
+                )
+                for v in criticas
+            ],
             paises=list(COUNTRY_CODES),
             limit=acotado,
             offset=offset,

@@ -11,6 +11,7 @@ Lo que se protege acá:
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -387,3 +388,276 @@ class TestColector:
         segunda = colector.collect()
         assert segunda.victimas_nuevas == 0
         assert segunda.victimas_totales == 3
+
+
+class TestAvisoPorSalto:
+    """Se avisa por MOVIMIENTO, no por umbral.
+
+    Un actor alto y quieto no es novedad, y avisar por umbral absoluto lo
+    repetiría en cada corrida hasta que alguien apague las alertas.
+    """
+
+    def _guardar(
+        self,
+        repo: AdjacencyRepository,
+        actor: str,
+        victimas: int,
+        *,
+        hit_ar: bool = False,
+    ) -> None:
+        repo.save_actor(
+            actor,
+            victims_total=victimas,
+            countries=["BR", "CL"],
+            first_seen=None,
+            last_seen=None,
+            hit_ar=hit_ar,
+            ar_victims=3 if hit_ar else 0,
+            score=None if hit_ar else calcular([vr("BR"), vr("CL")] * victimas, hoy=HOY),
+        )
+
+    def test_no_avisa_la_primera_vez(self, adj_repo: AdjacencyRepository) -> None:
+        """Sin corrida anterior no hay salto que medir. Fingirlo sería inventar."""
+        self._guardar(adj_repo, "babuk2", 10)
+        assert adj_repo.pending_jumps(min_jump=1.0, min_score=0.0) == ()
+
+    def test_avisa_cuando_salta(self, adj_repo: AdjacencyRepository) -> None:
+        self._guardar(adj_repo, "babuk2", 1)
+        self._guardar(adj_repo, "babuk2", 12)
+        (salto,) = adj_repo.pending_jumps(min_jump=1.0, min_score=0.0)
+        assert salto.actor == "babuk2"
+        assert salto.variacion is not None and salto.variacion > 0
+
+    def test_un_salto_chico_no_interrumpe(self, adj_repo: AdjacencyRepository) -> None:
+        self._guardar(adj_repo, "babuk2", 5)
+        self._guardar(adj_repo, "babuk2", 6)
+        assert adj_repo.pending_jumps(min_jump=25.0, min_score=0.0) == ()
+
+    def test_un_salto_por_debajo_del_piso_no_interrumpe(
+        self, adj_repo: AdjacencyRepository
+    ) -> None:
+        """De 5 a 20 es un salto, pero no amerita despertar a nadie."""
+        self._guardar(adj_repo, "chico", 1)
+        self._guardar(adj_repo, "chico", 3)
+        assert adj_repo.pending_jumps(min_jump=1.0, min_score=95.0) == ()
+
+    def test_los_confirmados_nunca_saltan(self, adj_repo: AdjacencyRepository) -> None:
+        """No se les calcula score: un 'salto' suyo no significaría nada."""
+        self._guardar(adj_repo, "qilin", 1)
+        self._guardar(adj_repo, "qilin", 12, hit_ar=True)
+        assert adj_repo.pending_jumps(min_jump=1.0, min_score=0.0) == ()
+
+    def test_no_se_repite_el_mismo_salto(self, adj_repo: AdjacencyRepository) -> None:
+        self._guardar(adj_repo, "babuk2", 1)
+        self._guardar(adj_repo, "babuk2", 12)
+        adj_repo.mark_alerted(["babuk2"])
+        assert adj_repo.pending_jumps(min_jump=1.0, min_score=0.0) == ()
+
+    def test_pero_un_salto_nuevo_vuelve_a_avisar(self, adj_repo: AdjacencyRepository) -> None:
+        """Avisar una vez no puede silenciar al actor para siempre."""
+        self._guardar(adj_repo, "babuk2", 1)
+        self._guardar(adj_repo, "babuk2", 8)
+        adj_repo.mark_alerted(["babuk2"])
+        self._guardar(adj_repo, "babuk2", 30)
+        assert [p.actor for p in adj_repo.pending_jumps(min_jump=1.0, min_score=0.0)] == ["babuk2"]
+
+    def test_una_baja_no_avisa(self, adj_repo: AdjacencyRepository) -> None:
+        self._guardar(adj_repo, "babuk2", 12)
+        self._guardar(adj_repo, "babuk2", 1)
+        assert adj_repo.pending_jumps(min_jump=1.0, min_score=0.0) == ()
+
+
+class TestCableado:
+    """Que el runner REALMENTE llame al aviso.
+
+    Los tests de arriba prueban el mecanismo. Este prueba que esté enchufado,
+    que es donde ya se escondió un bug antes: una pieza correcta que nadie
+    invocaba, con un test que la construía a mano y pasaba igual.
+    """
+
+    class AlertasFalsas:
+        def __init__(self) -> None:
+            self.avisos: list[str] = []
+
+        @property
+        def enabled(self) -> bool:
+            return True
+
+        def dispatch_notice(self, texto: str) -> None:
+            self.avisos.append(texto)
+
+    def test_el_runner_avisa_los_saltos(
+        self,
+        adj_repo: AdjacencyRepository,
+        session_factory: sessionmaker[Session],
+        tmp_path: Any,
+    ) -> None:
+        from leaks.config import Settings
+        from leaks.pipeline.runner import PipelineRunner
+        from leaks.relevance.watchlist import build_watchlist
+        from leaks.storage.repository import SqlAlchemyFindingRepository
+
+        # Un candidato que saltó de verdad.
+        for cuantas in (1, 20):
+            adj_repo.save_actor(
+                "babuk2",
+                victims_total=cuantas,
+                countries=["BR", "CL"],
+                first_seen=None,
+                last_seen=None,
+                hit_ar=False,
+                ar_victims=0,
+                score=calcular([vr("BR"), vr("CL")] * cuantas, hoy=HOY),
+            )
+
+        alertas = self.AlertasFalsas()
+        runner = PipelineRunner(
+            repository=SqlAlchemyFindingRepository(session_factory),
+            watchlist=build_watchlist(()),
+            settings=Settings(
+                database_url="sqlite://",
+                adjacency_alert_jump=1.0,
+                adjacency_alert_min_score=0.0,
+            ),
+            alert_dispatcher=alertas,  # type: ignore[arg-type]
+            adjacency_repo=adj_repo,
+        )
+        runner._avisar_saltos()
+
+        assert len(alertas.avisos) == 1, "el runner tiene que llamar al aviso"
+        assert "babuk2" in alertas.avisos[0]
+        assert "NO golpearon Argentina" in alertas.avisos[0], (
+            "el aviso tiene que decir que todavía no cruzaron, o se lee como un ataque"
+        )
+
+    def test_sin_canales_no_avisa_ni_marca(
+        self, adj_repo: AdjacencyRepository, session_factory: sessionmaker[Session]
+    ) -> None:
+        """Sin canales configurados no se puede marcar como avisado.
+
+        Si se marcara, el salto quedaría silenciado para siempre sin que nadie
+        se hubiera enterado.
+        """
+        from leaks.config import Settings
+        from leaks.pipeline.runner import PipelineRunner
+        from leaks.relevance.watchlist import build_watchlist
+        from leaks.storage.repository import SqlAlchemyFindingRepository
+
+        for cuantas in (1, 20):
+            adj_repo.save_actor(
+                "babuk2",
+                victims_total=cuantas,
+                countries=["BR"],
+                first_seen=None,
+                last_seen=None,
+                hit_ar=False,
+                ar_victims=0,
+                score=calcular([vr("BR")] * cuantas, hoy=HOY),
+            )
+
+        runner = PipelineRunner(
+            repository=SqlAlchemyFindingRepository(session_factory),
+            watchlist=build_watchlist(()),
+            settings=Settings(database_url="sqlite://", adjacency_alert_min_score=0.0),
+            adjacency_repo=adj_repo,
+        )
+        runner._avisar_saltos()
+
+        assert adj_repo.pending_jumps(min_jump=1.0, min_score=0.0), (
+            "el salto sigue pendiente: nadie se enteró"
+        )
+
+
+class TestWatchlistRegional:
+    """La watchlist por país: para qué sirve de verdad."""
+
+    @pytest.fixture
+    def rwl(self) -> Any:
+        from leaks.adjacency.regional_watchlist import load_regional_watchlists
+
+        return load_regional_watchlists(Path("data/watchlist-regional"))
+
+    def test_carga_un_archivo_por_pais(self, rwl: Any) -> None:
+        assert set(rwl.paises) >= {"BR", "CL", "UY", "PY", "BO"}, "los limítrofes primero"
+
+    def test_reconoce_infraestructura_critica(self, rwl: Any) -> None:
+        assert rwl.es_critica("BR", "petrobras.com.br")
+        assert rwl.es_critica("CL", "bcentral.cl")
+        assert rwl.es_critica("MX", "sat.gob.mx")
+
+    def test_cubre_subdominios(self, rwl: Any) -> None:
+        assert rwl.es_critica("BR", "intranet.gov.br")
+        # `intranet.gov.br` no figura, pero `gov.br` sí y cubre sus subdominios.
+        assert rwl.es_critica("BR", "saude.mt.gov.br")
+
+    def test_una_empresa_cualquiera_no_es_critica(self, rwl: Any) -> None:
+        assert not rwl.es_critica("BR", "panaderia-del-barrio.com.br")
+
+    def test_un_pais_sin_watchlist_no_inventa_criticidad(self, rwl: Any) -> None:
+        assert not rwl.es_critica("ZZ", "algo.zz")
+        assert rwl.match("ZZ", "algo.zz") is None
+
+    def test_un_directorio_inexistente_no_rompe(self, tmp_path: Path) -> None:
+        from leaks.adjacency.regional_watchlist import load_regional_watchlists
+
+        vacia = load_regional_watchlists(tmp_path / "no-existe")
+        assert vacia.paises == ()
+        assert not vacia.es_critica("BR", "petrobras.com.br")
+
+    def test_es_independiente_de_la_argentina(self, rwl: Any) -> None:
+        """Mezclarlas haría que una empresa brasileña genere un hallazgo argentino."""
+        from leaks.relevance.watchlist import load_watchlist
+
+        ar = load_watchlist(Path("data") / "watchlist.yaml")
+        assert ar.match_domain("petrobras.com.br") is None
+        assert not rwl.es_critica("BR", "prevision-ejemplo.gob.ar")
+
+
+class TestCriticidadEnElScore:
+    def test_una_victima_critica_pesa_mas_que_una_cualquiera(self) -> None:
+        base = [VictimaRegional("BR", HOY - timedelta(days=5), sector="Otro") for _ in range(4)]
+        criticas = [
+            VictimaRegional("BR", HOY - timedelta(days=5), sector="Otro", critica=True)
+            for _ in range(4)
+        ]
+        assert (
+            calcular(criticas, hoy=HOY).breakdown["afinidad"]
+            > (calcular(base, hoy=HOY).breakdown["afinidad"])
+        )
+
+    def test_se_toma_el_maximo_y_no_la_suma(self) -> None:
+        """Son dos formas de medir lo mismo; sumarlas contaría doble."""
+        sectores = frozenset({"Government & Defense"})
+        ambas = [
+            VictimaRegional("BR", HOY, sector="Government & Defense", critica=True)
+            for _ in range(4)
+        ]
+        solo_una = [VictimaRegional("BR", HOY, sector="Government & Defense") for _ in range(4)]
+        assert (
+            calcular(ambas, sectores_ar=sectores, hoy=HOY).breakdown["afinidad"]
+            == (calcular(solo_una, sectores_ar=sectores, hoy=HOY).breakdown["afinidad"])
+        )
+
+
+class TestVictimasCriticas:
+    def test_lista_solo_las_criticas(self, adj_repo: AdjacencyRepository) -> None:
+        """De ~1.350 regionales, la lista corta es la que se lee."""
+        adj_repo.upsert_victims(
+            [rv(nombre="Ministerio"), rv(nombre="PyME cualquiera", country="CL")]
+        )
+        adj_repo.reclasificar(lambda cc, dom: (cc == "BR", "gobierno" if cc == "BR" else None))
+        assert adj_repo.count_critical() == 1
+        (unica,) = adj_repo.critical_victims()
+        assert unica["victim_name"] == "Ministerio"
+        assert unica["sector"] == "gobierno"
+
+    def test_reclasificar_reevalua_lo_ya_guardado(self, adj_repo: AdjacencyRepository) -> None:
+        """Editar una watchlist regional tiene que reclasificar sin re-bajar nada."""
+        adj_repo.upsert_victims([rv()])
+        assert adj_repo.reclasificar(lambda cc, dom: (True, "energia")) == 1
+        assert adj_repo.count_critical() == 1
+        # Segunda pasada sin cambios: no toca nada.
+        assert adj_repo.reclasificar(lambda cc, dom: (True, "energia")) == 0
+        # Y se puede volver atrás.
+        assert adj_repo.reclasificar(lambda cc, dom: (False, None)) == 1
+        assert adj_repo.count_critical() == 0

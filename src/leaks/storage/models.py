@@ -306,6 +306,13 @@ class RegionalVictimRow(Base):
     occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     source: Mapped[str] = mapped_column(String(64), nullable=False)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    #: Es infraestructura crítica según la watchlist de SU país. Se recalcula en
+    #: cada corrida: editar `data/watchlist-regional/<cc>.yaml` tiene que poder
+    #: reclasificar lo ya guardado sin volver a bajar nada.
+    critical: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    #: El sector de esa watchlist regional (`gobierno`, `energia`…), que NO es
+    #: el rubro que declara el feed.
+    regional_sector: Mapped[str | None] = mapped_column(String(64))
 
     __table_args__ = (
         # Clave natural. El feed republica lo mismo en cada corrida, así que
@@ -316,6 +323,7 @@ class RegionalVictimRow(Base):
         Index("ix_regional_victims_actor", "actor"),
         Index("ix_regional_victims_country", "country"),
         Index("ix_regional_victims_occurred", "occurred_at"),
+        Index("ix_regional_victims_critical", "critical"),
     )
 
 

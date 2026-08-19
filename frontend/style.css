@@ -229,6 +229,22 @@ tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); 
 
 .pager { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
 
+/* La sección de adyacencia es beta y tiene que decirlo en el menú: su score
+   es ciego a casi la mitad de los actores, y eso hay que saberlo ANTES de
+   entrar, no después de leer la lista. */
+.nav-beta {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: var(--warn);
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
 /* -- Selección y exportación ---------------------------------------------- */
 
 .export-bar {
@@ -255,6 +271,10 @@ tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); 
 /* La fila tildada se marca: con la selección repartida entre páginas, tener
    que mirar la casilla para saber qué entra al informe sería un problema. */
 #findings-body tr:has(.sel-box:checked) { background: #eef4ff; }
+
+/* Un actor que ya golpeó Argentina atacando gobierno regional: es la señal más
+   fuerte de la sección, y tiene que verse antes de leer la fila. */
+#adj-crit-body tr.adj-fila-critica { background: #fdf0ef; }
 
 footer {
   border-top: 1px solid var(--border);

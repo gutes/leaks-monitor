@@ -19,6 +19,7 @@ from leaks.adapters.egress import EgressResolver
 from leaks.adapters.http import build_client
 from leaks.adapters.registry import FeedDeps
 from leaks.adjacency.collector import AdjacencyCollector
+from leaks.adjacency.regional_watchlist import load_regional_watchlists
 from leaks.alerts.dispatcher import AlertDispatcher, build_channels
 from leaks.config import Settings, get_settings
 from leaks.pipeline.domain_rotation import WatchlistDomainRotator
@@ -179,8 +180,13 @@ def build_application(settings: Settings | None = None) -> Application:
     # demás, pero no comparte tablas con el pipeline argentino: `queries` entra
     # como contexto de solo lectura para saber quién ya golpeó acá.
     adjacency_repo = AdjacencyRepository(session_factory)
+    # Las watchlists regionales se cargan una vez por proceso: son 9 archivos
+    # chicos y no cambian dentro de una corrida.
+    regional_wl = load_regional_watchlists(config.regional_watchlist_dir)
     adjacency_collector = (
-        AdjacencyCollector(adjacency_repo, _cliente_de_alertas, queries)
+        AdjacencyCollector(
+            adjacency_repo, _cliente_de_alertas, queries, regional_watchlists=regional_wl
+        )
         if config.adjacency_enabled
         else None
     )
@@ -204,6 +210,7 @@ def build_application(settings: Settings | None = None) -> Application:
         alert_dispatcher=alert_dispatcher,
         site_collector=site_collector,
         adjacency_collector=adjacency_collector,
+        adjacency_repo=adjacency_repo,
         cursor_sink=telegram_repo.save_cursors,
         channel_error_sink=telegram_repo.save_errors,
         feed_deps=feed_deps,

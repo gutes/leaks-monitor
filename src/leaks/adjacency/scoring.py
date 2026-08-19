@@ -112,7 +112,13 @@ class VictimaRegional:
 
     country: str
     occurred_at: date
+    #: Rubro tal como lo declara el feed. Viene vacío bastante seguido.
     sector: str = ""
+    victim_domain: str | None = None
+    #: Si es infraestructura crítica según la watchlist de SU país. Lo resuelve
+    #: el colector contra `data/watchlist-regional/<cc>.yaml`: acá entra ya
+    #: decidido para que el score siga siendo una función pura.
+    critica: bool = False
 
 
 @dataclass(frozen=True)
@@ -178,11 +184,30 @@ def _proximidad(paises: set[str], peso: float) -> float:
 def _afinidad(
     victimas: Sequence[VictimaRegional], sectores_ar: frozenset[str], peso: float
 ) -> float:
-    """Qué porción de sus víctimas cae en los sectores que en AR son sensibles."""
-    if not victimas or not sectores_ar:
+    """Qué porción de sus víctimas es del tipo que acá dolería.
+
+    Dos señales, y la primera manda:
+
+    1. **Infraestructura crítica del país golpeado**, según su propia watchlist
+       regional. Es la señal fuerte: un actor que tumba el banco central de
+       Chile es otra cosa que uno que tumba una PyME.
+    2. **Rubro declarado por el feed** coincidente con los que más se golpean en
+       Argentina. Es el respaldo para cuando no hay watchlist de ese país o el
+       dominio no está modelado.
+
+    Se toma el máximo y no la suma: son dos formas de medir lo mismo, y sumarlas
+    haría que una víctima bien clasificada valiera el doble que otra igual de
+    grave pero peor documentada.
+    """
+    if not victimas:
         return 0.0
-    afines = sum(1 for v in victimas if v.sector and v.sector in sectores_ar)
-    return peso * (afines / len(victimas))
+    criticas = sum(1 for v in victimas if v.critica) / len(victimas)
+    por_rubro = (
+        sum(1 for v in victimas if v.sector and v.sector in sectores_ar) / len(victimas)
+        if sectores_ar
+        else 0.0
+    )
+    return peso * max(criticas, por_rubro)
 
 
 def calcular(

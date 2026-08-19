@@ -1070,8 +1070,8 @@ async function loadAdjacency() {
   $("adj-counts").replaceChildren(
     el("span", `${datos.total_candidatos ?? 0} candidatos`, "pill pill-high"),
     el("span", `${datos.total_confirmados ?? 0} confirmados`, "pill pill-critical"),
+    el("span", `${datos.victimas_criticas ?? 0} críticas`, "pill pill-critical"),
     el("span", `${datos.victimas_regionales ?? 0} víctimas regionales`, "pill pill-low"),
-    el("span", `${(datos.paises || []).length} países`, "pill pill-low"),
   );
 
   renderCobertura(datos.cobertura || {});
@@ -1085,6 +1085,8 @@ async function loadAdjacency() {
       cand.append(filaCandidato(a));
     }
   }
+
+  renderCriticas(Array.isArray(datos.criticas) ? datos.criticas : []);
 
   const confirmados = Array.isArray(datos.confirmados) ? datos.confirmados : [];
   if (!confirmados.length) {
@@ -1139,6 +1141,54 @@ function renderCobertura(c) {
     ),
     el("p", `Medido el ${c.medido_el || "—"}.`, "hint"),
   );
+}
+
+/**
+ * La lista corta: infraestructura crítica regional.
+ *
+ * De ~1.350 víctimas regionales la mayoría son empresas privadas que no dicen
+ * nada sobre el riesgo argentino. Éstas sí, y las que además vienen de un actor
+ * que ya nos golpeó son la señal más fuerte de toda la sección.
+ */
+function renderCriticas(items) {
+  const body = $("adj-crit-body");
+  body.replaceChildren();
+  if (!items.length) {
+    body.append(filaVacia(5, "Ninguna infraestructura crítica regional en el período."));
+    return;
+  }
+
+  for (const v of items) {
+    const tr = document.createElement("tr");
+    tr.append(el("td", v.occurred_at ? fmtDate(v.occurred_at) : "sin fecha"));
+
+    const pais = el("td");
+    pais.append(el("span", v.country, "pill pill-low"));
+    tr.append(pais);
+
+    tr.append(el("td", v.sector || "—"));
+
+    const org = el("td");
+    org.append(el("div", v.victim_name, "victim-name"));
+    if (v.victim_domain) org.append(el("div", v.victim_domain, "victim-domain"));
+    tr.append(org);
+
+    const actor = el("td");
+    const boton = el("button", v.actor, "linkish");
+    boton.type = "button";
+    boton.title = `Ver los hallazgos argentinos de ${v.actor}`;
+    boton.addEventListener("click", () => filtrarPorActor(v.actor));
+    actor.append(boton);
+    if (v.actor_hit_ar) {
+      const chip = el("span", "ya nos golpeó", "pill pill-critical");
+      chip.title = "Este actor tiene víctimas argentinas registradas.";
+      actor.append(chip);
+    }
+    tr.append(actor);
+
+    if (v.actor_hit_ar) tr.classList.add("adj-fila-critica");
+    body.append(tr);
+  }
 }
 
 function filaCandidato(a) {

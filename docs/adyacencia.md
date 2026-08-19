@@ -134,12 +134,62 @@ Lo único que la adyacencia le pide al lado argentino es `actor_counts()` y
 `sector_values()`, declarados como un `Protocol` para que la dirección de la
 dependencia quede escrita.
 
+## La watchlist regional: para qué sirvió de verdad
+
+Se cargaron 9 países —los 5 limítrofes más MX, CO, PE, EC— con 177 dominios de
+gobierno, banca central, energía, telecomunicaciones y salud, en
+`data/watchlist-regional/<cc>.yaml`. Reusa `relevance/watchlist.py` tal cual:
+ese módulo nunca tuvo nada de argentino, lo argentino era el archivo.
+
+**No movió el score.** Se re-corrió el backtest con la criticidad conectada y
+dio idéntico: percentil mediano 93%, 25/35 en el top 10, 0 en el cuartil
+inferior. La razón es simple: solo **67 de 1.355** víctimas regionales son
+infraestructura crítica, así que la señal casi nunca gana sobre el rubro que
+declara el feed.
+
+**Pero esas 67 son el producto.** De ~1.350 víctimas regionales, la mayoría son
+empresas privadas que no dicen nada sobre el riesgo argentino. Éstas sí, y 13
+de las 14 más recientes son de actores **que ya nos golpearon**:
+
+```
+2026-08-07  BR  gobierno    intranet.gov.br          thegentlemen  ← ya nos golpeó
+2026-07-31  PE  gobierno    munisanluis.gob.pe       thegentlemen  ← ya nos golpeó
+2026-07-19  CO  energia     www.ecopetrol.com.co     thegentlemen  ← ya nos golpeó
+2026-06-20  MX  gobierno    idefeey.yucatan.gob.mx   lockbit5      ← ya nos golpeó
+2026-06-20  BR  gobierno    saude.mt.gov.br          lockbit5      ← ya nos golpeó
+```
+
+`thegentlemen` —el actor que golpeó Argentina en septiembre de 2025— viene
+atacando la intranet del gobierno brasileño, municipios peruanos y la petrolera
+estatal colombiana. Eso no lo dice ningún score: lo dice la lista.
+
+La criticidad se **recalcula en cada corrida** sobre todo lo guardado, así que
+editar un `<cc>.yaml` reclasifica sin volver a bajar nada.
+
+## Alertas: por salto, no por umbral
+
+Se avisa cuando el score de un candidato **se mueve**, no cuando está alto. Un
+actor alto y quieto no es novedad, y alertar por umbral absoluto lo repetiría en
+cada corrida hasta que alguien apague las alertas.
+
+Tres condiciones, todas necesarias: no haber golpeado Argentina (a los
+confirmados no se les calcula score), haber saltado `LEAKS_ADJACENCY_ALERT_JUMP`
+puntos (default 10) y estar sobre `LEAKS_ADJACENCY_ALERT_MIN_SCORE` (default
+40). La primera vez que se puntúa a un actor **no se avisa**: no hay salto que
+medir y fingirlo sería inventar.
+
+**No se alerta por víctima regional**: serían 1.355 avisos de cosas que no son
+nuestras.
+
 ## Estado
 
 | Incremento | Estado |
 |---|---|
-| Recolección regional + tablas | ✅ 1.353 víctimas, 18 países |
+| Recolección regional + tablas | ✅ 1.355 víctimas, 18 países |
 | Score + calibración por backtest | ✅ 156 actores: 61 confirmados, 95 candidatos |
-| API + vista de actores | pendiente |
-| Watchlist regional por país | pendiente |
-| Alerta por salto de score | pendiente |
+| API + vista de actores | ✅ sección propia, con el desglose del score |
+| Watchlist regional por país | ✅ 9 países, 177 dominios, 67 víctimas críticas |
+| Alerta por salto de score | ✅ por movimiento, no por umbral |
+
+La sección está marcada **beta** en el menú: su punto ciego del 46% es
+estructural y hay que saberlo antes de entrar, no después de leer la lista.

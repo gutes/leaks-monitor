@@ -608,3 +608,10 @@ test("la dirección del canal nunca se inserta como enlace", async () => {
   const codes = buscar(el("tg-body"), (n) => n.tag === "code");
   assert.ok(codes.length, "se muestra como texto seleccionable");
 });
+
+test("la sección de adyacentes se anuncia como beta en el menú", async () => {
+  // Su score es ciego a casi la mitad de los actores: eso hay que saberlo
+  // antes de entrar, no después de leer la lista.
+  assert.match(HTML, /data-view="adyacentes">Adyacentes<span class="nav-beta"/);
+  assert.match(HTML, /46%/, "el aviso dice cuánto es el punto ciego");
+});
