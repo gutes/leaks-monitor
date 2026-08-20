@@ -10,6 +10,14 @@
 # cae ahí cuando estos no existen (ver `config._respaldo_de_ejemplo`).
 data/watchlist.yaml
 data/watchlist-regional/
+
+# Paquetes de datos. `leaks export-bundle --out /app/data/x.tar.gz` los escribe
+# acá para que aterricen en el host, y contienen la base ENTERA: hallazgos,
+# watchlist y víctimas regionales. Commitear uno sería peor que commitear la
+# watchlist sola.
+data/*.tar.gz
+data/*.tar.gz.age
+data/*.tar.gz.gpg
 !data/examples/
 
 # El prompt fundacional: es del líder técnico y enumera los organismos a

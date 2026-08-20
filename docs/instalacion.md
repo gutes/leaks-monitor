@@ -77,9 +77,15 @@ Para quien necesite correrlo o desarrollarlo.
 **Vos, una vez, generás el paquete:**
 
 ```bash
-docker compose exec api leaks export-bundle --out /tmp/p.tar.gz
-docker compose exec -T api cat /tmp/p.tar.gz > leaks-datos-$(date +%Y%m%d).tar.gz
+docker compose exec api leaks export-bundle --out /app/data/leaks-datos.tar.gz
 ```
+
+El archivo aparece en `./data/leaks-datos.tar.gz`, en tu máquina. La base vive
+en un volumen de Docker y el host no la lee directamente, pero `./data` sí está
+montado, así que escribir ahí evita tener que sacar el archivo con `cat`.
+
+`data/*.tar.gz` está en `.gitignore`: el paquete tiene la base entera y
+commitearlo sería peor que commitear la watchlist sola.
 
 **Cada uno, en su máquina:**
 
