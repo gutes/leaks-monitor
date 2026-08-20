@@ -90,7 +90,7 @@ def redact_pii(text: str | None, *, max_length: int = MAX_DESCRIPTION_LENGTH) ->
 
     El razonamiento: en `description` tirar el campo cuesta contexto, y por eso
     conviene tirarlo. En `victim_name` tirar el campo cuesta **el hallazgo
-    entero** — un thread titulado "el organismo previsional dump juan@x.gob.ar" desaparecería del
+    entero** — un thread titulado "Prevision Ejemplo dump juan@x.gob.ar" desaparecería del
     monitoreo justo por ser el más grave. Redactado sigue siendo identificable,
     y el thread original queda referenciado en `raw_ref` para quien tenga que
     ir a verlo.

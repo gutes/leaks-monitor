@@ -67,11 +67,11 @@ class TestWatchlist:
             "  - name: t\n"
             "    critical: false\n"
             "    domains: []\n"
-            "    keywords: ['AR', 'el organismo previsional']\n",
+            "    keywords: ['AR', 'Prevision Ejemplo']\n",
             encoding="utf-8",
         )
         cargada = load_watchlist(yaml_corto)
-        assert cargada.sectors[0].keywords == ("el organismo previsional",)
+        assert cargada.sectors[0].keywords == ("Prevision Ejemplo",)
 
     def test_falla_si_no_existe(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError):
@@ -126,7 +126,9 @@ class TestReglasDeRelevancia:
         assert veredicto.reasons == ()
 
     def test_watchlist_dispara_y_asigna_sector(self, watchlist: Watchlist) -> None:
-        item = make_normalized(victim_name="el organismo previsional", victim_domain="prevision-ejemplo.gob.ar")
+        item = make_normalized(
+            victim_name="Prevision Ejemplo", victim_domain="prevision-ejemplo.gob.ar"
+        )
         veredicto = evaluate(item, watchlist)
 
         assert ArMatchReason.WATCHLIST in veredicto.reasons
@@ -166,7 +168,9 @@ class TestReglasDeRelevancia:
 class TestAuditabilidad:
     def test_guarda_la_evidencia_de_cada_regla(self, watchlist: Watchlist) -> None:
         item = make_normalized(
-            victim_name="el organismo previsional leak", victim_domain="prevision-ejemplo.gob.ar", country="AR"
+            victim_name="Prevision Ejemplo leak",
+            victim_domain="prevision-ejemplo.gob.ar",
+            country="AR",
         )
         detalle = evaluate(item, watchlist).detail
 
@@ -190,7 +194,9 @@ class TestSeveridad:
         assert derive_severity(veredicto, LeakType.RANSOMWARE) is Severity.CRITICAL
 
     def test_infraestructura_critica_es_critica(self, watchlist: Watchlist) -> None:
-        item = make_normalized(victim_name="DISTRIBUIDORA EJEMPLO", victim_domain="energia-ejemplo.com.ar")
+        item = make_normalized(
+            victim_name="DISTRIBUIDORA EJEMPLO", victim_domain="energia-ejemplo.com.ar"
+        )
         veredicto = evaluate(item, watchlist)
         assert derive_severity(veredicto, LeakType.RANSOMWARE) is Severity.CRITICAL
 

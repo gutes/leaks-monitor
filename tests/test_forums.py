@@ -144,7 +144,7 @@ class TestPrivacidad:
         adapter = FakeAdapter(
             [
                 {
-                    "victim": "[DATABASE] el organismo previsional Argentina 2026",
+                    "victim": "[DATABASE] Prevision Ejemplo Argentina 2026",
                     "domain": None,
                     "country": None,
                     "discovered": __import__("datetime").datetime(
@@ -175,10 +175,10 @@ class TestRedaccionDeTitulos:
     """El título es la identidad del hallazgo: se redacta, no se descarta."""
 
     def test_redacta_el_email_pero_conserva_el_resto(self) -> None:
-        resultado = redact_pii("el organismo previsional dump juan@x.gob.ar 2026")
+        resultado = redact_pii("Prevision Ejemplo dump juan@x.gob.ar 2026")
         assert resultado is not None
         assert "juan@x.gob.ar" not in resultado
-        assert "el organismo previsional" in resultado
+        assert "Prevision Ejemplo" in resultado
         assert "[redactado]" in resultado
 
     def test_un_titulo_limpio_no_se_toca(self) -> None:

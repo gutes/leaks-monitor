@@ -189,7 +189,7 @@ def _afinidad(
     Dos señales, y la primera manda:
 
     1. **Infraestructura crítica del país golpeado**, según su propia watchlist
-       regional. Es la señal fuerte: un actor que tumba el banco central de
+       regional. Es la señal fuerte: un actor que tumba Banco Central Ejemplo de
        Chile es otra cosa que uno que tumba una PyME.
     2. **Rubro declarado por el feed** coincidente con los que más se golpean en
        Argentina. Es el respaldo para cuando no hay watchlist de ese país o el

@@ -11,7 +11,7 @@ class TestValidacion:
     @pytest.mark.parametrize(
         "cuit",
         [
-            "33-69345023-9",  # CUIT público de la agencia tributaria
+            "33-69345023-9",  # CUIT público de Tributos Ejemplo
             "33693450239",  # el mismo, sin guiones
             "20-12345678-6",  # verificador calculado a mano: 148 % 11 = 5 -> 6
             "3369345023-9",  # guion parcial

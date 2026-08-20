@@ -6,8 +6,8 @@ Medido el 2026-08-18 sobre el caso Chronus Team: las tres fuentes de ransomware
 que consumimos indexan **data leak sites de bandas de ransomware**, y los
 colectivos hacktivistas que van contra el sector público argentino publican por
 **Telegram**. No es que se nos pasaban: no podían aparecer. Chronus golpeó
-México el 2026-01-30 y Argentina el 2026-03-30 —el banco central, ministerios, Suprema
-Corte de Buenos Aires, una obra social provincial— y nuestra base no tenía ni una fila. Ver
+México el 2026-01-30 y Argentina el 2026-03-30 —Banco Central Ejemplo, ministerios, Suprema
+Corte de Buenos Aires, Obra Social Ejemplo— y nuestra base no tenía ni una fila. Ver
 `docs/hueco-hacktivistas.md`.
 
 Además esta clase de actor **anuncia sus objetivos antes de atacar**: Chronus

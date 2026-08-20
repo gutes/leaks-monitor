@@ -1,0 +1,80 @@
+[
+  {
+    "activity": "Government & Defense",
+    "country": "AR",
+    "data_size": null,
+    "description": "Datos exfiltrados de la organizacion. Documentos internos y correspondencia. Texto de ejemplo.",
+    "discovered": "2026-07-24T10:37:25.468186+00:00",
+    "group_name": "qilin",
+    "post_title": "Fuerza Ejemplo",
+    "post_url": "http://ijzn3sicrcy7guixkzjkib4ukbiilwc3xhnmby4mcbccnsd7j2rekexample.onion/post/1",
+    "published": "2026-07-24T00:00:00+00:00",
+    "ransom": null,
+    "website": "portal-ejemplo.gob.ar"
+  },
+  {
+    "activity": "Healthcare",
+    "country": "AR",
+    "data_size": "120 GB",
+    "description": "Bases de datos y planillas. Texto de ejemplo.",
+    "discovered": "2026-07-20T08:00:00+00:00",
+    "group_name": "nova",
+    "post_title": "Ministerio de Ejemplo",
+    "post_url": "http://ijzn3sicrcy7guixkzjkib4ukbiilwc3xhnmby4mcbccnsd7j2rekexample.onion/post/2",
+    "published": "2026-07-20T00:00:00+00:00",
+    "ransom": null,
+    "website": "minsalud-ejemplo.gob.ar"
+  },
+  {
+    "activity": "Manufacturing",
+    "country": "AR",
+    "data_size": null,
+    "description": "Documentacion tecnica. Texto de ejemplo.",
+    "discovered": "2026-07-15T12:00:00+00:00",
+    "group_name": "krybit",
+    "post_title": "www.empresa-ejemplo.com.ar",
+    "post_url": "http://ijzn3sicrcy7guixkzjkib4ukbiilwc3xhnmby4mcbccnsd7j2rekexample.onion/post/3",
+    "published": "2026-07-15T00:00:00+00:00",
+    "ransom": null,
+    "website": "www.empresa-ejemplo.com.ar"
+  },
+  {
+    "activity": "Professional Services",
+    "country": "AR",
+    "data_size": null,
+    "description": "Contratos y legajos. Texto de ejemplo.",
+    "discovered": "2026-06-30T09:15:00+00:00",
+    "group_name": "thegentlemen",
+    "post_title": "Empresa Ejemplo",
+    "post_url": "http://ijzn3sicrcy7guixkzjkib4ukbiilwc3xhnmby4mcbccnsd7j2rekexample.onion/post/4",
+    "published": "2026-06-30T00:00:00+00:00",
+    "ransom": null,
+    "website": "empresados-ejemplo.com.ar"
+  },
+  {
+    "activity": "Energy",
+    "country": "AR",
+    "data_size": "2 TB",
+    "description": "Planos y correspondencia. Texto de ejemplo.",
+    "discovered": "2026-06-10T16:40:00+00:00",
+    "group_name": "incransom",
+    "post_title": "Ductos Ejemplo",
+    "post_url": "http://ijzn3sicrcy7guixkzjkib4ukbiilwc3xhnmby4mcbccnsd7j2rekexample.onion/post/5",
+    "published": "2026-06-10T00:00:00+00:00",
+    "ransom": null,
+    "website": "ductos-ejemplo.com.ar"
+  },
+  {
+    "activity": "Retail & E-Commerce",
+    "country": "AR",
+    "data_size": null,
+    "description": "Listados de clientes. Texto de ejemplo.",
+    "discovered": "2026-05-28T11:00:00+00:00",
+    "group_name": "qilin",
+    "post_title": "Otra Empresa Ejemplo",
+    "post_url": "http://ijzn3sicrcy7guixkzjkib4ukbiilwc3xhnmby4mcbccnsd7j2rekexample.onion/post/6",
+    "published": "2026-05-28T00:00:00+00:00",
+    "ransom": null,
+    "website": "www.otraempresa-ejemplo.com.ar"
+  }
+]

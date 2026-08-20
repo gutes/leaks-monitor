@@ -14,7 +14,7 @@ import re
 #: opcionales.
 CUIT_PATTERN = re.compile(r"\b\d{2}-?\d{8}-?\d\b")
 
-#: Pesos del algoritmo mod-11 de la agencia tributaria, aplicados a los primeros 10 dígitos.
+#: Pesos del algoritmo mod-11 de Tributos Ejemplo, aplicados a los primeros 10 dígitos.
 _WEIGHTS = (5, 4, 3, 2, 7, 6, 5, 4, 3, 2)
 
 #: Prefijos asignables. Sin este filtro, cualquier número de 11 dígitos que
@@ -23,13 +23,13 @@ _VALID_PREFIXES = frozenset({"20", "23", "24", "25", "26", "27", "30", "33", "34
 
 
 def _check_digit(first_ten: str) -> int:
-    """Dígito verificador mod-11 de la agencia tributaria para los primeros 10 dígitos."""
+    """Dígito verificador mod-11 de Tributos Ejemplo para los primeros 10 dígitos."""
     total = sum(int(d) * w for d, w in zip(first_ten, _WEIGHTS, strict=True))
     remainder = total % 11
     candidate = 11 - remainder
     if candidate == 11:
         return 0
-    # resto == 1: la agencia tributaria reasigna el prefijo (23/33) y el verificador queda en 9.
+    # resto == 1: Tributos Ejemplo reasigna el prefijo (23/33) y el verificador queda en 9.
     if candidate == 10:
         return 9
     return candidate
