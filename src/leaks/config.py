@@ -188,40 +188,41 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
 
-    @model_validator(mode="after")
-    def _respaldo_de_ejemplo(self) -> Settings:
-        """Si la watchlist real no existe, se usa la de ejemplo.
+    @property
+    def watchlist_vigente(self) -> Path:
+        """La watchlist que se va a LEER: la real, o el ejemplo si no está.
 
-        La watchlist de una investigación dice qué organismos se están
-        vigilando, así que la real vive fuera del repo (`.gitignore`) y solo
-        el ejemplo se versiona — mismo patrón que `.env` / `.env.example`.
-
-        Sin este respaldo un clon limpio no arrancaría: ni el build de Docker
-        ni los tests encuentran el archivo. Medido: la suite entera falla en el
-        setup y `docker build` corta en el `COPY`.
-
-        Se avisa por la bitácora en vez de hacerlo callado: correr con datos de
-        ejemplo y no saberlo sería peor que no arrancar.
+        Es una propiedad y no una mutación de `watchlist_path` a propósito. El
+        campo dice **dónde va** la watchlist; esto dice **cuál se lee ahora**.
+        Confundirlos tuvo una consecuencia concreta: `import-bundle` escribía la
+        watchlist restaurada en la ruta del ejemplo —adentro de la imagen— en
+        vez del destino configurado, y el paquete parecía importarse bien.
         """
-        if not self.watchlist_path.exists() and self.watchlist_example_path.exists():
+        if self.watchlist_path.exists():
+            return self.watchlist_path
+        if self.watchlist_example_path.exists():
             logger.warning(
-                "No hay %s: se usa la watchlist de EJEMPLO. Copiá %s y editala.",
+                "No hay %s: se lee la watchlist de EJEMPLO. Copiá %s y editala.",
                 self.watchlist_path,
                 self.watchlist_example_path,
             )
-            object.__setattr__(self, "watchlist_path", self.watchlist_example_path)
+            return self.watchlist_example_path
+        return self.watchlist_path
 
-        if (
-            not self.regional_watchlist_dir.is_dir()
-            and self.regional_watchlist_example_dir.is_dir()
-        ):
-            logger.warning(
-                "No hay %s: se usan las watchlists regionales de EJEMPLO.",
-                self.regional_watchlist_dir,
-            )
-            object.__setattr__(self, "regional_watchlist_dir", self.regional_watchlist_example_dir)
+    @property
+    def regional_watchlist_vigente(self) -> Path:
+        """Igual que arriba para las watchlists por país.
 
-        return self
+        "Existe pero vacío" cuenta como ausente: un bind mount de un directorio
+        que no está en el host lo crea vacío.
+        """
+        propio = self.regional_watchlist_dir
+        if propio.is_dir() and any(propio.glob("*.yaml")):
+            return propio
+        if self.regional_watchlist_example_dir.is_dir():
+            logger.warning("No hay watchlists regionales en %s: se usan las de EJEMPLO.", propio)
+            return self.regional_watchlist_example_dir
+        return propio
 
     @field_validator(
         "enabled_feeds",

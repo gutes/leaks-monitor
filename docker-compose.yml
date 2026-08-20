@@ -14,6 +14,13 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - leaks-data:/data
+      # Las watchlists reales viven en el host y NO en la imagen: están en
+      # .gitignore porque dicen qué organismos se vigilan. Si el clon no las
+      # tiene, adentro solo hay `examples/` y el código cae al ejemplo avisando.
+      #
+      # Con escritura, no `:ro`: `leaks import-bundle` restaura las watchlists
+      # acá. El pipeline nunca escribe en este directorio.
+      - ./data:/app/data
     env_file:
       - path: .env
         required: false
@@ -39,6 +46,13 @@ services:
       LEAKS_EGRESS_BLOCKED_COUNTRIES: "AR"
     volumes:
       - leaks-data:/data
+      # Las watchlists reales viven en el host y NO en la imagen: están en
+      # .gitignore porque dicen qué organismos se vigilan. Si el clon no las
+      # tiene, adentro solo hay `examples/` y el código cae al ejemplo avisando.
+      #
+      # Con escritura, no `:ro`: `leaks import-bundle` restaura las watchlists
+      # acá. El pipeline nunca escribe en este directorio.
+      - ./data:/app/data
     env_file:
       - path: .env
         required: false

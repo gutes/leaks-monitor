@@ -77,7 +77,7 @@ class Application:
         pisa lo que el investigador haya editado desde la UI.
         """
         ensure_schema(self.engine, self.settings.database_url, self.settings)
-        sembradas = self.watchlist_repo.seed_from_yaml(self.settings.watchlist_path)
+        sembradas = self.watchlist_repo.seed_from_yaml(self.settings.watchlist_vigente)
         if sembradas:
             logger.info("Watchlist inicial cargada: %d entradas", sembradas)
 
@@ -99,7 +99,7 @@ def build_application(settings: Settings | None = None) -> Application:
     watchlist_repo = WatchlistRepository(session_factory)
     settings_store = SettingsStore(session_factory)
     # Semilla del YAML para poder construir algo aunque la base esté vacía.
-    watchlist = get_watchlist(config.watchlist_path)
+    watchlist = get_watchlist(config.watchlist_vigente)
 
     repository = SqlAlchemyFindingRepository(session_factory)
     queries = FindingQueryService(session_factory)
@@ -182,7 +182,7 @@ def build_application(settings: Settings | None = None) -> Application:
     adjacency_repo = AdjacencyRepository(session_factory)
     # Las watchlists regionales se cargan una vez por proceso: son 9 archivos
     # chicos y no cambian dentro de una corrida.
-    regional_wl = load_regional_watchlists(config.regional_watchlist_dir)
+    regional_wl = load_regional_watchlists(config.regional_watchlist_vigente)
     adjacency_collector = (
         AdjacencyCollector(
             adjacency_repo, _cliente_de_alertas, queries, regional_watchlists=regional_wl

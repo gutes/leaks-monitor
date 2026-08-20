@@ -516,7 +516,7 @@ def create_app(
         porque sembrar en cada arranque resucitaría lo borrado a mano.
         """
         _require_editing()
-        repo.seed_from_yaml(config.watchlist_path, allow_updates=True)
+        repo.seed_from_yaml(config.watchlist_vigente, allow_updates=True)
         entradas = repo.list_entries(limit=config.api_max_page_size)
         return WatchlistOut(
             items=[WatchlistEntryOut.model_validate(e.as_dict()) for e in entradas],

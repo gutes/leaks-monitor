@@ -23,6 +23,9 @@ from pathlib import Path
 
 from leaks.adapters.registry import FEED_REGISTRY, resolve_enabled
 from leaks.bootstrap import build_application, configure_logging
+from leaks.bundle import BundleError
+from leaks.bundle import exportar as exportar_bundle
+from leaks.bundle import importar as importar_bundle
 from leaks.config import get_settings
 from leaks.pipeline.runner import RunReport
 from leaks.pipeline.scheduler import run_forever
@@ -45,6 +48,20 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "sync-watchlist",
         help="Importa a la base las entradas nuevas del YAML semilla (no borra ni pisa).",
+    )
+
+    paquete = sub.add_parser(
+        "export-bundle",
+        help="Empaqueta la base y las watchlists para repartir el prototipo.",
+    )
+    paquete.add_argument("--out", required=True, help="Archivo .tar.gz de destino.")
+
+    restaurar = sub.add_parser(
+        "import-bundle", help="Restaura un paquete generado con export-bundle."
+    )
+    restaurar.add_argument("archivo", help="El .tar.gz a restaurar.")
+    restaurar.add_argument(
+        "--force", action="store_true", help="Pisa la base existente. Destructivo."
     )
 
     exportar = sub.add_parser(
@@ -155,6 +172,46 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Schema listo en {settings.database_url}")
         return 0
 
+    if args.command == "export-bundle":
+        # `VACUUM INTO` y no una copia: en modo WAL lo recién escrito vive en
+        # `leaks.db-wal`, y copiar el `.db` entrega una base incompleta sin
+        # que nada lo delate.
+        manifiesto = exportar_bundle(
+            database_url=settings.database_url,
+            # Se empaqueta lo que efectivamente se está usando.
+            watchlist_path=settings.watchlist_vigente,
+            regional_dir=settings.regional_watchlist_vigente,
+            destino=Path(args.out),
+        )
+        tam = Path(args.out).stat().st_size / 1e6
+        print(f"Paquete escrito en {args.out} ({tam:.1f} MB)")
+        for tabla, n in manifiesto.conteos.items():
+            print(f"  {tabla:<20} {n:>6}")
+        print(f"  watchlists regionales {manifiesto.incluye_regionales:>3}")
+        print("\nNo incluye el vault de PII ni ninguna credencial: la")
+        print("configuración viaja por entorno, no en el paquete.")
+        return 0
+
+    if args.command == "import-bundle":
+        try:
+            restaurado = importar_bundle(
+                Path(args.archivo),
+                database_url=settings.database_url,
+                # Se restaura en el destino CONFIGURADO, nunca en el del
+                # ejemplo: escribir ahí fue un bug real que hacía parecer que
+                # el paquete se importaba bien.
+                watchlist_path=settings.watchlist_path,
+                regional_dir=settings.regional_watchlist_dir,
+                force=args.force,
+            )
+        except BundleError as exc:
+            print(f"No se pudo importar: {exc}")
+            return 1
+        print(f"Paquete restaurado (creado {restaurado.get('creado', '?')})")
+        for tabla, n in (restaurado.get("conteos") or {}).items():
+            print(f"  {tabla:<20} {n:>6}")
+        return 0
+
     if args.command == "export-watchlist":
         # Respaldo de lo que vale: la base, no el YAML semilla. Apenas se edita
         # una entrada desde la UI el archivo original queda viejo.
@@ -171,7 +228,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "sync-watchlist":
         # Solo agrega lo que falta: no toca lo que se editó desde la UI ni
         # revive lo que se borró... salvo que esté en el YAML, claro.
-        agregadas = app.watchlist_repo.seed_from_yaml(settings.watchlist_path, allow_updates=True)
+        agregadas = app.watchlist_repo.seed_from_yaml(
+            settings.watchlist_vigente, allow_updates=True
+        )
         conteos = app.watchlist_repo.counts()
         print(f"Entradas nuevas importadas: {agregadas}")
         print(

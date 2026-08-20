@@ -15,6 +15,11 @@ contraseñas, emails de personas ni contenido de dumps. Ver
 
 ## Arrancar
 
+> Para repartirlo a un equipo —con los datos ya cargados— está
+> **[docs/instalacion.md](docs/instalacion.md)**: qué conviene mandar, cómo
+> empaquetar los datos y por qué no se reparte la imagen.
+
+
 ```bash
 ./scripts/dev.sh setup    # venv + dependencias + .env
 ./scripts/dev.sh run      # una corrida del pipeline

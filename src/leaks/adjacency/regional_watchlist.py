@@ -75,7 +75,9 @@ class RegionalWatchlists:
 def load_regional_watchlists(directorio: Path) -> RegionalWatchlists:
     """Carga un archivo por país. Un archivo roto no cuesta los demás."""
     por_pais: dict[str, Watchlist] = {}
-    if not directorio.is_dir():
+    # "existe pero vacío" cuenta como ausente: un bind mount de un directorio
+    # inexistente lo crea vacío, y ahí el respaldo al ejemplo no se disparaba.
+    if not directorio.is_dir() or not any(directorio.glob("*.yaml")):
         logger.info("Sin watchlists regionales en %s", directorio)
         return RegionalWatchlists(por_pais={})
 
