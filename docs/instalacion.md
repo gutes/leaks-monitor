@@ -43,10 +43,17 @@ resto del equipo mirándola o con instancias que **no corren el pipeline** (sin
 Una sola máquina corre el pipeline y el equipo entra por el navegador.
 
 ```bash
-git clone <repo> && cd leaks-monitor
+git clone git@github.com:gutes/leaks-monitor.git && cd leaks-monitor
 cp .env.example .env          # editar según haga falta
 docker compose up -d          # construye y levanta
 ```
+
+> El repositorio es **privado**. Antes de que alguien pueda clonarlo hay que
+> darle acceso:
+>
+> ```bash
+> gh api repos/gutes/leaks-monitor/collaborators/USUARIO -X PUT -f permission=push
+> ```
 
 Por defecto la API escucha **solo en loopback** (`127.0.0.1:8000`), así que
 desde otra máquina no se ve. Para exponerla en la red interna, en
@@ -77,7 +84,7 @@ docker compose exec -T api cat /tmp/p.tar.gz > leaks-datos-$(date +%Y%m%d).tar.g
 **Cada uno, en su máquina:**
 
 ```bash
-git clone <repo> && cd leaks-monitor
+git clone git@github.com:gutes/leaks-monitor.git && cd leaks-monitor
 cp .env.example .env
 
 # 1) Restaurar los datos ANTES de levantar nada
@@ -88,8 +95,20 @@ docker compose run --rm -v "$PWD:/entrada:ro" api \
 docker compose up -d
 ```
 
-El import se niega a pisar una base existente salvo `--force`, y verifica que
-todos los destinos sean escribibles **antes** de tocar ninguno.
+**El orden importa.** Si levantás el compose primero, la base se siembra con
+la watchlist de ejemplo y el import se va a negar a pisarla. No es grave: el
+mensaje detecta que no hay hallazgos y te dice que `--force` es seguro ahí.
+
+El import verifica que todos los destinos sean escribibles **antes** de tocar
+ninguno, así que no puede dejarte una instalación a medio importar.
+
+### Clonar solo, sin el paquete
+
+Es una opción válida: se obtiene el prototipo funcionando con **watchlists
+ficticias y la base vacía** (29 entradas de ejemplo, 0 hallazgos). Sirve para
+desarrollar o para armar una watchlist propia desde cero. Lo que no sirve es
+para ver los mismos datos que el resto del equipo — para eso hace falta el
+paquete.
 
 ### Verificar que llegó completo
 

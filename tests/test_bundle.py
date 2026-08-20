@@ -265,3 +265,36 @@ class TestImportar:
                 watchlist_path=entorno["raiz"] / "w.yaml",
                 regional_dir=entorno["raiz"] / "r",
             )
+
+    def test_una_base_recien_sembrada_no_asusta(self, entorno: dict[str, Path]) -> None:
+        """El caso común: levantar el compose antes de importar.
+
+        Ahí la base tiene la semilla de ejemplo y cero hallazgos. Decir "vas a
+        perder datos" sería falso y frena a quien no debería frenarse.
+        """
+        paquete = self._paquete(entorno)
+        destino = entorno["raiz"] / "recien"
+        destino.mkdir()
+        base_con_datos(destino / "leaks.db", filas=0)
+
+        with pytest.raises(BundleError, match="no hay nada que perder"):
+            importar(
+                paquete,
+                database_url=f"sqlite:///{destino / 'leaks.db'}",
+                watchlist_path=destino / "watchlist.yaml",
+                regional_dir=destino / "regional",
+            )
+
+    def test_una_base_con_datos_avisa_cuantos(self, entorno: dict[str, Path]) -> None:
+        paquete = self._paquete(entorno)
+        destino = entorno["raiz"] / "conDatos"
+        destino.mkdir()
+        base_con_datos(destino / "leaks.db", filas=42)
+
+        with pytest.raises(BundleError, match="42 hallazgos"):
+            importar(
+                paquete,
+                database_url=f"sqlite:///{destino / 'leaks.db'}",
+                watchlist_path=destino / "watchlist.yaml",
+                regional_dir=destino / "regional",
+            )

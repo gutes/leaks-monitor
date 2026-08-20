@@ -198,6 +198,20 @@ def _seguro(miembro: tarfile.TarInfo, area: Path) -> bool:
     return destino.is_relative_to(area.resolve()) and not miembro.issym() and not miembro.islnk()
 
 
+def _hallazgos(base: Path) -> int:
+    """Cuántos hallazgos tiene una base, para saber si vale algo.
+
+    Una base recién sembrada tiene watchlist pero cero hallazgos: pisarla no
+    cuesta nada, y decirlo evita que alguien crea que está por perder datos.
+    """
+    try:
+        with sqlite3.connect(f"file:{base}?mode=ro", uri=True) as con:
+            return int(con.execute("SELECT COUNT(*) FROM findings").fetchone()[0])
+    except sqlite3.Error:
+        # Sin tabla o base ilegible: no se puede afirmar que esté vacía.
+        return -1
+
+
 def _verificar_escribible(destino: Path, que: str) -> None:
     """Falla ANTES de tocar nada si no se va a poder escribir el destino."""
     directorio = destino.parent
@@ -244,9 +258,22 @@ def importar(
     destino_base = _ruta_sqlite(database_url)
 
     if destino_base.exists() and destino_base.stat().st_size > 0 and not force:
+        # El caso más común no es "tengo datos valiosos" sino "levanté el
+        # compose antes de importar y se sembró el ejemplo". Distinguirlo
+        # cambia el consejo por completo.
+        propios = _hallazgos(destino_base)
+        if propios == 0:
+            raise BundleError(
+                f"Ya hay una base en {destino_base}, pero está sin hallazgos: "
+                "parece una instalación recién levantada con la semilla de "
+                "ejemplo.\n"
+                "En ese caso no hay nada que perder — repetí con --force."
+            )
         raise BundleError(
-            f"Ya hay una base en {destino_base}. Importar la pisaría entera. "
-            "Movela a un lado, o repetí con --force si es lo que querés."
+            f"Ya hay una base en {destino_base} con {propios} hallazgos. "
+            "Importar la pisaría entera.\n"
+            "Respaldala con `leaks export-bundle` primero, o repetí con --force "
+            "si es lo que querés."
         )
 
     # Chequeo previo: se verifica que TODOS los destinos se puedan escribir
