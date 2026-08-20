@@ -51,6 +51,13 @@ jobs:
 
       # El frontend tiene su propia suite: corre sobre un DOM mínimo, sin
       # navegador y sin dependencias de npm.
+      # Node fijo y no el que traiga el runner: `node --test` cambió de
+      # comportamiento entre versiones y un salto silencioso del runner sería
+      # un rojo imposible de reproducir localmente.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Tests del frontend
         run: node --test "tests/frontend/*.test.mjs"
 
@@ -66,6 +73,29 @@ jobs:
       # -- Etapa 4: build del artefacto -------------------------------------
       - name: Build de la imagen
         run: docker build -t leaks-monitor:${{ github.sha }} .
+
+      # El repositorio NO lleva las watchlists reales: están en .gitignore
+      # porque dicen qué organismos se vigilan. El clon tiene que arrancar
+      # igual, cayendo a `data/examples/`.
+      #
+      # Esto ya se rompió dos veces: una porque el Dockerfile no copiaba el
+      # directorio de ejemplos, y otra porque un bind mount de un directorio
+      # inexistente lo crea vacío y el respaldo no se disparaba. En los dos
+      # casos el síntoma fue silencioso — arrancaba con datos equivocados.
+      - name: Humo — un clon limpio arranca y siembra el ejemplo
+        run: |
+          docker run --rm \
+            -e LEAKS_DATABASE_URL=sqlite:////tmp/humo.db \
+            leaks-monitor:${{ github.sha }} \
+            sh -c 'leaks init-db && python -c "
+          from leaks.bootstrap import build_application
+          app = build_application()
+          usada = str(app.settings.watchlist_vigente)
+          assert usada.endswith(\"examples/watchlist.yaml\"), usada
+          n = app.watchlist_repo.counts()[\"total\"]
+          assert n > 0, \"la siembra de ejemplo no cargó nada\"
+          print(f\"OK: arranca con {n} entradas de ejemplo\")
+          "'
 
   dependencias:
     name: Auditoría de dependencias (reporta, no bloquea)
