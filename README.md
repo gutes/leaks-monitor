@@ -64,8 +64,8 @@ En la sección **Watchlist monitoreada** se ve todo lo que se está vigilando y 
 puede editar sin tocar archivos:
 
 * **Agregar** dominios o keywords. Los dominios se normalizan solos: pegá
-  `https://www.Comision Nuclear Ejemplo.gob.ar/algo` o `*.gba.gob.ar` y queda `nuclear-ejemplo.gob.ar` /
-  `gba.gob.ar`. Un dominio cubre siempre sus subdominios, así que el comodín es
+  `https://www.Comision Nuclear Ejemplo.gob.ar/algo` o `*.provincia-ejemplo.gob.ar` y queda
+  `nuclear-ejemplo.gob.ar` / `provincia-ejemplo.gob.ar`. Un dominio cubre siempre sus subdominios, así que el comodín es
   redundante.
 * **Deshabilitar** — baja lógica que **persiste**: la entrada deja de matchear
   pero no se pierde, y se rehabilita cuando quieras.
@@ -552,37 +552,43 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 ## La watchlist
 
-`data/watchlist.yaml` es **dato, no código**: sumar un organismo es agregar una
-línea. Las siglas de menos de 4 caracteres se descartan al cargar (`ARCA`
-pegaría dentro de "arcade").
+**La tuya no está en el repo, a propósito.** Una watchlist dice qué organismos
+vigila una investigación: publicarla es publicar el mapa del trabajo. Mismo
+patrón que `.env`:
 
-Cubre 11 sectores con ~173 dominios y ~111 keywords: gobierno nacional,
-provincias, municipios, banca, justicia y seguridad, ciencia y nuclear,
-universidades, salud y obras sociales, energía, telecomunicaciones y
-agua/transporte.
+| En el repo | En tu disco (`.gitignore`) |
+|---|---|
+| `data/examples/watchlist.yaml` | `data/watchlist.yaml` |
+| `data/examples/watchlist-regional/` | `data/watchlist-regional/` |
 
-Para traer a la base las entradas nuevas del YAML sin pisar lo editado desde la
-UI ni revivir lo que borraste:
+Los ejemplos usan dominios **ficticios** (`*-ejemplo.gob.ar`) que no matchean
+nada real. Es deliberado: el prototipo arranca y los tests pasan, y queda claro
+que hay que armar la propia. Una watchlist seria se valida contra el inventario
+de infraestructura crítica que corresponda; heredar la de otro no sirve.
 
 ```bash
-leaks sync-watchlist          # o: docker compose exec api leaks sync-watchlist
+cp data/examples/watchlist.yaml data/watchlist.yaml
+cp -r data/examples/watchlist-regional data/watchlist-regional
 ```
 
-También está el botón **Importar semilla** en la pantalla Watchlist, que hace lo
-mismo.
+Si el archivo real no existe, el código cae al ejemplo **y lo dice por la
+bitácora**: correr con datos de ejemplo sin saberlo sería peor que no arrancar.
 
-Es explícito a propósito: hacerlo en cada arranque resucitaría lo que diste de
-baja a mano.
+### Respaldarla
 
-> ⚠️ Sigue siendo un **punto de partida, no autoritativo ni exhaustivo**. Antes
-> de un uso real hay que validarlo contra el inventario de activos / la
-> designación de infraestructura crítica del CNC. Los dominios se agregaron por
-> conocimiento del sector público argentino, **sin poder verificarlos por DNS**:
-> el nodo de VPN usado no alcanza sitios `.ar`. Para una watchlist esa asimetría
-> juega a favor —un dominio de más nunca matchea, uno de menos es un leak
-> perdido— pero no equivale a estar validada.
+Apenas editás una entrada desde la pantalla Watchlist, la fuente de verdad pasa
+a ser la base y el YAML queda viejo. Para respaldar lo que realmente está
+vigente:
 
----
+```bash
+leaks export-watchlist --out mi-watchlist.yaml
+```
+
+Incluye las deshabilitadas, marcadas: perder "esto lo di de baja a propósito"
+haría que la próxima siembra lo reviva.
+
+### Formato
+
 
 ## Seguridad del despliegue
 

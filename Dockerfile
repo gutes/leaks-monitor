@@ -30,7 +30,9 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     LEAKS_DATABASE_URL=sqlite:////data/leaks.db \
     LEAKS_WATCHLIST_PATH=/app/data/watchlist.yaml \
+    LEAKS_WATCHLIST_EXAMPLE_PATH=/app/data/examples/watchlist.yaml \
     LEAKS_REGIONAL_WATCHLIST_DIR=/app/data/watchlist-regional \
+    LEAKS_REGIONAL_WATCHLIST_EXAMPLE_DIR=/app/data/examples/watchlist-regional \
     LEAKS_FRONTEND_DIR=/app/frontend \
     LEAKS_ALEMBIC_DIR=/app/alembic \
     LEAKS_ALEMBIC_INI=/app/alembic.ini \
@@ -39,11 +41,11 @@ ENV PATH="/opt/venv/bin:$PATH" \
 COPY --from=builder /opt/venv /opt/venv
 
 WORKDIR /app
-COPY --chown=leaks:leaks data/watchlist.yaml ./data/watchlist.yaml
-# Una watchlist por país para la sección de adyacencia. Sin esto,
-# `PROJECT_ROOT` resuelve dentro del venv y el directorio no existe: el
-# mismo problema que ya tuvieron el frontend y alembic.
-COPY --chown=leaks:leaks data/watchlist-regional ./data/watchlist-regional
+# Solo los ejemplos: las watchlists reales están en .gitignore y se montan
+# como volumen si hacen falta. La imagen tiene que poder construirse desde un
+# clon limpio, sin datos de nadie.
+COPY --chown=leaks:leaks data/examples ./data/examples
+
 COPY --chown=leaks:leaks frontend ./frontend
 COPY --chown=leaks:leaks alembic ./alembic
 COPY --chown=leaks:leaks alembic.ini ./alembic.ini

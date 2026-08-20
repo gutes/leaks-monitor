@@ -396,6 +396,52 @@ class WatchlistRepository:
             logger.info("Watchlist sembrada desde %s: %d entradas", path, insertadas)
         return insertadas
 
+    def export_yaml(self) -> str:
+        """Vuelca la watchlist de la BASE a YAML, en el formato de la semilla.
+
+        Hace falta porque el YAML deja de ser la fuente de verdad apenas se
+        edita algo desde la UI: lo que vale es la tabla. Sin esto no había forma
+        de respaldar esas ediciones, y el único archivo versionado quedaba
+        desactualizado sin que nadie se enterara.
+
+        Lo que sale se puede volver a sembrar tal cual. Se exportan también las
+        deshabilitadas, con su estado: perder "esto lo di de baja a propósito"
+        haría que la próxima siembra lo reviva.
+        """
+        entradas = self.list_entries()
+        por_sector: dict[str, dict[str, Any]] = {}
+        for e in entradas:
+            sector = por_sector.setdefault(
+                e.sector,
+                {
+                    "name": e.sector,
+                    "label": e.label or e.sector,
+                    "critical": e.critical,
+                    "domains": [],
+                    "keywords": [],
+                },
+            )
+            # Un sector es crítico si alguna de sus entradas lo es.
+            sector["critical"] = sector["critical"] or e.critical
+            destino = "domains" if e.kind == KIND_DOMAIN else "keywords"
+            sector[destino].append(e.value if e.enabled else f"{e.value}  # deshabilitada")
+
+        documento = {
+            "version": 1,
+            "sectors": [
+                {k: v for k, v in s.items() if v not in ([], None)}
+                for s in sorted(por_sector.values(), key=lambda x: str(x["name"]))
+            ],
+        }
+        cabecera = (
+            "# Watchlist exportada desde la base.\n"
+            "#\n"
+            "# Incluye lo editado desde la UI, que es lo que el YAML original no\n"
+            "# tiene. Las entradas deshabilitadas van marcadas: sembrar este\n"
+            "# archivo sin revisarlas las revive.\n\n"
+        )
+        return cabecera + yaml.safe_dump(documento, allow_unicode=True, sort_keys=False)
+
     def build(self) -> Watchlist:
         """Arma la watchlist efectiva con lo que está habilitado.
 

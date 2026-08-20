@@ -1,0 +1,27 @@
+version: 1
+country: BO
+sectors:
+- name: gobierno
+  label: Gobierno nacional
+  critical: true
+  domains: [gob.bo, economiayfinanzas.gob.bo, mingobierno.gob.bo,
+            impuestos.gob.bo, agetic.gob.bo, segip.gob.bo]
+  keywords: [Impuestos Nacionales, AGETIC, SEGIP]
+- name: banca
+  label: Banca y finanzas
+  critical: true
+  domains: [bcb.gob.bo, bancounion.com.bo, asfi.gob.bo]
+  keywords: [Banco Central de Bolivia]
+- name: energia
+  label: Energía
+  critical: true
+  domains: [ypfb.gob.bo, ende.bo]
+  keywords: [YPFB]
+- name: telecomunicaciones
+  label: Telecomunicaciones
+  critical: true
+  domains: [entel.bo, att.gob.bo]
+- name: salud
+  label: Salud
+  critical: true
+  domains: [minsalud.gob.bo, cns.gob.bo]

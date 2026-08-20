@@ -19,6 +19,7 @@ import argparse
 import logging
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 from leaks.adapters.registry import FEED_REGISTRY, resolve_enabled
 from leaks.bootstrap import build_application, configure_logging
@@ -45,6 +46,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "sync-watchlist",
         help="Importa a la base las entradas nuevas del YAML semilla (no borra ni pisa).",
     )
+
+    exportar = sub.add_parser(
+        "export-watchlist",
+        help="Vuelca la watchlist de la base a YAML, incluido lo editado desde la UI.",
+    )
+    exportar.add_argument("--out", default=None, help="Archivo destino. Sin esto sale por stdout.")
 
     serve = sub.add_parser("serve", help="Levanta la API y el frontend de solo lectura.")
     serve.add_argument("--host", default=None, help="Override de LEAKS_API_HOST.")
@@ -146,6 +153,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "init-db":
         app.create_schema()
         print(f"Schema listo en {settings.database_url}")
+        return 0
+
+    if args.command == "export-watchlist":
+        # Respaldo de lo que vale: la base, no el YAML semilla. Apenas se edita
+        # una entrada desde la UI el archivo original queda viejo.
+        texto = app.watchlist_repo.export_yaml()
+        if args.out:
+            destino = Path(args.out)
+            destino.write_text(texto, encoding="utf-8")
+            conteos = app.watchlist_repo.counts()
+            print(f"Watchlist exportada a {destino}: {conteos['total']} entradas")
+        else:
+            print(texto, end="")
         return 0
 
     if args.command == "sync-watchlist":

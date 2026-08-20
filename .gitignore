@@ -3,6 +3,19 @@
 .env.*
 !.env.example
 
+# Watchlists reales — NUNCA se commitean.
+#
+# Una watchlist dice qué organismos vigila la investigación: publicarla es
+# publicar el mapa del trabajo. Al repo va solo `data/examples/`, y el código
+# cae ahí cuando estos no existen (ver `config._respaldo_de_ejemplo`).
+data/watchlist.yaml
+data/watchlist-regional/
+!data/examples/
+
+# El prompt fundacional: es del líder técnico y enumera los organismos a
+# vigilar, o sea la semilla de la watchlist. Se queda en el disco.
+bootstrap-prompt.md
+
 # Base de datos y datos derivados del run
 data/*.db
 data/*.db-journal

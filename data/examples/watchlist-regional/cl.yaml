@@ -1,0 +1,27 @@
+version: 1
+country: CL
+sectors:
+- name: gobierno
+  label: Gobierno nacional
+  critical: true
+  domains: [gob.cl, hacienda.cl, interior.gob.cl, defensa.cl, minsal.cl,
+            registrocivil.cl, sii.cl, aduana.cl]
+  keywords: [Servicio de Impuestos Internos, Registro Civil, Ministerio de Hacienda]
+- name: banca
+  label: Banca y finanzas
+  critical: true
+  domains: [bcentral.cl, bancoestado.cl, santander.cl, bci.cl, cmfchile.cl]
+  keywords: [Banco Central de Chile, BancoEstado]
+- name: energia
+  label: Energía y minería
+  critical: true
+  domains: [codelco.cl, enel.cl, coordinador.cl, cne.cl]
+  keywords: [Codelco]
+- name: telecomunicaciones
+  label: Telecomunicaciones
+  critical: true
+  domains: [entel.cl, movistar.cl, vtr.com, subtel.gob.cl]
+- name: salud
+  label: Salud
+  critical: true
+  domains: [fonasa.cl, isp.cl, redsalud.gob.cl]

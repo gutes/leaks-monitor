@@ -9,6 +9,7 @@ silenciosamente a "guardo PII en claro".
 
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
@@ -25,6 +26,8 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 CsvTuple = Annotated[tuple[str, ...], NoDecode]
 
 # Raíz del repo: <root>/src/leaks/config.py -> parents[2]
+logger = logging.getLogger(__name__)
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -132,6 +135,9 @@ class Settings(BaseSettings):
 
     # --- Relevancia AR -----------------------------------------------------
     watchlist_path: Path = PROJECT_ROOT / "data" / "watchlist.yaml"
+    #: Ejemplo genérico. Se usa si el de arriba no existe — ver el validador
+    #: `_respaldo_de_ejemplo` más abajo.
+    watchlist_example_path: Path = PROJECT_ROOT / "data" / "examples" / "watchlist.yaml"
 
     # --- Scheduler ----------------------------------------------------------
     #: Hora local (HH:MM, 24h) del run diario en modo `schedule`.
@@ -174,12 +180,48 @@ class Settings(BaseSettings):
     adjacency_alert_min_score: float = Field(default=40.0, ge=0.0, le=100.0)
     #: Directorio con una watchlist por país (`br.yaml`, `cl.yaml`…).
     regional_watchlist_dir: Path = PROJECT_ROOT / "data" / "watchlist-regional"
+    regional_watchlist_example_dir: Path = PROJECT_ROOT / "data" / "examples" / "watchlist-regional"
     #: Permite editar watchlist y reglas desde la UI. Se puede cerrar en un
     #: despliegue compartido; el control de IP de salida NO se puede tocar por
     #: ninguna vía de la API, ni siquiera con esto en true.
     allow_rule_editing: bool = True
 
     log_level: str = "INFO"
+
+    @model_validator(mode="after")
+    def _respaldo_de_ejemplo(self) -> Settings:
+        """Si la watchlist real no existe, se usa la de ejemplo.
+
+        La watchlist de una investigación dice qué organismos se están
+        vigilando, así que la real vive fuera del repo (`.gitignore`) y solo
+        el ejemplo se versiona — mismo patrón que `.env` / `.env.example`.
+
+        Sin este respaldo un clon limpio no arrancaría: ni el build de Docker
+        ni los tests encuentran el archivo. Medido: la suite entera falla en el
+        setup y `docker build` corta en el `COPY`.
+
+        Se avisa por la bitácora en vez de hacerlo callado: correr con datos de
+        ejemplo y no saberlo sería peor que no arrancar.
+        """
+        if not self.watchlist_path.exists() and self.watchlist_example_path.exists():
+            logger.warning(
+                "No hay %s: se usa la watchlist de EJEMPLO. Copiá %s y editala.",
+                self.watchlist_path,
+                self.watchlist_example_path,
+            )
+            object.__setattr__(self, "watchlist_path", self.watchlist_example_path)
+
+        if (
+            not self.regional_watchlist_dir.is_dir()
+            and self.regional_watchlist_example_dir.is_dir()
+        ):
+            logger.warning(
+                "No hay %s: se usan las watchlists regionales de EJEMPLO.",
+                self.regional_watchlist_dir,
+            )
+            object.__setattr__(self, "regional_watchlist_dir", self.regional_watchlist_example_dir)
+
+        return self
 
     @field_validator(
         "enabled_feeds",

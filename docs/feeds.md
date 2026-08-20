@@ -16,7 +16,8 @@ confiar**, y actualizar esta tabla en el mismo commit.
 Las tres fuentes de ransomware indexan **data leak sites de bandas de
 ransomware**. Los colectivos hacktivistas que van contra el sector público
 argentino publican por **Telegram**. Chronus Team golpeó México el 2026-01-30 y
-Argentina el 2026-03-30 —el banco central, ministerios, un poder judicial provincial,
+Argentina el 2026-03-30 —una docena de organismos públicos, entre ellos el
+banco central y varios ministerios—
 una obra social provincial— y la base no tenía ni una fila. Ver `docs/hueco-hacktivistas.md`.
 
 Además esta clase de actor **anuncia sus objetivos antes de atacar**: Chronus

@@ -12,7 +12,7 @@ defacement y filtración de datos contra el sector público.
 | | |
 |---|---|
 | **México** | 2026-01-30 — 25+ instituciones de gobierno, ~36 M de ciudadanos expuestos |
-| **Argentina** | 2026-03-30 — la jefatura de gabinete, Ministerios de Educación/Salud/Seguridad, **el banco central**, un poder judicial provincial, una obra social provincial, una obra social provincial, salud de Misiones y Neuquén, una policía provincial |
+| **Argentina** | 2026-03-30 — una docena de organismos públicos: jefatura de gabinete, tres ministerios nacionales, el banco central, un poder judicial provincial, dos obras sociales provinciales, dos ministerios de salud provinciales y una policía provincial |
 | **Anticipación** | **~59 días** |
 
 El patrón México → Argentina que se sospechaba **está confirmado**.
@@ -20,12 +20,23 @@ El patrón México → Argentina que se sospechaba **está confirmado**.
 Fuentes aportadas por el líder técnico: Malpedia (`actor/chronus_group`),
 Rescana, ITSitio, Chequeado, DefOnline, CyberMidnight Club.
 
+> Los organismos van descritos por tipo y no por nombre. El incidente se
+> reportó en prensa y los nombres son públicos, pero enumerarlos acá los
+> convertiría en una lista de objetivos confirmados dentro de un repositorio de
+> código, que es otra cosa. Lo que este documento tiene que dejar es **por qué
+> no lo vimos**, no a quién le pegaron.
+
 ## Qué falló
 
-**No fue la watchlist.** Contra la watchlist real, 9 de los 12 organismos
-golpeados ya estaban cubiertos —incluido `Banco Central Ejemplo.gob.ar`— y los subdominios
-provinciales entraban por `gba.gob.ar` y `mendoza.gov.ar`. Los 3 que faltaban
-(`cortesuprema-ejemplo.gov.ar`, `educacionprov-ejemplo.edu.ar`, `saludprov-ejemplo.gob.ar`) ya se agregaron.
+**No fue la watchlist.** Contra la watchlist en uso, 9 de los 12 organismos
+golpeados ya estaban cubiertos —incluido el banco central— y varios
+provinciales entraban por el comodín de su provincia. Los 3 que faltaban eran
+un poder judicial provincial y dos organismos de salud y educación con dominio
+propio, fuera del de su provincia; se agregaron.
+
+> Los nombres concretos no van acá: qué organismos vigila una investigación es
+> justamente lo que no se publica. Lo que sí importa del caso es **por qué**
+> falló, que no fue la cobertura.
 
 **No fue el score.** El score nunca llegó a correr sobre este actor.
 

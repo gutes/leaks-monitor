@@ -47,7 +47,7 @@ Hay **una** excepción a "si tiene PII, se cae el campo entero", y aplica solo a
 Ahí la PII se reemplaza por `[redactado]` en vez de descartar el campo.
 
 El motivo: en `description` tirar el campo cuesta contexto. En `victim_name`
-cuesta **el hallazgo entero** — un thread titulado "el organismo previsional dump juan@x.gob.ar"
+cuesta **el hallazgo entero** — un thread titulado "Ministerio dump juan@x.gob.ar"
 desaparecería del monitoreo justo por ser el más grave. Redactado sigue siendo
 identificable, y el thread queda referenciado en `raw_ref` para quien tenga que
 ir a verlo.

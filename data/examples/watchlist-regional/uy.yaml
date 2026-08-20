@@ -1,0 +1,28 @@
+version: 1
+country: UY
+sectors:
+- name: gobierno
+  label: Gobierno nacional
+  critical: true
+  domains: [gub.uy, presidencia.gub.uy, mef.gub.uy, minterior.gub.uy,
+            dgi.gub.uy, agesic.gub.uy]
+  keywords: [AGESIC, Direccion General Impositiva]
+- name: banca
+  label: Banca y finanzas
+  critical: true
+  domains: [bcu.gub.uy, brou.com.uy, bse.com.uy]
+  keywords: [Banco Central del Uruguay, Banco Republica]
+- name: energia
+  label: Energía
+  critical: true
+  domains: [ute.com.uy, ancap.com.uy]
+  keywords: [UTE, ANCAP]
+- name: telecomunicaciones
+  label: Telecomunicaciones
+  critical: true
+  domains: [antel.com.uy, antelclick.com.uy]
+  keywords: [ANTEL]
+- name: salud
+  label: Salud
+  critical: true
+  domains: [asse.com.uy, msp.gub.uy]

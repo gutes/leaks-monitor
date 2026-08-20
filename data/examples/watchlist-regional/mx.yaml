@@ -1,0 +1,27 @@
+version: 1
+country: MX
+sectors:
+- name: gobierno
+  label: Gobierno federal
+  critical: true
+  domains: [gob.mx, hacienda.gob.mx, sat.gob.mx, segob.gob.mx, sedena.gob.mx,
+            imss.gob.mx, issste.gob.mx, ine.mx, sre.gob.mx]
+  keywords: [Servicio de Administracion Tributaria, IMSS, ISSSTE, SEDENA]
+- name: banca
+  label: Banca y finanzas
+  critical: true
+  domains: [banxico.org.mx, bancomext.com, nafin.com, cnbv.gob.mx, condusef.gob.mx]
+  keywords: [Banco de Mexico, Banxico]
+- name: energia
+  label: Energía
+  critical: true
+  domains: [pemex.com, cfe.mx, cenace.gob.mx, cre.gob.mx]
+  keywords: [Pemex, Comision Federal de Electricidad]
+- name: telecomunicaciones
+  label: Telecomunicaciones
+  critical: true
+  domains: [telmex.com, telcel.com, ift.org.mx]
+- name: salud
+  label: Salud
+  critical: true
+  domains: [salud.gob.mx, cofepris.gob.mx, insabi.gob.mx]

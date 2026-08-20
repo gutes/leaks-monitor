@@ -1,0 +1,26 @@
+version: 1
+country: PY
+sectors:
+- name: gobierno
+  label: Gobierno nacional
+  critical: true
+  domains: [gov.py, mef.gov.py, mic.gov.py, set.gov.py, mitic.gov.py, policianacional.gov.py]
+  keywords: [Subsecretaria de Estado de Tributacion, MITIC]
+- name: banca
+  label: Banca y finanzas
+  critical: true
+  domains: [bcp.gov.py, bnf.gov.py]
+  keywords: [Banco Central del Paraguay]
+- name: energia
+  label: Energía
+  critical: true
+  domains: [ande.gov.py, itaipu.gov.py, yacyreta.org.py]
+  keywords: [Itaipu, Yacyreta, ANDE]
+- name: telecomunicaciones
+  label: Telecomunicaciones
+  critical: true
+  domains: [copaco.com.py, conatel.gov.py]
+- name: salud
+  label: Salud
+  critical: true
+  domains: [mspbs.gov.py, ips.gov.py]

@@ -1,0 +1,28 @@
+version: 1
+country: BR
+sectors:
+- name: gobierno
+  label: Gobierno federal
+  critical: true
+  domains: [gov.br, planalto.gov.br, fazenda.gov.br, saude.gov.br, defesa.gov.br,
+            justica.gov.br, gov.br.receita, serpro.gov.br, dataprev.gov.br]
+  keywords: [Ministerio da Fazenda, Receita Federal, Serpro, Dataprev]
+- name: banca
+  label: Banca y finanzas
+  critical: true
+  domains: [bcb.gov.br, bb.com.br, caixa.gov.br, itau.com.br, bradesco.com.br, santander.com.br]
+  keywords: [Banco Central do Brasil, Banco do Brasil, Caixa Economica]
+- name: energia
+  label: Energía
+  critical: true
+  domains: [petrobras.com.br, eletrobras.com, aneel.gov.br, ons.org.br]
+  keywords: [Petrobras, Eletrobras]
+- name: telecomunicaciones
+  label: Telecomunicaciones
+  critical: true
+  domains: [vivo.com.br, claro.com.br, tim.com.br, oi.com.br, anatel.gov.br]
+- name: salud
+  label: Salud
+  critical: true
+  domains: [sus.gov.br, anvisa.gov.br, fiocruz.br]
+  keywords: [Anvisa, Fiocruz]

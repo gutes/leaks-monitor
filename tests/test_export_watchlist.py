@@ -63,7 +63,7 @@ class TestHostDe:
         ("url", "esperado"),
         [
             ("https://siar.nuclear-ejemplo.gob.ar/sslvpn.shtml", "siar.nuclear-ejemplo.gob.ar"),
-            ("http://WWW.Nuclear Ejemplo.Gob.AR/", "nuclear-ejemplo.gob.ar"),
+            ("http://WWW.Nuclear-Ejemplo.Gob.AR/", "nuclear-ejemplo.gob.ar"),
             ("https://portal.nuclear-ejemplo.gob.ar:8443/x", "portal.nuclear-ejemplo.gob.ar"),
             ("nuclear-ejemplo.gob.ar/algo", "nuclear-ejemplo.gob.ar"),
             ("no es una url", None),
@@ -82,7 +82,7 @@ class TestCubre:
         assert cubre("nuclear-ejemplo.gob.ar", "a.b.nuclear-ejemplo.gob.ar")
 
     def test_no_cubre_un_dominio_que_solo_termina_parecido(self) -> None:
-        """`malinuclear-ejemplo.gob.ar` no es subdominio de `nuclear-ejemplo.gob.ar` aunque lo parezca."""
+        """`malinuclear-…` no es subdominio de `nuclear-…` aunque lo parezca."""
         assert not cubre("nuclear-ejemplo.gob.ar", "malinuclear-ejemplo.gob.ar")
 
     def test_no_cubre_hacia_arriba(self) -> None:
@@ -128,7 +128,10 @@ class TestRelacionar:
     def test_dos_endpoints_del_mismo_host_son_dos_superficies(self) -> None:
         expo = {
             "urls": [
-                {"url": "https://correo.nuclear-ejemplo.gob.ar/owa/auth/logon.aspx", "kind": "employee"},
+                {
+                    "url": "https://correo.nuclear-ejemplo.gob.ar/owa/auth/logon.aspx",
+                    "kind": "employee",
+                },
                 {"url": "https://correo.nuclear-ejemplo.gob.ar/owa/auth.owa", "kind": "employee"},
             ]
         }
@@ -162,13 +165,15 @@ class TestRelacionar:
         assert relacionar(["nuclear-ejemplo.gob.ar"], [ajeno]) == {}
 
     def test_el_host_va_a_la_entrada_mas_especifica(self) -> None:
-        """Con `nuclear-ejemplo.gob.ar` y `siar.nuclear-ejemplo.gob.ar` cargados, gana el específico."""
+        """Con el dominio y su subdominio cargados, gana el más específico."""
         mapa = relacionar(
             ["nuclear-ejemplo.gob.ar", "siar.nuclear-ejemplo.gob.ar"],
             [hallazgo(victim_domain="siar.nuclear-ejemplo.gob.ar")],
         )
         assert "nuclear-ejemplo.gob.ar" not in mapa
-        assert [c.host for c in mapa["siar.nuclear-ejemplo.gob.ar"][0]] == ["siar.nuclear-ejemplo.gob.ar"]
+        assert [c.host for c in mapa["siar.nuclear-ejemplo.gob.ar"][0]] == [
+            "siar.nuclear-ejemplo.gob.ar"
+        ]
 
     def test_dedup_el_mismo_hecho_contado_dos_veces(self) -> None:
         dos = [hallazgo(), hallazgo(id=2)]
@@ -176,8 +181,13 @@ class TestRelacionar:
 
     def test_dos_fuentes_distintas_son_dos_apariciones(self) -> None:
         """El valor está justamente en ver que cayó por más de un lado."""
-        mapa = relacionar(["nuclear-ejemplo.gob.ar"], [hallazgo(), hallazgo(id=2, source="ransomware.live")])
-        assert {c.source for c in mapa["nuclear-ejemplo.gob.ar"][0]} == {"hudsonrock", "ransomware.live"}
+        mapa = relacionar(
+            ["nuclear-ejemplo.gob.ar"], [hallazgo(), hallazgo(id=2, source="ransomware.live")]
+        )
+        assert {c.source for c in mapa["nuclear-ejemplo.gob.ar"][0]} == {
+            "hudsonrock",
+            "ransomware.live",
+        }
 
     def test_mas_reciente_primero_y_sin_fecha_al_final(self) -> None:
         mapa = relacionar(
@@ -199,7 +209,9 @@ class TestRelacionar:
             hallazgo(id=i, source=f"fuente{i}", victim_domain=f"h{i}.nuclear-ejemplo.gob.ar")
             for i in range(10)
         ]
-        listados, omitidos = relacionar(["nuclear-ejemplo.gob.ar"], muchos, max_por_entrada=3)["nuclear-ejemplo.gob.ar"]
+        listados, omitidos = relacionar(["nuclear-ejemplo.gob.ar"], muchos, max_por_entrada=3)[
+            "nuclear-ejemplo.gob.ar"
+        ]
         assert len(listados) == 3
         assert omitidos == 7
 
@@ -254,7 +266,9 @@ class TestInforme:
         assert "manual" in texto
 
     def test_lista_los_compromisos_con_fecha_y_url(self) -> None:
-        mapa = relacionar(["nuclear-ejemplo.gob.ar"], [hallazgo(exposure_detail=TestRelacionar.EXPO)])
+        mapa = relacionar(
+            ["nuclear-ejemplo.gob.ar"], [hallazgo(exposure_detail=TestRelacionar.EXPO)]
+        )
         texto = render_watchlist_report(
             [entrada()], counts=CONTEOS, compromisos=mapa, generated_at=AHORA
         )
@@ -264,7 +278,9 @@ class TestInforme:
         assert "visto en: https://ejemplo.test/Nuclear Ejemplo" in texto
 
     def test_muestra_la_url_exacta_y_no_solo_el_host(self) -> None:
-        mapa = relacionar(["nuclear-ejemplo.gob.ar"], [hallazgo(exposure_detail=TestRelacionar.EXPO)])
+        mapa = relacionar(
+            ["nuclear-ejemplo.gob.ar"], [hallazgo(exposure_detail=TestRelacionar.EXPO)]
+        )
         texto = render_watchlist_report(
             [entrada()], counts=CONTEOS, compromisos=mapa, generated_at=AHORA
         )
@@ -272,7 +288,9 @@ class TestInforme:
 
     def test_rotula_aparte_el_organismo_declarado(self) -> None:
         """No puede leerse como un sistema más: es un dato de otra naturaleza."""
-        mapa = relacionar(["nuclear-ejemplo.gob.ar"], [hallazgo(exposure_detail=TestRelacionar.EXPO)])
+        mapa = relacionar(
+            ["nuclear-ejemplo.gob.ar"], [hallazgo(exposure_detail=TestRelacionar.EXPO)]
+        )
         texto = render_watchlist_report(
             [entrada()], counts=CONTEOS, compromisos=mapa, generated_at=AHORA
         )
@@ -282,7 +300,10 @@ class TestInforme:
         """Dos endpoints de un servidor son dos superficies de UN sistema."""
         expo = {
             "urls": [
-                {"url": "https://siar.nuclear-ejemplo.gob.ar/sslvpn_logon.shtml", "kind": "employee"},
+                {
+                    "url": "https://siar.nuclear-ejemplo.gob.ar/sslvpn_logon.shtml",
+                    "kind": "employee",
+                },
                 {"url": "https://siar.nuclear-ejemplo.gob.ar/wgcgi.cgi", "kind": "employee"},
             ]
         }
@@ -312,7 +333,9 @@ class TestInforme:
 
     def test_agrupa_los_sistemas_por_hallazgo(self) -> None:
         """La URL aparece una vez por hallazgo, no una vez por subdominio."""
-        mapa = relacionar(["nuclear-ejemplo.gob.ar"], [hallazgo(exposure_detail=TestRelacionar.EXPO)])
+        mapa = relacionar(
+            ["nuclear-ejemplo.gob.ar"], [hallazgo(exposure_detail=TestRelacionar.EXPO)]
+        )
         texto = render_watchlist_report(
             [entrada()], counts=CONTEOS, compromisos=mapa, generated_at=AHORA
         )
@@ -359,7 +382,9 @@ class TestInforme:
         assert "La watchlist está vacía para este filtro." in texto
 
     def test_ninguna_linea_termina_en_espacios(self) -> None:
-        mapa = relacionar(["nuclear-ejemplo.gob.ar"], [hallazgo(exposure_detail=TestRelacionar.EXPO)])
+        mapa = relacionar(
+            ["nuclear-ejemplo.gob.ar"], [hallazgo(exposure_detail=TestRelacionar.EXPO)]
+        )
         texto = render_watchlist_report(
             [entrada()], counts=CONTEOS, compromisos=mapa, generated_at=AHORA
         )

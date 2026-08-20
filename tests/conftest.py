@@ -54,14 +54,24 @@ def repository(session_factory: sessionmaker[Session]) -> SqlAlchemyFindingRepos
 
 @pytest.fixture
 def watchlist() -> Watchlist:
-    """La watchlist real del repo: los tests de relevancia valen más con ella."""
-    return load_watchlist(PROJECT_ROOT / "data" / "watchlist.yaml")
+    """La watchlist versionada del repo.
+
+    Es la de EJEMPLO a propósito: la real está en `.gitignore` porque dice qué
+    organismos vigila la investigación. Los tests tienen que correr en un clon
+    limpio, sin datos de nadie.
+    """
+    return load_watchlist(WATCHLIST_DE_PRUEBA)
 
 
 @pytest.fixture
 def settings() -> Settings:
     """Configuración por defecto, con la postura de privacidad cerrada."""
     return Settings(store_pii=False)
+
+
+#: Watchlist con la que corren los tests. El ejemplo, no la real: un clon
+#: limpio no tiene la real y la suite tiene que pasar igual.
+WATCHLIST_DE_PRUEBA = PROJECT_ROOT / "data" / "examples" / "watchlist.yaml"
 
 
 def make_finding(

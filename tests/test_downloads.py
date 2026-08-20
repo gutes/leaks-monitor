@@ -87,7 +87,9 @@ class TestIntegracionConElPipeline:
         """
         from tests.test_pipeline import FakeAdapter, spec_for
 
-        cuerpo = f"Site: prevision-ejemplo.gob.ar\nDownload: {MAGNET}\nSample: https://i.ibb.co/x/s.png"
+        cuerpo = (
+            f"Site: prevision-ejemplo.gob.ar\nDownload: {MAGNET}\nSample: https://i.ibb.co/x/s.png"
+        )
         adapter = FakeAdapter(
             [
                 {

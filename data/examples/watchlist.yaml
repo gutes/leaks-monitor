@@ -1,0 +1,95 @@
+# Watchlist de EJEMPLO — todos los dominios son FICTICIOS.
+#
+# El proyecto arranca con este archivo cuando no existe `data/watchlist.yaml`.
+# Ese otro está en `.gitignore` a propósito: la watchlist de una investigación
+# dice qué organismos se están vigilando, y eso no se publica.
+#
+# Los dominios de acá no existen (`*-ejemplo.*`) y no van a matchear nada real.
+# Es deliberado: sirve para que el prototipo corra y los tests pasen, y para
+# que quede claro que **hay que armar la propia**. Una watchlist seria se valida
+# contra el inventario de infraestructura crítica que corresponda; heredar la de
+# otro no sirve.
+#
+# Para empezar:
+#     cp data/examples/watchlist.yaml data/watchlist.yaml
+#
+# También se edita desde la pantalla Watchlist. Al hacerlo la fuente de verdad
+# pasa a ser la base y no este archivo: respaldala con `leaks watchlist export`.
+#
+# Estructura de cada sector:
+#   name      identificador estable; se persiste en `findings.sector`
+#   label     nombre legible para el frontend
+#   critical  infraestructura crítica -> eleva la severidad del hallazgo
+#   domains   dominios propios; el match cubre también sus subdominios
+#   keywords  organismos por nombre, para cuando no hay dominio. Mínimo 4
+#             caracteres: las siglas cortas generan demasiados falsos positivos.
+
+version: 1
+
+sectors:
+- name: gobierno_nacional
+  label: Gobierno nacional
+  critical: true
+  domains:
+  - tributos-ejemplo.gob.ar
+  - prevision-ejemplo.gob.ar
+  - portal-ejemplo.gob.ar
+  - educacion-ejemplo.gob.ar
+  - minsalud-ejemplo.gob.ar
+  keywords:
+  - Agencia de Tributos Ejemplo
+  - Ministerio de Ejemplo
+  # Con acento a propósito: el matcher normaliza y hay un test que lo cubre.
+  - Cancillería Ejemplo
+  # Sigla de 4 caracteres: verifica que no pegue dentro de otra palabra.
+  - REJE
+- name: ciencia_registros
+  label: Ciencia, registros y nuclear
+  critical: true
+  domains:
+  - nuclear-ejemplo.gob.ar
+  - ciencia-ejemplo.gov.ar
+  - registro-ejemplo.gob.ar
+  keywords:
+  - Comision Nuclear Ejemplo
+  - REGISTRO EJEMPLO
+- name: banca_finanzas
+  label: Banca y finanzas
+  critical: true
+  domains:
+  - bancocentral-ejemplo.gob.ar
+  - banconacion-ejemplo.com.ar
+  keywords:
+  - Banco Central Ejemplo
+- name: salud
+  label: Salud y obras sociales
+  critical: true
+  domains:
+  - obrasocial-ejemplo.com.ar
+  - prepaga-ejemplo.com.ar
+  keywords:
+  - Obra Social Ejemplo
+- name: energia
+  label: Energía (infraestructura crítica)
+  critical: true
+  domains:
+  - energia-ejemplo.com.ar
+  - distribuidora-ejemplo.com.ar
+  keywords:
+  - Distribuidora Ejemplo
+- name: telecomunicaciones
+  label: Telecomunicaciones
+  critical: true
+  domains:
+  - telco-ejemplo.com.ar
+  - cable-ejemplo.com.ar
+  keywords:
+  - Telco Ejemplo
+- name: agua_transporte
+  label: Agua, transporte y aeropuertos
+  critical: true
+  domains:
+  - aguas-ejemplo.com.ar
+  - aeropuertos-ejemplo.com.ar
+  keywords:
+  - Aguas Ejemplo

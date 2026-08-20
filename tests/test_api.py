@@ -38,7 +38,7 @@ def poblado(repository: SqlAlchemyFindingRepository) -> None:
         [
             make_finding(
                 victim_name="Ministerio de Salud",
-                victim_domain="salud.gob.ar",
+                victim_domain="minsalud-ejemplo.gob.ar",
                 source="ransomware.live",
                 severity=Severity.CRITICAL,
                 discovered_at=base + timedelta(days=3),
@@ -79,7 +79,12 @@ class TestExportWatchlist:
     def con_watchlist(self, client: TestClient) -> TestClient:
         client.post(
             "/api/watchlist",
-            json={"kind": "domain", "value": "salud.gob.ar", "sector": "salud", "critical": True},
+            json={
+                "kind": "domain",
+                "value": "minsalud-ejemplo.gob.ar",
+                "sector": "salud",
+                "critical": True,
+            },
         )
         client.post(
             "/api/watchlist",
@@ -97,20 +102,20 @@ class TestExportWatchlist:
     def test_sale_entera_sin_paginado(self, con_watchlist: TestClient) -> None:
         """El listado pagina; el informe no: uno a medias no sirve de nada."""
         texto = con_watchlist.get("/api/watchlist/export").text
-        assert "salud.gob.ar" in texto
+        assert "minsalud-ejemplo.gob.ar" in texto
         assert "ministerio" in texto
 
     def test_respeta_el_filtro_y_lo_declara(self, con_watchlist: TestClient) -> None:
         texto = con_watchlist.get("/api/watchlist/export", params={"kind": "domain"}).text
         assert "tipo=domain" in texto
-        assert "salud.gob.ar" in texto
+        assert "minsalud-ejemplo.gob.ar" in texto
         assert "En el informe  : 1" in texto
 
     def test_cruza_los_hallazgos_con_la_entrada(self, con_watchlist: TestClient) -> None:
         """Es lo que convierte el listado en informe: qué de esto ya cayó."""
         texto = con_watchlist.get("/api/watchlist/export").text
         assert "Comprometidos alguna vez" in texto
-        assert "salud.gob.ar" in texto
+        assert "minsalud-ejemplo.gob.ar" in texto
 
     def test_una_entrada_sin_historial_no_lo_finge(self, client: TestClient) -> None:
         client.post(
@@ -269,7 +274,7 @@ class TestFindings:
             ({"source": "dls-monitor"}, 1),
             ({"severity": "critical"}, 2),
             ({"actor": "safepay"}, 1),
-            ({"q": "Obra Social Ejemplo"}, 1),
+            ({"q": "obrasocial"}, 1),
             ({"q": "gob.ar"}, 1),
             ({"source": "no-existe"}, 0),
         ],

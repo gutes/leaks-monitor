@@ -164,7 +164,11 @@ class TestDatos:
 
     EXPO: ClassVar[dict[str, Any]] = {
         "urls": [
-            {"url": "https://siar.nuclear-ejemplo.gob.ar/sslvpn.shtml", "kind": "employee", "occurrences": 89},
+            {
+                "url": "https://siar.nuclear-ejemplo.gob.ar/sslvpn.shtml",
+                "kind": "employee",
+                "occurrences": 89,
+            },
             {"url": "https://portal.nuclear-ejemplo.gob.ar", "kind": "user", "occurrences": 3},
         ],
         "stealer_families": {"RedLine": 23590, "Lumma": 12},

@@ -6,18 +6,22 @@ from pathlib import Path
 
 import pytest
 
-from leaks.config import PROJECT_ROOT
 from leaks.domain.models import ArMatchReason, LeakType, Severity
 from leaks.relevance.rules import evaluate, extract_domains
 from leaks.relevance.severity import derive_severity
 from leaks.relevance.watchlist import Watchlist, load_watchlist
-from tests.conftest import make_normalized
+from tests.conftest import WATCHLIST_DE_PRUEBA, make_normalized
 
 
 @pytest.fixture(scope="module")
 def watchlist() -> Watchlist:
-    """La watchlist real del repo: los tests validan el dato, no un doble."""
-    return load_watchlist(PROJECT_ROOT / "data" / "watchlist.yaml")
+    """La watchlist versionada del repo: se valida el dato, no un doble.
+
+    Es la de EJEMPLO, con dominios ficticios: la real está en `.gitignore`
+    porque dice qué organismos vigila la investigación, y la suite tiene que
+    pasar en un clon limpio.
+    """
+    return load_watchlist(WATCHLIST_DE_PRUEBA)
 
 
 class TestWatchlist:
@@ -37,7 +41,7 @@ class TestWatchlist:
         assert sector.name == "gobierno_nacional"
 
     def test_ignora_www_y_mayusculas(self, watchlist: Watchlist) -> None:
-        assert watchlist.match_domain("WWW.Prevision Ejemplo.GOB.AR") is not None
+        assert watchlist.match_domain("WWW.Prevision-Ejemplo.GOB.AR") is not None
 
     def test_no_matchea_un_dominio_ajeno(self, watchlist: Watchlist) -> None:
         assert watchlist.match_domain("acme.com") is None
@@ -48,12 +52,12 @@ class TestWatchlist:
         assert sector is None or sector.name != "gobierno_nacional"
 
     def test_keywords_ignoran_acentos(self, watchlist: Watchlist) -> None:
-        assert watchlist.match_keywords("filtración de Cancillería Argentina")
+        assert watchlist.match_keywords("filtración de Cancillería Ejemplo")
 
     def test_keywords_respetan_limite_de_palabra(self, watchlist: Watchlist) -> None:
         """ "ARCA" no debe pegar dentro de "arcade"."""
-        matches = watchlist.match_keywords("vendo cuentas de arcade y arcaico")
-        assert [k for k, _ in matches if k == "ARCA"] == []
+        matches = watchlist.match_keywords("vendo rejendija y rejero")
+        assert [k for k, _ in matches if k == "REJE"] == []
 
     def test_descarta_keywords_demasiado_cortas(self, tmp_path: Path) -> None:
         yaml_corto = tmp_path / "w.yaml"
@@ -152,16 +156,18 @@ class TestReglasDeRelevancia:
 
     def test_keyword_dispara_sin_dominio(self, watchlist: Watchlist) -> None:
         """Caso típico de foro: el título nombra al organismo, no al dominio."""
-        item = make_normalized(victim_name="Database dump - el registro de personas Argentina 2026")
+        item = make_normalized(victim_name="Database dump - REGISTRO EJEMPLO 2026")
         veredicto = evaluate(item, watchlist)
 
         assert ArMatchReason.KEYWORD in veredicto.reasons
-        assert "el registro de personas" in veredicto.matched_keywords
+        assert "REGISTRO EJEMPLO" in veredicto.matched_keywords
 
 
 class TestAuditabilidad:
     def test_guarda_la_evidencia_de_cada_regla(self, watchlist: Watchlist) -> None:
-        item = make_normalized(victim_name="el organismo previsional leak", victim_domain="prevision-ejemplo.gob.ar", country="AR")
+        item = make_normalized(
+            victim_name="el organismo previsional leak", victim_domain="prevision-ejemplo.gob.ar", country="AR"
+        )
         detalle = evaluate(item, watchlist).detail
 
         assert detalle["watchlist"] == ["prevision-ejemplo.gob.ar"]
@@ -214,23 +220,28 @@ class TestSeveridad:
     ) -> None:
         """Regresión de un falso positivo real encontrado en la primera corrida.
 
-        "Distribuidora Ejemplo Dominicana" es la distribuidora eléctrica de República
-        Dominicana. Matcheaba la keyword DISTRIBUIDORA EJEMPLO de la watchlist y, como el
-        sector energía está marcado como infraestructura crítica, salía con
-        severidad CRITICAL entre organismos argentinos reales.
+        El caso original fue una distribuidora eléctrica de otro país que
+        comparte nombre con una argentina: matcheaba la keyword del sector
+        energía y, como está marcado infraestructura crítica, salía con
+        severidad CRITICAL entre organismos argentinos.
 
         Sin dominio .ar, sin país AR y sin CUIT no hay nada que corrobore que
         la víctima sea argentina: el hallazgo se reporta igual (la keyword
         disparó), pero no puede escalar a la severidad máxima.
         """
-        item = make_normalized(victim_name="Distribuidora Ejemplo Dominicana", victim_domain="Distribuidora Ejemplo.com.do")
+        item = make_normalized(
+            victim_name="Distribuidora Ejemplo Dominicana",
+            victim_domain="distribuidora-ejemplo.com.do",
+        )
         veredicto = evaluate(item, watchlist)
 
         assert ArMatchReason.KEYWORD in veredicto.reasons
         assert derive_severity(veredicto, LeakType.RANSOMWARE) is Severity.LOW
 
     def test_la_misma_keyword_con_dominio_ar_si_es_critica(self, watchlist: Watchlist) -> None:
-        """El contraste: con corroboración argentina, DISTRIBUIDORA EJEMPLO sí es crítica."""
-        item = make_normalized(victim_name="Distribuidora Ejemplo", victim_domain="energia-ejemplo.com.ar")
+        """El contraste: con corroboración argentina, la misma keyword sí es crítica."""
+        item = make_normalized(
+            victim_name="Distribuidora Ejemplo", victim_domain="energia-ejemplo.com.ar"
+        )
         veredicto = evaluate(item, watchlist)
         assert derive_severity(veredicto, LeakType.RANSOMWARE) is Severity.CRITICAL

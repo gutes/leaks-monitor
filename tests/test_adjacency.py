@@ -575,7 +575,7 @@ class TestWatchlistRegional:
     def rwl(self) -> Any:
         from leaks.adjacency.regional_watchlist import load_regional_watchlists
 
-        return load_regional_watchlists(Path("data/watchlist-regional"))
+        return load_regional_watchlists(Path("data/examples/watchlist-regional"))
 
     def test_carga_un_archivo_por_pais(self, rwl: Any) -> None:
         assert set(rwl.paises) >= {"BR", "CL", "UY", "PY", "BO"}, "los limítrofes primero"
@@ -608,7 +608,7 @@ class TestWatchlistRegional:
         """Mezclarlas haría que una empresa brasileña genere un hallazgo argentino."""
         from leaks.relevance.watchlist import load_watchlist
 
-        ar = load_watchlist(Path("data") / "watchlist.yaml")
+        ar = load_watchlist(Path("data/examples/watchlist.yaml"))
         assert ar.match_domain("petrobras.com.br") is None
         assert not rwl.es_critica("BR", "prevision-ejemplo.gob.ar")
 
