@@ -129,6 +129,14 @@ function fmtBytes(n) {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** Días enteros desde una fecha. `null` si no se puede leer. */
+function diasDesde(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return Math.floor((Date.now() - d.getTime()) / 86400000);
+}
+
 /**
  * Reciente / histórico según los días transcurridos.
  *
@@ -494,6 +502,20 @@ function renderRow(f) {
   if (!datos.children.length) datos.append(el("span", "—", "hint"));
   tr.append(datos);
 
+  // Cuándo entró a la base. No es lo mismo que "Ocurrió" —esa es la fecha del
+  // evento— y confundirlas fue el problema que originó toda la cascada de
+  // fechado: una fuente que trae su histórico de golpe agrega hoy leaks de 2020.
+  const agregado = el("td");
+  agregado.append(el("div", fmtDate(f.first_seen_at)));
+  const antiguedad = diasDesde(f.first_seen_at);
+  if (antiguedad !== null && antiguedad <= 1) {
+    agregado.append(el("span", antiguedad === 0 ? "hoy" : "ayer", "pill pill-ok"));
+  }
+  agregado.title =
+    `Entró a esta base el ${fmtDate(f.first_seen_at)}.\n` +
+    `El evento ocurrió: ${f.occurred_at ? fmtDate(f.occurred_at) : "sin fecha"}.`;
+  tr.append(agregado);
+
   return tr;
 }
 
@@ -769,7 +791,7 @@ async function loadFindings() {
   if (!page) {
     const tr = document.createElement("tr");
     const td = el("td", "No se pudieron cargar los hallazgos.", "error");
-    td.colSpan = 10;
+    td.colSpan = 11;
     tr.append(td);
     body.append(tr);
     renderSelection();
@@ -780,7 +802,7 @@ async function loadFindings() {
   if (!(page.items || []).length) {
     const tr = document.createElement("tr");
     const td = el("td", "Sin hallazgos para este filtro.", "empty");
-    td.colSpan = 10;
+    td.colSpan = 11;
     tr.append(td);
     body.append(tr);
   } else {

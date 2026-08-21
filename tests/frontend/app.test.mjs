@@ -681,3 +681,45 @@ test("el resaltado de la fila crítica se ve aunque falle el tinte", async () =>
   const CSS = readFileSync(new URL("../../frontend/style.css", import.meta.url), "utf8");
   assert.match(CSS, /adj-fila-critica td:first-child\s*\{[^}]*box-shadow:\s*inset/);
 });
+
+test("la última columna dice cuándo se agregó, no cuándo ocurrió", async () => {
+  // Son cosas distintas y confundirlas fue el problema original: una fuente
+  // que trae su histórico de golpe agrega hoy leaks de 2020.
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/hallazgos",
+    respuestas: {
+      ...RESPUESTAS_BASE,
+      "/api/findings": {
+        items: [
+          hallazgo({
+            occurred_at: "2021-05-10T00:00:00Z",
+            occurred_at_basis: "feed",
+            first_seen_at: "2026-08-15T00:00:00Z",
+          }),
+        ],
+        total: 1, limit: 50, offset: 0,
+      },
+    },
+  });
+
+  const texto = textoDe(el("findings-body"));
+  assert.match(texto, /2021-05-10/, "se ve cuándo ocurrió");
+  assert.match(texto, /2026-08-15/, "y cuándo se agregó");
+});
+
+test("un hallazgo agregado hoy se distingue de un vistazo", async () => {
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/hallazgos",
+    respuestas: {
+      ...RESPUESTAS_BASE,
+      "/api/findings": {
+        items: [hallazgo({ first_seen_at: new Date().toISOString() })],
+        total: 1, limit: 50, offset: 0,
+      },
+    },
+  });
+
+  assert.match(textoDe(el("findings-body")), /hoy/);
+});
