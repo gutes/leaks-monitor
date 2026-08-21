@@ -229,6 +229,36 @@ class TelegramChannelIn(BaseModel):
     enabled: bool = True
 
 
+class TelegramBulkIn(BaseModel):
+    """Alta masiva desde texto pegado."""
+
+    #: Un canal por línea. Acepta `@x`, `t.me/x` o la URL, y columnas
+    #: opcionales `actor, tipo, nota` separadas por coma, punto y coma o tab.
+    texto: str = Field(min_length=1, max_length=200_000)
+    #: Por defecto entran apagados, como el catálogo: dar de alta 200 canales
+    #: no puede convertirse en 200 pedidos en la próxima corrida.
+    enabled: bool = False
+
+
+class LineaRechazadaOut(BaseModel):
+    """Una línea que no se pudo leer, con el motivo."""
+
+    numero: int
+    contenido: str
+    motivo: str
+
+
+class TelegramBulkOut(BaseModel):
+    """Resultado del alta masiva. Dice todo lo que NO entró y por qué."""
+
+    imported: int = 0
+    #: Estaban dados de alta y no se tocaron.
+    ya_estaban: int = 0
+    duplicadas: int = 0
+    rechazadas: list[LineaRechazadaOut] = Field(default_factory=list)
+    total: int = 0
+
+
 class TelegramImportOut(BaseModel):
     """Resultado de importar el catálogo público."""
 

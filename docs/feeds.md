@@ -49,6 +49,23 @@ avisó en su canal con un mes de anticipación.
 Nada se consulta por defecto: hacen falta canales **dados de alta y
 habilitados**. Se administran desde la pantalla Telegram.
 
+Para cargar muchos de una —el caso real, una lista sacada de un informe— hay
+alta masiva. Desde la pantalla, en «Pegar una lista de canales», o por línea de
+comandos:
+
+```bash
+leaks import-telegram canales.txt            # entran apagados
+leaks import-telegram canales.txt --enabled  # y habilitados
+```
+
+Un canal por línea, en cualquiera de las formas habituales (`@x`, `t.me/x`, la
+URL), con columnas opcionales `canal, actor, tipo, nota` separadas por coma,
+punto y coma o tabulación. Las líneas con `#` se ignoran.
+
+**Lo que no se pudo leer se reporta línea por línea, con el motivo.** Saltearlo
+en silencio haría creer que se están vigilando canales que nunca entraron, y no
+hay forma de notarlo hasta que hace falta.
+
 Se rechazan antes de generar un pedido las direcciones que no se pueden leer en
 abierto: `t.me/+…` y `t.me/joinchat/…` son invitaciones a grupos privados.
 

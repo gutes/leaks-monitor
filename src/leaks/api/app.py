@@ -49,6 +49,7 @@ from leaks.api.schemas import (
     LeakSiteCountsOut,
     LeakSiteOut,
     LeakSitePage,
+    LineaRechazadaOut,
     RegionalVictimOut,
     RuleOut,
     RulesOut,
@@ -56,6 +57,8 @@ from leaks.api.schemas import (
     SourceOut,
     SourceRunOut,
     StatsOut,
+    TelegramBulkIn,
+    TelegramBulkOut,
     TelegramChannelIn,
     TelegramChannelOut,
     TelegramImportOut,
@@ -88,6 +91,7 @@ from leaks.storage.watchlist_repository import (
     WatchlistValidationError,
 )
 from leaks.telegram.catalog import fetch_catalog
+from leaks.telegram.importer import parsear as parsear_canales
 
 logger = logging.getLogger(__name__)
 
@@ -600,6 +604,29 @@ def create_app(
         if not repo.remove(channel_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No existe.")
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @app.post("/api/telegram/bulk", response_model=TelegramBulkOut, tags=["telegram"])
+    def bulk_telegram(payload: TelegramBulkIn, repo: TelegramRepo) -> TelegramBulkOut:
+        """Da de alta muchos canales de una, desde texto pegado.
+
+        El caso real es pegar una lista sacada de un informe, con formatos
+        mezclados. El parser es tolerante con la forma —`@x`, `t.me/x`, la URL,
+        con o sin columnas extra— y **estricto con el resultado**: devuelve
+        línea por línea lo que no se pudo leer y por qué.
+
+        Saltearlas en silencio sería peor que rechazar el archivo entero: el
+        investigador creería que está vigilando canales que nunca entraron.
+        """
+        _require_editing()
+        lectura = parsear_canales(payload.texto)
+        importados = repo.import_many(lectura.canales, enabled=payload.enabled)
+        return TelegramBulkOut(
+            imported=importados,
+            ya_estaban=len(lectura.canales) - importados,
+            duplicadas=lectura.duplicadas,
+            rechazadas=[LineaRechazadaOut.model_validate(x.as_dict()) for x in lectura.rechazadas],
+            total=lectura.total_leidas,
+        )
 
     @app.post("/api/telegram/import", response_model=TelegramImportOut, tags=["telegram"])
     def import_telegram(repo: TelegramRepo) -> TelegramImportOut:

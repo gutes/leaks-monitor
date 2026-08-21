@@ -492,6 +492,29 @@
       </form>
       <p id="tg-error" class="error"></p>
 
+      <!-- El caso real: pegar una lista sacada de un informe, con formatos
+           mezclados. Se acepta cualquier forma y se dice línea por línea lo
+           que no entró. -->
+      <details class="tg-bulk">
+        <summary>Pegar una lista de canales</summary>
+        <p class="hint">
+          Uno por línea. Acepta <code>@canal</code>, <code>t.me/canal</code> o la URL completa.
+          Opcionalmente <code>canal, actor, tipo, nota</code> separado por coma o tabulación —
+          lo que salga de pegar una planilla. Las líneas que empiezan con <code>#</code> se ignoran.
+        </p>
+        <textarea id="tg-bulk-texto" rows="7" maxlength="200000"
+                  placeholder="@canaluno&#10;t.me/canaldos&#10;canaltres, Chronus Team, data_leak, avisa antes de atacar"></textarea>
+        <div class="export-bar">
+          <label class="switch">
+            <input type="checkbox" id="tg-bulk-enabled" />
+            habilitarlos al importar
+          </label>
+          <span id="tg-bulk-resumen" class="hint"></span>
+          <button class="btn btn-primary" type="button" id="tg-bulk-enviar">Importar lista</button>
+        </div>
+        <div id="tg-bulk-rechazadas" class="tg-rechazadas"></div>
+      </details>
+
       <div class="filters">
         <label>Buscar
           <input type="search" id="tg-q" placeholder="canal o actor" maxlength="200" />

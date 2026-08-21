@@ -1073,6 +1073,57 @@ async function agregarCanal(evento) {
   loadTelegram();
 }
 
+/**
+ * Alta masiva desde texto pegado.
+ *
+ * Lo importante no es lo que entra sino lo que NO entra: si tres líneas de
+ * veinte se rechazan en silencio, el investigador cree que está vigilando
+ * canales que nunca se dieron de alta. Por eso se listan una por una.
+ */
+async function importarLista() {
+  const texto = $("tg-bulk-texto").value.trim();
+  const resumen = $("tg-bulk-resumen");
+  const rechazadas = $("tg-bulk-rechazadas");
+  rechazadas.replaceChildren();
+  if (!texto) {
+    resumen.textContent = "Pegá al menos un canal.";
+    return;
+  }
+
+  await conBotonOcupado($("tg-bulk-enviar"), "Importar lista", async () => {
+    const r = await apiWrite("/api/telegram/bulk", "POST", {
+      texto,
+      enabled: $("tg-bulk-enabled").checked,
+    });
+    if (!r.ok) {
+      $("tg-error").textContent = r.error;
+      return;
+    }
+
+    const d = r.data || {};
+    const partes = [`${d.imported ?? 0} nuevos`];
+    if (d.ya_estaban) partes.push(`${d.ya_estaban} ya estaban`);
+    if (d.duplicadas) partes.push(`${d.duplicadas} repetidos en el texto`);
+    if ((d.rechazadas || []).length) partes.push(`${d.rechazadas.length} rechazados`);
+    resumen.textContent = partes.join(" · ");
+
+    for (const x of d.rechazadas || []) {
+      const fila = el("div");
+      fila.append(
+        el("div", `Línea ${x.numero}: ${x.motivo}`),
+        el("code", x.contenido),
+      );
+      rechazadas.append(fila);
+    }
+
+    if (d.imported) {
+      $("tg-bulk-texto").value = "";
+      setStatus(`${d.imported} canales agregados.`, "ok");
+      loadTelegram();
+    }
+  });
+}
+
 async function importarCatalogo() {
   const boton = $("tg-import");
   boton.disabled = true;
@@ -2035,6 +2086,7 @@ $("wl-export").addEventListener("click", exportarWatchlist);
 $("adj-close").addEventListener("click", closeAdjacency);
 $("tg-add").addEventListener("submit", agregarCanal);
 $("tg-import").addEventListener("click", importarCatalogo);
+$("tg-bulk-enviar").addEventListener("click", importarLista);
 $("tg-q").addEventListener("input", () => { state.tgOffset = 0; loadTelegram(); });
 $("tg-f-enabled").addEventListener("change", () => { state.tgOffset = 0; loadTelegram(); });
 $("tg-f-origin").addEventListener("change", () => { state.tgOffset = 0; loadTelegram(); });

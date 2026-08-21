@@ -29,6 +29,7 @@ from leaks.bundle import importar as importar_bundle
 from leaks.config import get_settings
 from leaks.pipeline.runner import RunReport
 from leaks.pipeline.scheduler import run_forever
+from leaks.telegram.importer import parsear as parsear_canales
 
 logger = logging.getLogger("leaks.cli")
 
@@ -48,6 +49,17 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "sync-watchlist",
         help="Importa a la base las entradas nuevas del YAML semilla (no borra ni pisa).",
+    )
+
+    canales = sub.add_parser(
+        "import-telegram",
+        help="Da de alta canales de Telegram desde un archivo de texto.",
+    )
+    canales.add_argument("archivo", help="Un canal por línea. Acepta @x, t.me/x o la URL.")
+    canales.add_argument(
+        "--enabled",
+        action="store_true",
+        help="Habilitarlos al importar. Por defecto entran apagados.",
     )
 
     paquete = sub.add_parser(
@@ -170,6 +182,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "init-db":
         app.create_schema()
         print(f"Schema listo en {settings.database_url}")
+        return 0
+
+    if args.command == "import-telegram":
+        lectura = parsear_canales(Path(args.archivo).read_text(encoding="utf-8"))
+        importados = app.telegram_repo.import_many(lectura.canales, enabled=args.enabled)
+        estado = "habilitados" if args.enabled else "deshabilitados"
+        print(f"{importados} canales nuevos, {estado}.")
+        if lectura.duplicadas:
+            print(f"  {lectura.duplicadas} repetidos dentro del archivo")
+        ya_estaban = len(lectura.canales) - importados
+        if ya_estaban:
+            print(f"  {ya_estaban} ya estaban dados de alta (no se tocaron)")
+        # Lo rechazado se dice línea por línea: saltearlo en silencio haría
+        # creer que entró todo.
+        for x in lectura.rechazadas:
+            print(f"  línea {x.numero} rechazada: {x.motivo}")
+            print(f"    {x.contenido[:80]}")
         return 0
 
     if args.command == "export-bundle":

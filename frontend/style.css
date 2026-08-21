@@ -253,6 +253,36 @@ tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); 
   vertical-align: middle;
 }
 
+/* -- Alta masiva de canales ----------------------------------------------- */
+
+.tg-bulk { margin: 10px 0; }
+.tg-bulk summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+
+.tg-bulk textarea {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font-family: ui-monospace, monospace;
+  font-size: 12.5px;
+  resize: vertical;
+}
+
+/* Lo rechazado se muestra, no se esconde: creer que entró todo es el error
+   caro acá. */
+.tg-rechazadas { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+
+.tg-rechazadas > div {
+  padding: 6px 10px;
+  border-left: 3px solid var(--warn);
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-size: 12.5px;
+}
+
 /* -- Alertas -------------------------------------------------------------- */
 
 .alert-canales { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
