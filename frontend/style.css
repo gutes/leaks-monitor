@@ -997,9 +997,17 @@ body.is-blocked { overflow: hidden; }
 
 /* La dirección se ve entera al seleccionarla y al pasar el mouse; en la celda
    se trunca para no romper la tabla. Texto, nunca enlace. */
+/* La columna Ref. lleva direcciones .onion, que son larguísimas y empujaban
+   toda la tabla. Se acota y se corta con puntos suspensivos.
+
+   NO se oculta la dirección: se muestra entera en el `title` y sigue siendo
+   seleccionable con doble clic. Esconderla detrás de una pastilla ya se probó
+   y fue peor — es justo el dato que hay que copiar. */
+.col-ref { width: 120px; }
+
 .onion-ref {
   display: block;
-  max-width: 210px;
+  max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

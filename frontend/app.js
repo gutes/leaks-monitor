@@ -433,15 +433,19 @@ function renderRow(f) {
   sev.append(el("span", f.severity, `pill pill-${f.severity}`));
   tr.append(sev);
 
-  // La columna auditable: qué regla disparó el match argentino.
-  const razones = el("td", "", "reasons");
-  for (const r of f.ar_match_reason || []) {
-    const detalle = (f.ar_match_detail || {})[r];
-    const chip = el("span", r, "chip");
-    if (detalle && detalle.length) chip.title = detalle.join(", ");
-    razones.append(chip);
+  // Cuándo entró a la base. No es lo mismo que "Ocurrió" —esa es la fecha del
+  // evento— y confundirlas fue el problema que originó toda la cascada de
+  // fechado: una fuente que trae su histórico de golpe agrega hoy leaks de 2020.
+  const agregado = el("td");
+  agregado.append(el("div", fmtDate(f.first_seen_at)));
+  const antiguedad = diasDesde(f.first_seen_at);
+  if (antiguedad !== null && antiguedad <= 1) {
+    agregado.append(el("span", antiguedad === 0 ? "hoy" : "ayer", "pill pill-ok"));
   }
-  tr.append(razones);
+  agregado.title =
+    `Entró a esta base el ${fmtDate(f.first_seen_at)}.\n` +
+    `El evento ocurrió: ${f.occurred_at ? fmtDate(f.occurred_at) : "sin fecha"}.`;
+  tr.append(agregado);
 
   const ref = el("td");
   const href = safeHref(f.raw_ref);
@@ -502,19 +506,16 @@ function renderRow(f) {
   if (!datos.children.length) datos.append(el("span", "—", "hint"));
   tr.append(datos);
 
-  // Cuándo entró a la base. No es lo mismo que "Ocurrió" —esa es la fecha del
-  // evento— y confundirlas fue el problema que originó toda la cascada de
-  // fechado: una fuente que trae su histórico de golpe agrega hoy leaks de 2020.
-  const agregado = el("td");
-  agregado.append(el("div", fmtDate(f.first_seen_at)));
-  const antiguedad = diasDesde(f.first_seen_at);
-  if (antiguedad !== null && antiguedad <= 1) {
-    agregado.append(el("span", antiguedad === 0 ? "hoy" : "ayer", "pill pill-ok"));
+  // La columna auditable va al final: sus chips son lo que más se estira, y
+  // acá no empuja a las demás.
+  const razones = el("td", "", "reasons");
+  for (const r of f.ar_match_reason || []) {
+    const detalle = (f.ar_match_detail || {})[r];
+    const chip = el("span", r, "chip");
+    if (detalle && detalle.length) chip.title = detalle.join(", ");
+    razones.append(chip);
   }
-  agregado.title =
-    `Entró a esta base el ${fmtDate(f.first_seen_at)}.\n` +
-    `El evento ocurrió: ${f.occurred_at ? fmtDate(f.occurred_at) : "sin fecha"}.`;
-  tr.append(agregado);
+  tr.append(razones);
 
   return tr;
 }

@@ -723,3 +723,20 @@ test("un hallazgo agregado hoy se distingue de un vistazo", async () => {
 
   assert.match(textoDe(el("findings-body")), /hoy/);
 });
+
+test("el orden de columnas pone Agregado antes de Ref y la auditable al final", async () => {
+  // "Por qué es AR" son chips que se estiran: al final no empujan al resto.
+  const encabezados = [...HTML.matchAll(/<th[^>]*>([^<]*)</g)].map((m) => m[1].trim());
+  const i = (t) => encabezados.indexOf(t);
+  assert.ok(i("Severidad") < i("Agregado"), "Agregado va después de Severidad");
+  assert.ok(i("Agregado") < i("Ref."), "y antes de Ref.");
+  assert.ok(i("Datos") < i("Por qué es AR"), "la auditable queda última");
+});
+
+test("la dirección .onion se acota pero no se oculta", async () => {
+  // Esconderla detrás de una pastilla ya se probó y fue peor: es el dato que
+  // hay que copiar.
+  const CSS = readFileSync(new URL("../../frontend/style.css", import.meta.url), "utf8");
+  assert.match(CSS, /\.onion-ref\s*\{[^}]*text-overflow:\s*ellipsis/);
+  assert.match(APP, /code\.title\s*=/, "la dirección completa va en el title");
+});
