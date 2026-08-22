@@ -364,3 +364,34 @@ class TestRelevancia:
 
         item = self._item("Leak of some-random-company.co.za, 500k records")
         assert "prevision-ejemplo.gob.ar" not in extract_domains(item)
+
+
+class TestOrdenEstable:
+    """Habilitar un canal no puede mover las filas bajo el cursor.
+
+    El orden era `enabled DESC, handle`, así que al habilitar uno saltaba al
+    tope de la lista, otra fila ocupaba su lugar y parecía que el clic lo había
+    DESACTIVADO. Reportado como bug; el canal se habilitaba bien.
+    """
+
+    def test_el_orden_no_cambia_al_habilitar(self, tg_repo: TelegramChannelRepository) -> None:
+        for h in ("canal_alfa", "canal_beta", "canal_gama"):
+            tg_repo.add(h, enabled=False)
+        antes = [c.handle for c in tg_repo.list_channels()]
+
+        medio = next(c for c in tg_repo.list_channels() if c.handle == "canal_beta")
+        tg_repo.set_enabled(medio.id, True)
+
+        assert [c.handle for c in tg_repo.list_channels()] == antes
+
+    def test_se_ordena_alfabeticamente(self, tg_repo: TelegramChannelRepository) -> None:
+        for h in ("canal_zeta", "canal_alfa", "canal_mika"):
+            tg_repo.add(h)
+        handles = [c.handle for c in tg_repo.list_channels()]
+        assert handles == sorted(handles)
+
+    def test_el_estado_se_acota_con_el_filtro(self, tg_repo: TelegramChannelRepository) -> None:
+        """Es la vía para ver solo los activos, sin reordenar la tabla."""
+        tg_repo.add("canal_activo", enabled=True)
+        tg_repo.add("canal_apagado", enabled=False)
+        assert [c.handle for c in tg_repo.list_channels(enabled=True)] == ["canal_activo"]

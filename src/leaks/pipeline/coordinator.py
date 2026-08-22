@@ -18,10 +18,12 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from leaks.adapters.registry import FeedDeps, FeedSpec
 from leaks.pipeline.runner import PipelineRunner, RunReport
 
 logger = logging.getLogger(__name__)
@@ -64,21 +66,36 @@ class RunCoordinator:
     def is_running(self) -> bool:
         return self._state.running
 
-    def trigger(self) -> bool:
-        """Arranca una corrida. Devuelve `False` si ya había una en curso."""
+    def trigger(
+        self,
+        specs: Sequence[tuple[FeedSpec, str | None]] | None = None,
+        deps: FeedDeps | None = None,
+    ) -> bool:
+        """Arranca una corrida. Devuelve `False` si ya había una en curso.
+
+        `specs` y `deps` acotan la corrida: sirven para leer un solo canal a
+        pedido sin traer todo lo demás. Igual toman el mismo candado, porque
+        dos corridas en paralelo sobre la misma SQLite se pisan.
+        """
         with self._lock:
             if self._state.running:
                 return False
             self._state = RunState(running=True, started_at=datetime.now(UTC))
 
-        hilo = threading.Thread(target=self._run, name="corrida-manual", daemon=True)
+        hilo = threading.Thread(
+            target=self._run, args=(specs, deps), name="corrida-manual", daemon=True
+        )
         hilo.start()
         return True
 
-    def _run(self) -> None:
+    def _run(
+        self,
+        specs: Sequence[tuple[FeedSpec, str | None]] | None = None,
+        deps: FeedDeps | None = None,
+    ) -> None:
         """Cuerpo del hilo. Nunca propaga: si explota, queda en el estado."""
         try:
-            reporte = self._runner.run()
+            reporte = self._runner.run(specs, deps)
             self._state.last_report = reporte
             self._state.last_error = None
         except Exception as exc:  # pragma: no cover — red de seguridad del hilo

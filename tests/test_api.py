@@ -788,3 +788,29 @@ class TestAlertFeed:
         """No queda exento por ser una integración."""
         with TestClient(create_app(settings, egress_guard=GuardBloqueante())) as c:  # type: ignore[arg-type]
             assert c.get("/api/alerts/feed").status_code == 403
+
+
+class TestLeerCanalAhora:
+    """Habilitar un canal y leerlo sin esperar la corrida diaria."""
+
+    def _canal(self, client: TestClient) -> int:
+        r = client.post(
+            "/api/telegram",
+            json={"handle": "canaldeprueba", "actor": "X", "enabled": False},
+        )
+        return int(r.json()["id"])
+
+    def test_habilita_el_canal(self, client: TestClient) -> None:
+        """Pedir que lo lea implica quererlo vigilando."""
+        cid = self._canal(client)
+        assert client.post(f"/api/telegram/{cid}/fetch").status_code == 200
+        canal = client.get("/api/telegram", params={"q": "canaldeprueba"}).json()["items"][0]
+        assert canal["enabled"] is True
+
+    def test_un_canal_que_no_existe_da_404(self, client: TestClient) -> None:
+        assert client.post("/api/telegram/999999/fetch").status_code == 404
+
+    def test_lo_corta_el_bloqueo_de_salida(self, settings: Settings, poblado: None) -> None:
+        """Forzar a mano no puede saltear el control de IP."""
+        with TestClient(create_app(settings, egress_guard=GuardBloqueante())) as c:  # type: ignore[arg-type]
+            assert c.post("/api/telegram/1/fetch").status_code == 403

@@ -27,7 +27,7 @@ from fastapi.staticfiles import StaticFiles
 
 from leaks.adapters.egress import EgressResolver
 from leaks.adapters.http import build_client
-from leaks.adapters.registry import FEED_REGISTRY, resolve_enabled
+from leaks.adapters.registry import FEED_REGISTRY, FeedDeps, resolve_enabled
 from leaks.adjacency.countries import COUNTRY_CODES
 from leaks.alerts.channels import CHANNEL_REGISTRY
 from leaks.api.schemas import (
@@ -96,11 +96,6 @@ from leaks.telegram.importer import parsear as parsear_canales
 logger = logging.getLogger(__name__)
 
 
-#: Rutas que siguen respondiendo con el bloqueo de OPSEC activo.
-#:
-#: Son las que hacen falta para *salir* del bloqueo: si se cerrara
-#: `/api/egress`, el frontend no tendría cómo enterarse de que ya se puede
-#: volver a operar, y el modal quedaría trabado para siempre.
 def _a_utc(valor: datetime | None) -> datetime | None:
     """Un instante sin zona horaria se asume UTC.
 
@@ -132,6 +127,11 @@ def _configurada(config: Settings, variable: str) -> bool:
     return bool(str(crudo).strip())
 
 
+#: Rutas que siguen respondiendo con el bloqueo de OPSEC activo.
+#:
+#: Son las que hacen falta para *salir* del bloqueo: si se cerrara
+#: `/api/egress`, el frontend no tendría cómo enterarse de que ya se puede
+#: volver a operar, y el modal quedaría trabado para siempre.
 _RUTAS_SIEMPRE_ABIERTAS = ("/api/egress", "/api/health")
 
 
@@ -593,6 +593,50 @@ def create_app(
         if canal is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No existe.")
         return TelegramChannelOut.model_validate(canal.as_dict())
+
+    @app.post("/api/telegram/{channel_id}/fetch", response_model=RunStateOut, tags=["telegram"])
+    def fetch_telegram(channel_id: int, request: Request, repo: TelegramRepo) -> RunStateOut:
+        """Habilita el canal y lo lee AHORA, sin esperar la corrida diaria.
+
+        Es lo que hace falta después de dar de alta un canal: saber si se puede
+        leer y si trae algo, en vez de descubrirlo mañana. Se habilita de paso
+        porque pedir que lo lea ya implica quererlo vigilando.
+
+        La corrida va acotada a ese canal —no arrastra el resto del pipeline— y
+        pasa por las mismas puertas que cualquier otra: el bloqueo por IP de
+        salida y el interruptor de fuentes con PII. Forzar a mano no saltea
+        ninguna de las dos.
+        """
+        _require_editing()
+        canal = repo.set_enabled(channel_id, True)
+        if canal is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No existe.")
+
+        # El spec sale de `resolve_enabled` y no a mano, para que el motivo de
+        # salteo por PII se respete y se vea en la telemetría.
+        spec_telegram = [
+            (spec, motivo)
+            for spec, motivo in resolve_enabled(
+                config, request.app.state.settings_store.pii_sources_enabled()
+            )
+            if spec.name == "telegram"
+        ]
+        if not spec_telegram:  # pragma: no cover — el feed está en el registro
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="El feed telegram no existe."
+            )
+
+        coordinador: RunCoordinator = request.app.state.runs
+        deps = FeedDeps(
+            channels=lambda: (canal.handle,),
+            channel_cursors=repo.cursors,
+        )
+        if not coordinador.trigger(spec_telegram, deps):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Ya hay una corrida en curso; esperá a que termine.",
+            )
+        return RunStateOut.model_validate(coordinador.state.as_dict())
 
     @app.delete(
         "/api/telegram/{channel_id}",

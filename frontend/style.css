@@ -1033,3 +1033,6 @@ body.is-blocked { overflow: hidden; }
 }
 
 .exp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Las acciones por canal en una fila, sin que la tabla se estire. */
+.tg-acciones { display: flex; gap: 6px; flex-wrap: wrap; }

@@ -154,8 +154,18 @@ class PipelineRunner:
         # qué dominios le toca consultar a Hudson Rock en esta corrida).
         self._feed_deps = feed_deps or FeedDeps()
 
-    def run(self, specs: Sequence[tuple[FeedSpec, str | None]] | None = None) -> RunReport:
-        """Corre todos los feeds habilitados."""
+    def run(
+        self,
+        specs: Sequence[tuple[FeedSpec, str | None]] | None = None,
+        deps: FeedDeps | None = None,
+    ) -> RunReport:
+        """Corre todos los feeds habilitados.
+
+        `specs` acota qué fuentes corren y `deps` con qué insumos —por ejemplo
+        un solo canal de Telegram—. Los dos son por invocación a propósito: el
+        coordinador corre en otro hilo y mutar la configuración compartida para
+        acotar una corrida se pisaría con la corrida diaria.
+        """
         pii_habilitado = (
             self._pii_sources_provider() if self._pii_sources_provider is not None else False
         )
@@ -193,7 +203,7 @@ class PipelineRunner:
             if motivo_salteo is not None:
                 resultado = self._skipped(spec, motivo_salteo)
             else:
-                resultado, guardados = self._run_one(spec)
+                resultado, guardados = self._run_one(spec, deps)
                 reporte.pii_stored += guardados
             reporte.results.append(resultado)
             self._repository.record_run(resultado)
@@ -525,8 +535,12 @@ class PipelineRunner:
             error=motivo,
         )
 
-    def _run_one(self, spec: FeedSpec) -> tuple[SourceRunResult, int]:
+    def _run_one(self, spec: FeedSpec, deps: FeedDeps | None = None) -> tuple[SourceRunResult, int]:
         """Corre un feed. Nunca propaga: el run completo no puede caerse acá.
+
+        `deps` permite acotar la corrida —por ejemplo a un solo canal de
+        Telegram— sin tocar la configuración compartida del runner, que corre
+        en otro hilo cuando la dispara el coordinador.
 
         Devuelve el resultado y cuántos registros con PII se cifraron.
         """
@@ -547,7 +561,7 @@ class PipelineRunner:
                 self._settings,
                 self.emit_event,
                 self._assert_egress_allowed,
-                self._feed_deps,
+                deps or self._feed_deps,
             )
             desde = self._repository.get_cursor(spec.name)
             # Sin cursor previo, esta corrida es la importación inicial de la

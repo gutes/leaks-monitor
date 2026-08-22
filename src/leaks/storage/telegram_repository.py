@@ -90,7 +90,12 @@ class TelegramChannelRepository:
     ) -> tuple[TelegramChannel, ...]:
         with session_scope(self._session_factory) as session:
             stmt = self._filtrar(select(TelegramChannelRow), enabled, origin, q)
-            stmt = stmt.order_by(TelegramChannelRow.enabled.desc(), TelegramChannelRow.handle)
+            # Orden ESTABLE, solo por handle. Antes iba `enabled DESC` primero
+            # y eso rompía la edición: al habilitar un canal saltaba al tope de
+            # la lista, otra fila ocupaba su lugar, y parecía que el clic lo
+            # había desactivado. El estado se acota con el filtro, que no mueve
+            # nada bajo el cursor.
+            stmt = stmt.order_by(TelegramChannelRow.handle)
             if limit is not None:
                 stmt = stmt.limit(limit).offset(offset)
             return tuple(_to_channel(f) for f in session.scalars(stmt).all())

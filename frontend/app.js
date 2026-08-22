@@ -1018,10 +1018,19 @@ function filaCanal(canal) {
     if (!r.ok) {
       input.checked = !input.checked;
       $("tg-error").textContent = r.error;
-    } else {
-      setStatus("Canal actualizado — aplica en la próxima corrida.", "run");
-      loadTelegram();
+      return;
     }
+    // NO se recarga la tabla: mover las filas bajo el cursor hacía parecer
+    // que el clic había desactivado el canal, cuando en realidad se había
+    // habilitado y la fila se había ido a otro lado.
+    canal.enabled = input.checked;
+    input.title = input.checked
+      ? "Habilitado: se consulta en cada corrida."
+      : "Deshabilitado: no se consulta.";
+    setStatus(
+      `${canal.handle} ${input.checked ? "habilitado" : "deshabilitado"} — aplica en la próxima corrida.`,
+      "run",
+    );
   });
   sw.append(input);
   estado.append(sw);
@@ -1058,7 +1067,31 @@ function filaCanal(canal) {
   }
   tr.append(cursor);
 
-  const acciones = el("td");
+  const acciones = el("td", "", "tg-acciones");
+
+  // Leer ahora: después de dar de alta un canal, lo que hace falta es saber si
+  // se puede leer y si trae algo — no descubrirlo mañana.
+  const leer = el("button", "Leer ahora", "btn btn-sm");
+  leer.type = "button";
+  leer.disabled = !state.editingAllowed;
+  leer.title = "Habilita el canal y lo consulta ya, sin esperar la corrida diaria.";
+  leer.addEventListener("click", async () => {
+    await conBotonOcupado(leer, "Leer ahora", async () => {
+      const r = await apiWrite(`/api/telegram/${canal.id}/fetch`, "POST", {});
+      if (!r.ok) {
+        $("tg-error").textContent = r.error;
+        return;
+      }
+      input.checked = true;
+      canal.enabled = true;
+      setStatus(`Leyendo ${canal.handle}… mirá la consola.`, "run");
+      // La corrida sigue en segundo plano; el resultado del canal aparece en
+      // su columna cuando termina.
+      watchRun();
+    });
+  });
+  acciones.append(leer);
+
   const borrar = el("button", "Quitar", "btn btn-sm");
   borrar.type = "button";
   borrar.disabled = !state.editingAllowed;
