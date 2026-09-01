@@ -91,6 +91,9 @@ class SourceRunOut(BaseModel):
     items_matched: int
     items_persisted: int
     error: str | None = None
+    #: Tramo que la fuente publicó y no llegamos a ver. Nulo = sin hueco.
+    gap_from: datetime | None = None
+    gap_to: datetime | None = None
 
 
 class SourceOut(BaseModel):

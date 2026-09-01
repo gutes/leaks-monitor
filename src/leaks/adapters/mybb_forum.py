@@ -44,7 +44,13 @@ logger = logging.getLogger(__name__)
 _ATOM = "{http://www.w3.org/2005/Atom}"
 
 #: Ruta de sindicación estándar de MyBB.
-SYNDICATION_PATH = "/syndication.php?type=atom1.0"
+#:
+#: `limit` es la diferencia entre ver el foro y perdérselo. Medido el
+#: 2026-09-01 contra darkforums: sin el parámetro son 15 threads y una ventana
+#: de 3,3 h; con `limit=50` son 50 threads y **20,6 h**, en el mismo request.
+#: MyBB topea en 50 —pedir 100 o 200 devuelve 50 igual—, así que 50 es el
+#: máximo de historia que la sindicación puede dar.
+SYNDICATION_PATH = "/syndication.php?type=atom1.0&limit=50"
 
 #: El autor viene envuelto en HTML (`<a href=...>usuario</a>`).
 _TAGS = re.compile(r"<[^>]+>")

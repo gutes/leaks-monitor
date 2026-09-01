@@ -83,6 +83,27 @@ class TestParseo:
             list(adapter.fetch(None))
 
 
+class TestVentanaDeSindicacion:
+    """Cuánta historia pide el adapter. Es lo que decide qué se pierde."""
+
+    def test_pide_el_maximo_que_mybb_entrega(self) -> None:
+        """Sin `limit` son 15 threads (3,3 h); con 50, 20,6 h — mismo request.
+
+        Medido el 2026-09-01 contra darkforums. MyBB topea en 50: pedir más
+        devuelve 50 igual. Bajar esto vuelve a abrir el agujero por el que se
+        perdieron threads enteros mientras el pipeline estaba caído.
+        """
+        assert "limit=50" in SYNDICATION_PATH
+
+    @respx.mock
+    def test_parsea_una_ventana_grande(self, client: FeedHttpClient) -> None:
+        respx.get(FEED_URL).mock(
+            return_value=httpx.Response(200, text=read_fixture("darkforums_atom.xml"))
+        )
+        adapter = MyBBForumAdapter(client, "darkforums", (BASE,))
+        assert len(list(adapter.fetch(None))) == 6
+
+
 class TestDominiosRotativos:
     """Estos foros cambian de dominio: hay que sobrevivirlo."""
 

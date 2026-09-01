@@ -80,6 +80,12 @@ class FeedSpec:
     high_pii_surface: bool = False
     #: Atributo de `Settings` con el User-Agent a usar para este feed.
     user_agent_setting: str = "http_user_agent"
+    #: El feed expone una ventana de tamaño fijo (los últimos N ítems) y no su
+    #: histórico. Habilita la detección de huecos: si lo más viejo que trajo
+    #: esta corrida es posterior al cursor, algo pasó por el medio sin que lo
+    #: viéramos. NO se activa en fuentes cuyo `fetch` ya filtra por cursor —ahí
+    #: lo más viejo siempre es posterior y el hueco sería un falso positivo.
+    bounded_window: bool = False
     #: Cada cuántos minutos se sondea la fuente, además de la corrida diaria.
     #: `None` = solo en la corrida diaria. Es para fuentes cuya ventana de
     #: publicación es más corta que un día: si el feed solo expone los últimos
@@ -165,6 +171,7 @@ FEED_REGISTRY: tuple[FeedSpec, ...] = (
         requires_pii=True,
         # No se persiste texto libre, y el título se redacta.
         high_pii_surface=True,
+        bounded_window=True,
         # Medido el 2026-09-01: los 15 threads del Atom cubrían 3,1 horas. Con
         # una sola corrida diaria se pierde la enorme mayoría de lo publicado.
         # Es un GET por sondeo, así que cerrar el agujero sale casi gratis.
@@ -180,6 +187,7 @@ FEED_REGISTRY: tuple[FeedSpec, ...] = (
         enabled_by_default=False,
         requires_pii=True,
         high_pii_surface=True,
+        bounded_window=True,
         disabled_reason=(
             "sin dominio operativo: los conocidos están incautados (verificado 2026-08-14). "
             "Configurar LEAKS_BREACHFORUMS_BASE_URLS cuando reaparezca."

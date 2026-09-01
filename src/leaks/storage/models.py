@@ -120,6 +120,9 @@ class SourceRunRow(Base):
     # Mensaje de error truncado: nunca se vuelca el body de la respuesta acá,
     # podría arrastrar PII o secretos a los logs.
     error: Mapped[str | None] = mapped_column(String(500))
+    # Tramo que la fuente publicó sin que lo viéramos. Nulo = sin hueco.
+    gap_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    gap_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (Index("ix_source_runs_source_started", "source", "started_at"),)
 

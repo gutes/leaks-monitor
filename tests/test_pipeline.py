@@ -12,6 +12,7 @@ Una por una, con un doble de feed en vez de la red:
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 from cryptography.fernet import Fernet
@@ -24,6 +25,7 @@ from leaks.pipeline.runner import PipelineRunner
 from leaks.relevance.watchlist import Watchlist
 from leaks.storage.crypto import PiiCipher
 from leaks.storage.pii_vault import PiiVault
+from leaks.storage.queries import FindingQueryService
 from leaks.storage.repository import SqlAlchemyFindingRepository
 
 
@@ -190,6 +192,106 @@ class TestCorridaAcotada:
     ) -> None:
         runner = PipelineRunner(repository=repository, watchlist=watchlist, settings=settings)
         assert runner.run(only=["no-existe"]).results == []
+
+
+class TestHuecoDeCobertura:
+    """La ventana de un foro es finita: lo que se cae de ella hay que declararlo."""
+
+    def _spec_acotada(self, adapter: FakeAdapter) -> FeedSpec:
+        base = spec_for(adapter)
+        return replace(base, bounded_window=True)
+
+    def test_declara_el_hueco_cuando_la_ventana_se_corrio(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+    ) -> None:
+        """El caso real: el pipeline estuvo caído y el foro siguió publicando."""
+        cursor = datetime(2026, 8, 25, 18, 0, tzinfo=UTC)
+        repository.set_cursor("fake-feed", cursor)
+        # Lo más viejo que sigue en la ventana es de una semana después.
+        reciente = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
+        adapter = FakeAdapter([payload_ar(discovered=reciente)])
+
+        runner = PipelineRunner(repository=repository, watchlist=watchlist, settings=settings)
+        reporte = runner.run([(self._spec_acotada(adapter), None)])
+
+        (resultado,) = reporte.results
+        assert resultado.has_gap
+        assert resultado.gap_from == cursor
+        assert resultado.gap_to == reciente
+
+    def test_sin_hueco_cuando_la_ventana_solapa(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+    ) -> None:
+        """Si la ventana todavía alcanza el cursor, no se perdió nada."""
+        cursor = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
+        repository.set_cursor("fake-feed", cursor)
+        adapter = FakeAdapter(
+            [
+                payload_ar(discovered=datetime(2026, 9, 1, 10, 0, tzinfo=UTC)),
+                payload_ar(domain="y.gob.ar", discovered=datetime(2026, 9, 1, 14, 0, tzinfo=UTC)),
+            ]
+        )
+
+        runner = PipelineRunner(repository=repository, watchlist=watchlist, settings=settings)
+        reporte = runner.run([(self._spec_acotada(adapter), None)])
+
+        assert not reporte.results[0].has_gap
+
+    def test_la_primera_corrida_no_es_un_hueco(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+    ) -> None:
+        """Sin cursor previo no hay nada que comparar: es la importación inicial."""
+        adapter = FakeAdapter([payload_ar(discovered=datetime(2026, 9, 1, 12, 0, tzinfo=UTC))])
+
+        runner = PipelineRunner(repository=repository, watchlist=watchlist, settings=settings)
+        reporte = runner.run([(self._spec_acotada(adapter), None)])
+
+        assert not reporte.results[0].has_gap
+
+    def test_una_fuente_de_ventana_abierta_nunca_reporta_hueco(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+    ) -> None:
+        """En un feed que ya filtra por cursor, el hueco sería un falso positivo
+        en cada corrida: lo más viejo siempre es posterior por construcción."""
+        repository.set_cursor("fake-feed", datetime(2026, 8, 25, 18, 0, tzinfo=UTC))
+        adapter = FakeAdapter([payload_ar(discovered=datetime(2026, 9, 1, 12, 0, tzinfo=UTC))])
+
+        runner = PipelineRunner(repository=repository, watchlist=watchlist, settings=settings)
+        # `spec_for` deja `bounded_window=False`, que es el default.
+        reporte = runner.run([(spec_for(adapter), None)])
+
+        assert not reporte.results[0].has_gap
+
+    def test_el_hueco_queda_en_la_telemetria(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+    ) -> None:
+        """Tiene que sobrevivir a la corrida: es lo que lee la pantalla Fuentes."""
+        cursor = datetime(2026, 8, 25, 18, 0, tzinfo=UTC)
+        repository.set_cursor("fake-feed", cursor)
+        adapter = FakeAdapter([payload_ar(discovered=datetime(2026, 9, 1, 12, 0, tzinfo=UTC))])
+
+        runner = PipelineRunner(repository=repository, watchlist=watchlist, settings=settings)
+        runner.run([(self._spec_acotada(adapter), None)])
+
+        queries = FindingQueryService(repository._session_factory)
+        (fila,) = queries.latest_runs()
+        assert fila["gap_from"] == cursor
+        assert fila["gap_to"] is not None
 
 
 class TestIdempotencia:

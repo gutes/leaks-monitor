@@ -560,6 +560,9 @@ class PipelineRunner:
         persisted = 0
         error: str | None = None
         cursor_nuevo: datetime | None = None
+        mas_viejo: datetime | None = None
+        gap_from: datetime | None = None
+        gap_to: datetime | None = None
         pii_guardados = 0
 
         self._emit(EventKind.SOURCE_START, "Consultando la fuente…", source=spec.name)
@@ -589,6 +592,11 @@ class PipelineRunner:
                 item = adapter.normalize(crudo)
                 if item is None:
                     continue
+
+                # Lo más viejo de la ventana, ANTES del filtro incremental: es
+                # lo que dice hasta dónde llegaba la vista de la fuente.
+                if mas_viejo is None or item.discovered_at < mas_viejo:
+                    mas_viejo = item.discovered_at
 
                 # Incremental: el feed no filtra por fecha, filtramos acá.
                 if desde is not None and item.discovered_at <= desde:
@@ -624,6 +632,24 @@ class PipelineRunner:
             fallos = getattr(adapter, "errores", None)
             if fallos and self._channel_error_sink is not None:
                 self._channel_error_sink(dict(fallos))
+
+            gap_from, gap_to = self._detectar_hueco(spec, desde, mas_viejo)
+            if gap_from is not None and gap_to is not None:
+                horas = (gap_to - gap_from).total_seconds() / 3600
+                logger.warning(
+                    "feed %s: hueco de cobertura de %.1f h (%s → %s)",
+                    spec.name,
+                    horas,
+                    gap_from.isoformat(),
+                    gap_to.isoformat(),
+                )
+                self._emit(
+                    EventKind.SOURCE_GAP,
+                    f"Hueco de cobertura de {horas:.1f} h: la fuente publicó entre "
+                    f"{gap_from:%Y-%m-%d %H:%M} y {gap_to:%Y-%m-%d %H:%M} y no lo vimos.",
+                    level=EventLevel.WARN,
+                    source=spec.name,
+                )
 
             estado = SourceRunStatus.OK
             logger.info(
@@ -678,9 +704,33 @@ class PipelineRunner:
                 items_matched=matched,
                 items_persisted=persisted,
                 error=error,
+                gap_from=gap_from,
+                gap_to=gap_to,
             ),
             pii_guardados,
         )
+
+    @staticmethod
+    def _detectar_hueco(
+        spec: FeedSpec, desde: datetime | None, mas_viejo: datetime | None
+    ) -> tuple[datetime | None, datetime | None]:
+        """Tramo que la fuente publicó y que no llegamos a ver.
+
+        La sindicación de un foro es una ventana de los últimos N ítems. Si lo
+        más viejo que trajo esta corrida es **posterior** al cursor, entre el
+        cursor y ese ítem hubo publicaciones que ya se cayeron de la ventana:
+        se perdieron. Registrarlo no las recupera, pero convierte una pérdida
+        invisible —que se lee como "no hubo novedades"— en una conocida.
+
+        Solo aplica a fuentes de ventana acotada. En un feed cuyo `fetch` ya
+        filtra por cursor, lo más viejo siempre es posterior por construcción y
+        el hueco sería un falso positivo en cada corrida.
+        """
+        if not spec.bounded_window or desde is None or mas_viejo is None:
+            return None, None
+        if mas_viejo <= desde:
+            return None, None
+        return desde, mas_viejo
 
     def _store_pii(self, spec: FeedSpec, crudos: Sequence[tuple[str, dict[str, Any]]]) -> int:
         """Manda los payloads crudos al vault cifrado. Fail-closed.

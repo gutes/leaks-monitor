@@ -163,6 +163,7 @@ class EventKind(StrEnum):
     SOURCE_DONE = "source_done"
     SOURCE_FAILED = "source_failed"
     SOURCE_SKIPPED = "source_skipped"
+    SOURCE_GAP = "source_gap"
     HTTP_REQUEST = "http_request"
     HTTP_RETRY = "http_retry"
     RETENTION = "retention"
@@ -223,3 +224,13 @@ class SourceRunResult(BaseModel):
     items_matched: int = 0
     items_persisted: int = 0
     error: str | None = None
+    #: Tramo que la fuente publicó y nosotros no llegamos a ver: va del cursor
+    #: anterior a lo más viejo que trajo esta corrida. Se registra en vez de
+    #: perderse en silencio — una pérdida conocida y fechada se puede auditar;
+    #: una invisible parece "no hubo novedades".
+    gap_from: datetime | None = None
+    gap_to: datetime | None = None
+
+    @property
+    def has_gap(self) -> bool:
+        return self.gap_from is not None and self.gap_to is not None

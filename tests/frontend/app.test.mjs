@@ -660,6 +660,71 @@ test("con canales configurados el panel informa el estado real", async () => {
   assert.match(textoDe(el("alerts-resumen")), /Última:/);
 });
 
+test("un hueco de cobertura se muestra aunque la corrida haya andado", async () => {
+  // El caso que esto existe para evitar: la fuente responde OK, no trae nada
+  // nuevo, y la pérdida se lee igual que "no hubo novedades".
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/fuentes",
+    respuestas: {
+      ...RESPUESTAS_BASE,
+      "/api/sources": [
+        {
+          name: "darkforums",
+          enabled: true,
+          requires_pii: true,
+          last_run: {
+            source: "darkforums",
+            status: "ok",
+            started_at: "2026-09-01T15:26:53Z",
+            finished_at: "2026-09-01T15:26:57Z",
+            items_fetched: 50,
+            items_matched: 0,
+            items_persisted: 0,
+            error: null,
+            gap_from: "2026-08-25T18:03:00Z",
+            gap_to: "2026-09-01T12:00:00Z",
+          },
+        },
+      ],
+    },
+  });
+
+  const texto = textoDe(el("sources"));
+  assert.match(texto, /Hueco de cobertura/);
+  assert.match(texto, /161\.9 h/, "dice cuánto tiempo estuvo sin ver");
+});
+
+test("sin hueco no se muestra el aviso", async () => {
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/fuentes",
+    respuestas: {
+      ...RESPUESTAS_BASE,
+      "/api/sources": [
+        {
+          name: "ransomware.live",
+          enabled: true,
+          last_run: {
+            source: "ransomware.live",
+            status: "ok",
+            started_at: "2026-09-01T15:26:42Z",
+            finished_at: "2026-09-01T15:26:47Z",
+            items_fetched: 293,
+            items_matched: 0,
+            items_persisted: 0,
+            error: null,
+            gap_from: null,
+            gap_to: null,
+          },
+        },
+      ],
+    },
+  });
+
+  assert.doesNotMatch(textoDe(el("sources")), /Hueco de cobertura/);
+});
+
 test("ningún resaltado de fila usa un color fijo", async () => {
   // Hubo dos: `#eef4ff` en la fila seleccionada y `#fdf0ef` en la fila crítica.
   // En tema oscuro pintaban la fila casi blanca con el texto claro encima, o

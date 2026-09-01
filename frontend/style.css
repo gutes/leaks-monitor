@@ -104,6 +104,7 @@ main { max-width: 1280px; margin: 0 auto; padding: 20px 24px 48px; }
 .panel h2 { margin: 0 0 4px; font-size: 15px; }
 .hint { color: var(--muted); font-size: 12.5px; margin: 2px 0; }
 .error { color: var(--error); font-size: 12.5px; margin: 4px 0; word-break: break-word; }
+.warn { color: var(--warn); font-size: 12.5px; margin: 4px 0; word-break: break-word; }
 .empty { color: var(--muted); text-align: center; padding: 24px; }
 
 /* ------------------------------------------------------ Salud de fuentes */

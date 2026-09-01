@@ -267,6 +267,18 @@ async function loadSources() {
         el("div", `Última corrida: ${fmtDate(run.started_at)}`, "hint"),
       );
       if (run.error) card.append(el("div", run.error, "error"));
+      // Un hueco no es un error: la corrida anduvo. Es cobertura perdida, y
+      // se muestra porque si no se lee igual que "no hubo novedades".
+      if (run.gap_from && run.gap_to) {
+        const horas = (new Date(run.gap_to) - new Date(run.gap_from)) / 36e5;
+        card.append(
+          el(
+            "div",
+            `Hueco de cobertura: ${horas.toFixed(1)} h sin ver (${fmtDate(run.gap_from)} → ${fmtDate(run.gap_to)})`,
+            "warn",
+          ),
+        );
+      }
     } else if (s.skip_reason) {
       card.append(el("div", s.skip_reason, "hint"));
     }

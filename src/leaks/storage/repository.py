@@ -252,6 +252,8 @@ class SqlAlchemyFindingRepository:
                     items_persisted=result.items_persisted,
                     # Truncado: el error nunca debe arrastrar un body completo.
                     error=result.error[:500] if result.error else None,
+                    gap_from=result.gap_from,
+                    gap_to=result.gap_to,
                 )
             )
 
