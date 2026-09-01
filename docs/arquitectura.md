@@ -107,6 +107,27 @@ Dos decisiones que sostienen esto:
   diaria. Si `only` armara su propia selección, sondear sería la forma de
   correr una fuente `requires_pii` con la PII deshabilitada.
 
+### Vigilar el propio monitoreo
+
+Un monitoreo que se cae en silencio es peor que no tenerlo: da la tranquilidad
+de estar mirando. Pasó: el pipeline estuvo seis días parado y la pantalla
+Fuentes mostraba todo en verde, porque la última corrida —de la semana
+anterior— había andado.
+
+Dos mecanismos distintos, para dos pérdidas distintas:
+
+* **Hueco de cobertura** (`source_runs.gap_from/gap_to`). La fuente publicó y
+  su ventana ya rotó: lo que pasó por el medio se perdió. Se detecta comparando
+  lo más viejo de la corrida contra el cursor, y solo en fuentes que declaran
+  `bounded_window`.
+* **Watchdog** (`pipeline/watchdog.py`). La fuente no da señales: se mide
+  contra su última corrida **exitosa**, no contra la última corrida a secas —si
+  no, una que falla cada hora quedaría en verde para siempre. Umbral en
+  `LEAKS_WATCHDOG_MAX_SILENCE_HOURS` (26 h por defecto).
+
+Las fuentes salteadas a propósito no entran al watchdog: apagada no es lo mismo
+que caída, y avisar de eso es el ruido que enseña a ignorar los avisos.
+
 ### Zona horaria
 
 Naive vs aware se decide **en el borde**: `adapters/parsing.py` convierte todo a

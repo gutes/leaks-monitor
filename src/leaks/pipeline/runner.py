@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from leaks.adapters.registry import FeedDeps, FeedSpec, build_adapter, resolve_enabled
@@ -37,6 +37,7 @@ from leaks.domain.ports import EventSink, FindingRepository
 from leaks.extraction.dating import resolve
 from leaks.extraction.downloads import extract_download_links
 from leaks.pipeline.egress_guard import EgressBlockedError, EgressDecision, EgressGuard
+from leaks.pipeline.watchdog import build_notice, stale_sources
 from leaks.privacy.scrub import redact_pii, scrub_free_text
 from leaks.relevance.rules import evaluate
 from leaks.relevance.severity import derive_severity
@@ -69,6 +70,9 @@ class RunReport:
     sites_new: int = 0
     #: Víctimas regionales nuevas de la sección de adyacencia.
     adjacency_new: int = 0
+    #: Fuentes que hace demasiado que no dan una corrida buena. Vacío es lo
+    #: normal; con contenido, el monitoreo tiene un agujero.
+    stale_sources: tuple[str, ...] = ()
 
     @property
     def blocked(self) -> bool:
@@ -239,6 +243,10 @@ class PipelineRunner:
         # Alertas antes de la retención: avisar es lo urgente.
         reporte.alerts_sent = self._dispatch_alerts()
 
+        # Y avisar también de lo que NO llegó: una fuente callada se lee igual
+        # que una fuente sin novedades, y son cosas muy distintas.
+        reporte.stale_sources = self._check_watchdog(seleccion)
+
         # La retención se aplica en cada corrida: una política que nadie
         # ejecuta no es una política.
         if self._pii_vault is not None:
@@ -261,6 +269,46 @@ class PipelineRunner:
             duration_ms=int(duracion * 1000),
         )
         return reporte
+
+    # -- Vigilancia del propio monitoreo -----------------------------------------
+
+    def _check_watchdog(self, seleccion: Sequence[tuple[FeedSpec, str | None]]) -> tuple[str, ...]:
+        """Avisa qué fuentes se quedaron calladas. Nunca lanza.
+
+        Se evalúa sobre las fuentes que **debían** correr en esta corrida: una
+        salteada a propósito —PII deshabilitada, sin dominio— no está callada,
+        está apagada, y avisar de eso sería ruido que enseña a ignorar avisos.
+        """
+        horas = self._settings.watchdog_max_silence_hours
+        if not horas:
+            return ()
+
+        activas = [spec.name for spec, motivo in seleccion if motivo is None]
+        if not activas:
+            return ()
+
+        try:
+            ultimos = self._repository.last_ok_runs(activas)
+        except Exception as exc:  # pragma: no cover — defensivo
+            logger.warning("El watchdog no pudo consultar la telemetría: %s", type(exc).__name__)
+            return ()
+
+        margen = timedelta(hours=horas)
+        vencidas = stale_sources(ultimos, now=datetime.now(UTC), max_silence=margen)
+        if not vencidas:
+            return ()
+
+        for v in vencidas:
+            logger.warning("watchdog: %s", v.describe())
+        self._emit(
+            EventKind.SOURCE_GAP,
+            f"Fuentes calladas hace más de {horas} h: " + ", ".join(v.source for v in vencidas[:5]),
+            level=EventLevel.WARN,
+        )
+        if self._alerts is not None and self._alerts.enabled:
+            self._alerts.dispatch_notice(build_notice(vencidas, margen))
+
+        return tuple(v.source for v in vencidas)
 
     # -- Adyacencia regional -----------------------------------------------------
 

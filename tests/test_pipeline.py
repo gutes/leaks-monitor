@@ -20,7 +20,13 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from leaks.adapters.registry import FeedSpec
 from leaks.config import Settings
-from leaks.domain.models import LeakType, NormalizedItem, RawItem, SourceRunStatus
+from leaks.domain.models import (
+    LeakType,
+    NormalizedItem,
+    RawItem,
+    SourceRunResult,
+    SourceRunStatus,
+)
 from leaks.pipeline.runner import PipelineRunner
 from leaks.relevance.watchlist import Watchlist
 from leaks.storage.crypto import PiiCipher
@@ -292,6 +298,83 @@ class TestHuecoDeCobertura:
         (fila,) = queries.latest_runs()
         assert fila["gap_from"] == cursor
         assert fila["gap_to"] is not None
+
+
+class TestWatchdogEnLaCorrida:
+    """Avisar de lo que NO llegó, no solo de lo que llegó."""
+
+    def _runner(self, repository, watchlist, settings, alerts=None):  # type: ignore[no-untyped-def]
+        return PipelineRunner(
+            repository=repository,
+            watchlist=watchlist,
+            settings=settings,
+            alert_dispatcher=alerts,
+        )
+
+    def test_reporta_la_fuente_que_lleva_dias_callada(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+    ) -> None:
+        # Una corrida buena vieja: el tablero la mostraría en verde.
+        vieja = datetime(2026, 8, 25, 18, 0, tzinfo=UTC)
+        repository.record_run(
+            SourceRunResult(
+                source="fake-feed",
+                status=SourceRunStatus.OK,
+                started_at=vieja,
+                finished_at=vieja,
+            )
+        )
+        adapter = FakeAdapter([], explota=True)
+        runner = self._runner(repository, watchlist, settings)
+
+        reporte = runner.run([(spec_for(adapter), None)])
+
+        assert reporte.stale_sources == ("fake-feed",)
+
+    def test_una_fuente_apagada_no_esta_callada(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+    ) -> None:
+        """Apagada a propósito no es lo mismo que caída.
+
+        Avisar de una fuente que alguien deshabilitó es el ruido que enseña a
+        ignorar los avisos, que es exactamente lo que no puede pasar acá.
+        """
+        adapter = FakeAdapter([])
+        runner = self._runner(repository, watchlist, settings)
+
+        reporte = runner.run([(spec_for(adapter), "requiere habilitar las fuentes con PII")])
+
+        assert reporte.stale_sources == ()
+
+    def test_con_el_umbral_en_cero_no_vigila(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+    ) -> None:
+        apagado = settings.model_copy(update={"watchdog_max_silence_hours": 0})
+        adapter = FakeAdapter([], explota=True)
+        runner = self._runner(repository, watchlist, apagado)
+
+        assert runner.run([(spec_for(adapter), None)]).stale_sources == ()
+
+    def test_una_corrida_buena_recien_hecha_lo_apaga(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+    ) -> None:
+        """La corrida en curso cuenta: si anduvo recién, no está callada."""
+        adapter = FakeAdapter([payload_ar()])
+        runner = self._runner(repository, watchlist, settings)
+
+        assert runner.run([(spec_for(adapter), None)]).stale_sources == ()
 
 
 class TestIdempotencia:

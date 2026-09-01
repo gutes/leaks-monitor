@@ -20,6 +20,7 @@ from leaks.domain.models import (
     LeakType,
     Severity,
     SourceRunResult,
+    SourceRunStatus,
 )
 from leaks.extraction.dating import DateBasis
 from leaks.extraction.downloads import DownloadLink
@@ -256,6 +257,27 @@ class SqlAlchemyFindingRepository:
                     gap_to=result.gap_to,
                 )
             )
+
+    def last_ok_runs(self, sources: Sequence[str]) -> dict[str, datetime | None]:
+        """Última corrida **exitosa** de cada fuente pedida.
+
+        Devuelve una entrada por fuente pedida, con `None` si nunca tuvo una:
+        una fuente habilitada que jamás anduvo es justamente lo que hay que
+        poder avisar, y si no apareciera en el mapa quedaría invisible.
+        """
+        if not sources:
+            return {}
+        with session_scope(self._session_factory) as session:
+            filas = session.execute(
+                select(SourceRunRow.source, func.max(SourceRunRow.started_at))
+                .where(
+                    SourceRunRow.source.in_(list(sources)),
+                    SourceRunRow.status == str(SourceRunStatus.OK),
+                )
+                .group_by(SourceRunRow.source)
+            ).all()
+            vistos = {nombre: _as_utc(cuando) for nombre, cuando in filas if cuando}
+            return {s: vistos.get(s) for s in sources}
 
     # -- Cursor incremental --------------------------------------------------
 

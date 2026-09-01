@@ -92,6 +92,15 @@ class FindingRepository(Protocol):
         """
         ...
 
+    def last_ok_runs(self, sources: Sequence[str]) -> dict[str, datetime | None]:
+        """Última corrida **exitosa** de cada fuente pedida.
+
+        `None` para la que nunca tuvo una. Es lo que alimenta el watchdog: se
+        mide contra el último éxito y no contra la última corrida, porque una
+        fuente que falla cada hora quedaría en verde para siempre.
+        """
+        ...
+
     def get_cursor(self, source: str) -> datetime | None:
         """Marca incremental: hasta dónde llegó la última corrida de esa fuente."""
         ...

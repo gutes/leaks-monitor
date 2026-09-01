@@ -104,6 +104,10 @@ class Settings(BaseSettings):
     #: cuando una fuente importa su histórico: son cosas que recién conocemos,
     #: no cosas que recién pasaron.
     alert_max_age_days: int = Field(default=30, ge=1)
+    #: Horas sin una corrida exitosa antes de avisar que una fuente se calló.
+    #: 26 y no 24: una corrida diaria que sale un rato tarde no es una falla.
+    #: 0 apaga el watchdog.
+    watchdog_max_silence_hours: int = Field(default=26, ge=0)
 
     #: Ensayo: se arma el aviso y se registra qué se habría mandado, pero NO
     #: sale nada ni se marca nada como avisado.
