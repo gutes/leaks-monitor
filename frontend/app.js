@@ -237,6 +237,99 @@ async function loadAlerts() {
   }
 }
 
+/**
+ * Botón para barrer los subforos de un foro MyBB.
+ *
+ * Vive en la tarjeta del foro porque es donde se mira cuando el foro cambió:
+ * si se mudó de dominio o reorganizó sus secciones, los ids viejos dejan de
+ * servir y hay que volver a buscarlos.
+ *
+ * NO aplica nada: muestra lo que encontró y la línea para el `.env`.
+ * Incorporar un subforo sigue siendo un acto explícito del investigador.
+ */
+function botonDescubrirSubforos(feed) {
+  const caja = el("div", "", "subforos");
+  const boton = el("button", "Buscar subforos", "btn");
+  boton.type = "button";
+  const salida = el("div", "", "subforos-salida");
+
+  boton.addEventListener("click", async () => {
+    boton.disabled = true;
+    boton.textContent = "Buscando…";
+    salida.replaceChildren(el("div", "Barriendo ids sobre la sindicación abierta…", "hint"));
+
+    const r = await apiWrite(`/api/subforums/discover?feed=${encodeURIComponent(feed)}`, "POST");
+    if (!r.ok) {
+      salida.replaceChildren(el("div", r.error, "error"));
+      boton.disabled = false;
+      boton.textContent = "Buscar subforos";
+      return;
+    }
+
+    // El barrido son decenas de requests autolimitados: se sondea el estado
+    // en vez de dejar la petición colgada.
+    const esperar = async () => {
+      const estado = await api("/api/subforums/discover");
+      if (estado && estado.running) {
+        setTimeout(esperar, 1500);
+        return;
+      }
+      boton.disabled = false;
+      boton.textContent = "Buscar subforos";
+      pintarSubforos(salida, estado);
+    };
+    setTimeout(esperar, 1500);
+  });
+
+  caja.append(boton, salida);
+  return caja;
+}
+
+function pintarSubforos(cont, estado) {
+  cont.replaceChildren();
+  if (!estado || estado.last_error) {
+    cont.append(el("div", (estado && estado.last_error) || "No se pudo barrer.", "error"));
+    return;
+  }
+  const encontrados = estado.found || [];
+  if (!encontrados.length) {
+    cont.append(el("div", `Sin subforos con contenido en ${estado.scanned} ids.`, "hint"));
+    return;
+  }
+
+  cont.append(
+    el("div", `${encontrados.length} subforos con contenido de ${estado.scanned} ids probados:`, "hint"),
+  );
+  for (const p of encontrados) {
+    const dias = p.window_days == null ? "sin fecha" : `${p.window_days.toFixed(0)} días`;
+    const fila = el("div", "", "subforo-fila");
+    fila.append(
+      el("span", `fid=${p.fid}`, "pill pill-low"),
+      el("span", ` ${p.threads} threads · ventana ${dias}`, "hint"),
+    );
+    if (p.sample_title) fila.append(el("div", p.sample_title, "hint subforo-ej"));
+    cont.append(fila);
+  }
+
+  if (estado.env_line) {
+    cont.append(el("div", "Para sumarlos, pegá esto en el .env y recreá los contenedores:", "hint"));
+    const linea = el("code", estado.env_line, "subforo-env");
+    cont.append(linea);
+    const copiar = el("button", "Copiar", "btn");
+    copiar.type = "button";
+    copiar.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(estado.env_line);
+        copiar.textContent = "Copiado";
+        setTimeout(() => (copiar.textContent = "Copiar"), 1500);
+      } catch {
+        copiar.textContent = "Copiá a mano";
+      }
+    });
+    cont.append(copiar);
+  }
+}
+
 async function loadSources() {
   const sources = await api("/api/sources");
 
@@ -286,6 +379,9 @@ async function loadSources() {
           ),
         );
       }
+      // Solo en los foros: son los únicos con subforos que sumen ventana, y
+      // es acá donde ya se ve si el foro se cayó o se mudó.
+      if (s.tags && s.tags.includes("foro")) card.append(botonDescubrirSubforos(s.name));
     } else if (s.skip_reason) {
       card.append(el("div", s.skip_reason, "hint"));
     }

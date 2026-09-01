@@ -18,15 +18,18 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import time
 from collections.abc import Sequence
 from pathlib import Path
 
+from leaks.adapters.fid_discovery import DEFAULT_FIRST_FID, DEFAULT_LAST_FID
 from leaks.adapters.registry import FEED_REGISTRY, resolve_enabled
 from leaks.bootstrap import build_application, configure_logging
 from leaks.bundle import BundleError
 from leaks.bundle import exportar as exportar_bundle
 from leaks.bundle import importar as importar_bundle
 from leaks.config import get_settings
+from leaks.pipeline.discovery_coordinator import DiscoveryCoordinator
 from leaks.pipeline.runner import RunReport
 from leaks.pipeline.scheduler import run_forever
 from leaks.telegram.importer import parsear as parsear_canales
@@ -46,6 +49,14 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("schedule", help="Corre el pipeline todos los días a la hora configurada.")
     sub.add_parser("feeds", help="Lista los feeds registrados y si corren.")
     sub.add_parser("purge-pii", help="Borra los registros con PII vencidos.")
+
+    descubrir = sub.add_parser(
+        "discover-fids",
+        help="Busca subforos de un foro MyBB para sumar ventana de cobertura.",
+    )
+    descubrir.add_argument("--feed", default="darkforums", help="Foro a barrer.")
+    descubrir.add_argument("--from", dest="desde", type=int, default=DEFAULT_FIRST_FID)
+    descubrir.add_argument("--to", dest="hasta", type=int, default=DEFAULT_LAST_FID)
     sub.add_parser(
         "sync-watchlist",
         help="Importa a la base las entradas nuevas del YAML semilla (no borra ni pisa).",
@@ -286,6 +297,31 @@ def main(argv: Sequence[str] | None = None) -> int:
         # run fue un fracaso aunque no haya excepción, y el cron tiene que
         # enterarse.
         return 0 if reporte.ok else 1
+
+    if args.command == "discover-fids":
+        coordinador = DiscoveryCoordinator(settings)
+        print(f"Barriendo subforos de {args.feed} (fids {args.desde}..{args.hasta})…")
+        coordinador.trigger(args.feed, args.desde, args.hasta)
+        while coordinador.state.running:
+            time.sleep(0.5)
+        resultado = coordinador.state
+        if resultado.last_error:
+            print(f"Falló: {resultado.last_error}")
+            return 1
+        if not resultado.probes:
+            print("Ningún subforo con contenido en ese rango.")
+            return 0
+
+        print(f"\n{'FID':<6} {'THREADS':>7}  {'VENTANA':>12}  EJEMPLO")
+        for p in resultado.probes:
+            dias = f"{p.window_days:.1f} días" if p.window_days is not None else "sin fecha"
+            print(f"{p.fid:<6} {p.threads:>7}  {dias:>12}  {p.sample_title or ''}")
+        print(
+            "\nPara sumarlos, pegá esta línea en el .env y recreá los contenedores.\n"
+            "Revisá antes cuáles te sirven: cada uno es un request más por sondeo.\n"
+        )
+        print(resultado.env_line)
+        return 0
 
     if args.command == "schedule":
         app.create_schema()

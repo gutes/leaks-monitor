@@ -7,6 +7,7 @@ globales y sin tocar la base real.
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -348,6 +349,48 @@ class TestHealth:
         assert datos["status"] == "ok"
         assert datos["store_pii"] is False
         assert datos["findings"] == 3
+
+
+class TestDescubrimientoDeSubforos:
+    """El botón de la UI. No aplica nada por su cuenta."""
+
+    def test_el_estado_arranca_vacio(self, client: TestClient) -> None:
+        datos = client.get("/api/subforums/discover").json()
+
+        assert datos["running"] is False
+        assert datos["found"] == []
+
+    def test_un_feed_inexistente_queda_registrado_como_error(self, client: TestClient) -> None:
+        """No revienta la API: el barrido corre aparte y el fallo queda visible."""
+        respuesta = client.post("/api/subforums/discover", params={"feed": "no-existe"})
+        assert respuesta.status_code == 202
+
+        for _ in range(100):
+            estado = client.get("/api/subforums/discover").json()
+            if not estado["running"]:
+                break
+            time.sleep(0.05)
+
+        assert estado["running"] is False
+        assert "no existe" in (estado["last_error"] or "")
+
+    def test_no_devuelve_contenido_de_los_threads(self, client: TestClient) -> None:
+        """Es una herramienta de descubrimiento, no un colector.
+
+        El esquema expone conteo, ventana y un título de muestra redactado —
+        nunca el cuerpo del post, que es donde viven las muestras de datos.
+        """
+        esquema = client.get("/api/openapi.json").json()["components"]["schemas"]
+        campos = set(esquema["SubforumProbeOut"]["properties"])
+
+        assert campos == {
+            "fid",
+            "threads",
+            "window_from",
+            "window_to",
+            "window_days",
+            "sample_title",
+        }
 
 
 class TestSoloLectura:

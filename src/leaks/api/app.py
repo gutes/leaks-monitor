@@ -26,6 +26,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from leaks.adapters.egress import EgressResolver
+from leaks.adapters.fid_discovery import DEFAULT_FIRST_FID, DEFAULT_LAST_FID
 from leaks.adapters.http import build_client
 from leaks.adapters.registry import FEED_REGISTRY, FeedDeps, resolve_enabled
 from leaks.adjacency.countries import COUNTRY_CODES
@@ -37,6 +38,7 @@ from leaks.api.schemas import (
     AlertFeedOut,
     AlertItemOut,
     AlertStatusOut,
+    DiscoveryStateOut,
     EgressOut,
     EnabledIn,
     EventOut,
@@ -75,6 +77,7 @@ from leaks.export.coverage import relacionar
 from leaks.export.report import render_report, report_filename
 from leaks.export.watchlist_report import render_watchlist_report, watchlist_filename
 from leaks.pipeline.coordinator import RunCoordinator
+from leaks.pipeline.discovery_coordinator import DiscoveryCoordinator
 from leaks.pipeline.egress_guard import EgressGuard
 from leaks.storage.adjacency_repository import AdjacencyRepository
 from leaks.storage.queries import FindingFilters, FindingQueryService
@@ -237,6 +240,7 @@ def create_app(
     # Coordinador de corridas manuales. Comparte la configuración del proceso,
     # así que el control de IP de salida se le aplica igual que al scheduler.
     app.state.runs = RunCoordinator(build_application(config).runner)
+    app.state.discovery = DiscoveryCoordinator(config)
 
     # Resolver de IP de salida: vive en el estado de la app para que el cache
     # sobreviva entre requests.
@@ -867,6 +871,40 @@ def create_app(
         """Estado de la corrida manual: si está corriendo y cómo terminó."""
         coordinador: RunCoordinator = request.app.state.runs
         return RunStateOut.model_validate(coordinador.state.as_dict())
+
+    # -- Descubrimiento de subforos -------------------------------------------
+
+    @app.post("/api/subforums/discover", response_model=DiscoveryStateOut, tags=["sources"])
+    def trigger_discovery(
+        request: Request,
+        response: Response,
+        feed: str = "darkforums",
+        first: int = DEFAULT_FIRST_FID,
+        last: int = DEFAULT_LAST_FID,
+    ) -> DiscoveryStateOut:
+        """Busca subforos del foro para sumar ventana de cobertura.
+
+        Son decenas de requests autolimitados, así que vuelve enseguida y el
+        barrido sigue en segundo plano. No aplica nada por su cuenta: devuelve
+        la línea del `.env` para que incorporar un subforo siga siendo un acto
+        explícito del investigador.
+
+        El control de IP de salida se aplica igual: lo hace el cliente HTTP,
+        construido con el mismo enganche que el resto del pipeline.
+        """
+        coordinador: DiscoveryCoordinator = request.app.state.discovery
+        if not coordinador.trigger(feed, first, last):
+            response.status_code = status.HTTP_409_CONFLICT
+            return DiscoveryStateOut.model_validate(coordinador.state.as_dict())
+
+        response.status_code = status.HTTP_202_ACCEPTED
+        return DiscoveryStateOut.model_validate(coordinador.state.as_dict())
+
+    @app.get("/api/subforums/discover", response_model=DiscoveryStateOut, tags=["sources"])
+    def discovery_state(request: Request) -> DiscoveryStateOut:
+        """Estado del último barrido: si sigue corriendo y qué encontró."""
+        coordinador: DiscoveryCoordinator = request.app.state.discovery
+        return DiscoveryStateOut.model_validate(coordinador.state.as_dict())
 
     # -- IP de salida ---------------------------------------------------------
 

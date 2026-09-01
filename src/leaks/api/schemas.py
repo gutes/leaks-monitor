@@ -503,6 +503,32 @@ class RulesOut(BaseModel):
     editing_allowed: bool = True
 
 
+class SubforumProbeOut(BaseModel):
+    """Un subforo encontrado por el barrido."""
+
+    fid: str
+    threads: int
+    window_from: datetime | None = None
+    window_to: datetime | None = None
+    window_days: float | None = None
+    #: Título de muestra, redactado: sirve para reconocer la sección.
+    sample_title: str | None = None
+
+
+class DiscoveryStateOut(BaseModel):
+    """Estado del barrido de subforos."""
+
+    running: bool = False
+    feed: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    last_error: str | None = None
+    scanned: int = 0
+    found: list[SubforumProbeOut] = Field(default_factory=list)
+    #: Línea lista para pegar en el `.env`. Sumarlos sigue siendo manual.
+    env_line: str | None = None
+
+
 class RunStateOut(BaseModel):
     """Estado de la corrida disparada a mano."""
 

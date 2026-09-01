@@ -63,6 +63,41 @@ def _texto(elemento: Any) -> str:
     return " ".join(_TAGS.sub(" ", elemento.text).split())
 
 
+def parse_atom(xml: str, *, source: str) -> Iterable[RawItem]:
+    """Parsea el Atom. XML de fuente hostil: se usa defusedxml."""
+    try:
+        raiz = DefusedET.fromstring(xml)
+    except Exception as exc:
+        raise RuntimeError(f"{source} devolvió un Atom ilegible") from exc
+
+    for entrada in raiz.iter(f"{_ATOM}entry"):
+        enlace = entrada.find(f"{_ATOM}link")
+        autor = entrada.find(f"{_ATOM}author/{_ATOM}name")
+        contenido = entrada.find(f"{_ATOM}content")
+        yield RawItem(
+            source=source,
+            payload={
+                "title": _texto(entrada.find(f"{_ATOM}title")),
+                "author": _texto(autor),
+                "published": (entrada.findtext(f"{_ATOM}published") or "").strip(),
+                "updated": (entrada.findtext(f"{_ATOM}updated") or "").strip(),
+                "link": enlace.get("href") if enlace is not None else None,
+                # El cuerpo se usa para matchear y NO se persiste: es donde
+                # el foro declara país y dominio afectado, pero también
+                # donde pega las muestras de datos robados.
+                "content": _texto(entrada.find(f"{_ATOM}content")),
+                # El HTML sin tocar: los enlaces al volcado viven en los
+                # atributos (`href`, `src`), y quitar las etiquetas se los
+                # lleva puestos. Tampoco se persiste.
+                "content_html": (
+                    contenido.text or ""
+                    if (contenido := entrada.find(f"{_ATOM}content")) is not None
+                    else ""
+                ),
+            },
+        )
+
+
 class MyBBForumAdapter:
     """Índice de threads recientes de un foro MyBB."""
 
@@ -165,38 +200,8 @@ class MyBBForumAdapter:
                 yield item
 
     def _parse(self, xml: str) -> Iterable[RawItem]:
-        """Parsea el Atom. XML de fuente hostil: se usa defusedxml."""
-        try:
-            raiz = DefusedET.fromstring(xml)
-        except Exception as exc:
-            raise RuntimeError(f"{self.name} devolvió un Atom ilegible") from exc
-
-        for entrada in raiz.iter(f"{_ATOM}entry"):
-            enlace = entrada.find(f"{_ATOM}link")
-            autor = entrada.find(f"{_ATOM}author/{_ATOM}name")
-            contenido = entrada.find(f"{_ATOM}content")
-            yield RawItem(
-                source=self.name,
-                payload={
-                    "title": _texto(entrada.find(f"{_ATOM}title")),
-                    "author": _texto(autor),
-                    "published": (entrada.findtext(f"{_ATOM}published") or "").strip(),
-                    "updated": (entrada.findtext(f"{_ATOM}updated") or "").strip(),
-                    "link": enlace.get("href") if enlace is not None else None,
-                    # El cuerpo se usa para matchear y NO se persiste: es donde
-                    # el foro declara país y dominio afectado, pero también
-                    # donde pega las muestras de datos robados.
-                    "content": _texto(entrada.find(f"{_ATOM}content")),
-                    # El HTML sin tocar: los enlaces al volcado viven en los
-                    # atributos (`href`, `src`), y quitar las etiquetas se los
-                    # lleva puestos. Tampoco se persiste.
-                    "content_html": (
-                        contenido.text or ""
-                        if (contenido := entrada.find(f"{_ATOM}content")) is not None
-                        else ""
-                    ),
-                },
-            )
+        """Parsea el Atom de este foro."""
+        return parse_atom(xml, source=self.name)
 
     def normalize(self, item: RawItem) -> NormalizedItem | None:
         payload: dict[str, Any] = item.payload

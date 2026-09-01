@@ -210,13 +210,26 @@ tranquilo (`fid=2`) 1.130 días con 17 threads. Los ids se cargan a mano en
 por URL de thread, así que la telemetría cuenta threads distintos y no
 repeticiones. Un subforo que falla no tumba la fuente.
 
-**Por qué los ids van a mano y no descubiertos.** El HTML del foro está detrás
-de un desafío JS (`index.php` devuelve *"Checking your browser…"* de vshield).
-`syndication.php` no lo tiene, y es lo único que consumimos. Descubrir los ids
-implicaría pasar ese control con un browser headless: eso es **evadir un
-control de acceso**, no leer una fuente abierta, y no se hace. Los ids salen del
-navegador del investigador, donde el desafío se resuelve normalmente — la misma
-regla que para los dominios que rotan.
+**Cómo se consiguen los ids: `leaks discover-fids`.** No hace falta recorrer el
+foro. El barrido usa la **misma sindicación abierta**: un GET por id candidato,
+leyendo cuántos threads trae, qué período cubre y un título de muestra
+—redactado— para reconocer la sección. Se corre a mano, cuando el foro se
+reorganiza o cambia de dominio, y también desde el botón **"Buscar subforos"**
+de la tarjeta del foro en la pantalla Fuentes.
+
+```
+leaks discover-fids --feed darkforums --from 1 --to 60
+```
+
+Devuelve la línea `LEAKS_DARKFORUMS_FIDS=…` lista para pegar. **No aplica
+nada**: incorporar un subforo sigue siendo un acto explícito del investigador,
+igual que incorporar un dominio nuevo.
+
+**Lo que sí sigue estando prohibido es el HTML.** `index.php` está detrás de un
+desafío JS (*"Checking your browser…"*, vshield); `syndication.php` no. Sacar
+los ids del índice implicaría pasar ese control con un browser headless: eso es
+**evadir un control de acceso**, no leer una fuente abierta, y no se hace. El
+descubrimiento se apoya solo en el endpoint que ya consumimos.
 
 **Lo que esto NO resuelve.** Un thread que ya se cayó de todas las ventanas no
 se recupera: el subforo activo llega a ~2 días, no a la semana pasada. Esto

@@ -660,6 +660,36 @@ test("con canales configurados el panel informa el estado real", async () => {
   assert.match(textoDe(el("alerts-resumen")), /Última:/);
 });
 
+test("los foros ofrecen buscar subforos; el resto de las fuentes no", async () => {
+  // El botón vive en la tarjeta del foro porque es donde se mira cuando el
+  // foro cambió: si se mudó o reorganizó, los ids viejos dejan de servir.
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/fuentes",
+    respuestas: {
+      ...RESPUESTAS_BASE,
+      "/api/sources": [
+        {
+          name: "darkforums", enabled: true, tags: ["foro", "pii"],
+          last_run: { source: "darkforums", status: "ok", started_at: "2026-09-01T15:00:00Z",
+            finished_at: "2026-09-01T15:01:00Z", items_fetched: 50, items_matched: 0,
+            items_persisted: 0, error: null },
+        },
+        {
+          name: "ransomware.live", enabled: true, tags: ["ransomware", "metadata"],
+          last_run: { source: "ransomware.live", status: "ok", started_at: "2026-09-01T15:00:00Z",
+            finished_at: "2026-09-01T15:01:00Z", items_fetched: 293, items_matched: 0,
+            items_persisted: 0, error: null },
+        },
+      ],
+    },
+  });
+
+  const botones = buscar(el("sources"), (n) => n.tag === "button");
+  const textos = botones.map((b) => b.textContent);
+  assert.deepEqual(textos, ["Buscar subforos"], "solo el foro lo ofrece");
+});
+
 test("la ventana medida del feed se muestra", async () => {
   const { el } = await cargarApp({
     html: HTML,
