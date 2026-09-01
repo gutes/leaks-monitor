@@ -181,10 +181,18 @@ cosas. Cada dominio va aislado: un timeout no se lleva puesto el lote.
 Los dos corren MyBB y publican `/syndication.php`, así que los cubre **un solo
 adapter** parametrizado por dominio.
 
-**Estado al 2026-08-14:**
+**Estado al 2026-09-01:**
 
-* `darkforums.ru` responde 200 y sirve el Atom. Responde bien con **User-Agent
-  identificable**: no hace falta falsear un navegador, y no se hace.
+* `darkforums.as` responde 200 y sirve el Atom (15 threads en el índice).
+  Responde bien con **User-Agent identificable**: no hace falta falsear un
+  navegador, y no se hace.
+* `darkforums.ru` **se cayó**: el DNS sigue resolviendo a `104.234.204.18`,
+  pero el 443 rechaza la conexión. Queda en la lista de candidatos como
+  respaldo — cuestan nada y estos foros vuelven de dominios viejos.
+  `darkforums.st` no tiene registro A.
+* Recordatorio: incorporar un dominio nuevo es un **acto manual**, después de
+  verificarlo por fuera. El adapter detecta la caída pero nunca se muda solo
+  (ver `sitios-que-cambian-de-dominio.md`).
 * **BreachForums no tiene dominio operativo.** `breachforums.hn`, `.is` y `.cx`
   devuelven el cartel de incautación de las fuerzas del orden; el resto no
   resuelve. Queda registrado y deshabilitado, con la lista de dominios vacía;

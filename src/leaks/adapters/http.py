@@ -38,6 +38,21 @@ class FeedHttpError(RuntimeError):
     """Falla al hablar con un feed, ya agotados los reintentos."""
 
 
+#: Tope por causa: el mensaje termina en `source_runs`, que trunca a 500.
+_MAX_MOTIVO = 120
+
+
+def describe_cause(exc: BaseException | None) -> str:
+    """Tipo y mensaje de la causa raíz, compacto y sin body de respuesta."""
+    if exc is None:
+        return "sin causa registrada"
+    raiz: BaseException = exc
+    while raiz.__cause__ is not None:
+        raiz = raiz.__cause__
+    detalle = " ".join(str(raiz).split())[:_MAX_MOTIVO]
+    return f"{type(raiz).__name__}: {detalle}" if detalle else type(raiz).__name__
+
+
 class FeedHttpClient:
     """Cliente HTTP con backoff, pensado para consumir feeds públicos."""
 
@@ -223,9 +238,12 @@ class FeedHttpClient:
             f"GET {url} agotó los {self._max_retries + 1} intentos",
             url=url,
         )
-        raise FeedHttpError(f"{url} falló tras {self._max_retries + 1} intentos") from (
-            ultimo_error
-        )
+        # El motivo va EN el mensaje, no solo en `__cause__`: lo que queda
+        # guardado en `source_runs` es el texto, y sin la causa hay que
+        # reproducir el request a mano para saber si fue timeout, 403 o rechazo.
+        raise FeedHttpError(
+            f"{url} falló tras {self._max_retries + 1} intentos: {describe_cause(ultimo_error)}"
+        ) from ultimo_error
 
     @staticmethod
     def _elapsed_ms(desde: float) -> int:

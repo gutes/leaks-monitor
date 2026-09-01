@@ -34,7 +34,7 @@ from typing import Any
 
 from defusedxml import ElementTree as DefusedET
 
-from leaks.adapters.http import FeedHttpClient
+from leaks.adapters.http import FeedHttpClient, describe_cause
 from leaks.adapters.parsing import parse_datetime
 from leaks.domain.models import LeakType, NormalizedItem, RawItem
 from leaks.extraction.downloads import extract_download_links
@@ -86,11 +86,14 @@ class MyBBForumAdapter:
             return
 
         ultimo_error: Exception | None = None
+        fallas: list[str] = []
         for base in self._base_urls:
             try:
                 xml = self._client.get_text(f"{base}{self._path}")
             except Exception as exc:
-                logger.info("El dominio %s no respondió: %s", base, type(exc).__name__)
+                motivo = describe_cause(exc)
+                logger.warning("El dominio %s no respondió: %s", base, motivo)
+                fallas.append(f"{base} → {motivo}")
                 ultimo_error = exc
                 continue
 
@@ -98,9 +101,12 @@ class MyBBForumAdapter:
             yield from self._parse(xml)
             return
 
+        # Se detalla candidato por candidato: "no respondió ninguno" no alcanza
+        # para decidir si el foro se mudó (rechazo/DNS) o si nos bloquearon
+        # (403), y es la diferencia entre buscar dominio nuevo o no.
         raise RuntimeError(
-            f"Ningún dominio de {self.name} respondió "
-            f"({', '.join(self._base_urls)}). ¿Cambió de dominio o fue incautado?"
+            f"Ningún dominio de {self.name} respondió. {'; '.join(fallas)}. "
+            "¿Cambió de dominio o fue incautado?"
         ) from ultimo_error
 
     def _parse(self, xml: str) -> Iterable[RawItem]:

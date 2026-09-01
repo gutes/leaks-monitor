@@ -17,7 +17,7 @@ import pytest
 import respx
 from sqlalchemy.orm import Session, sessionmaker
 
-from leaks.adapters.http import FeedHttpClient, FeedHttpError
+from leaks.adapters.http import FeedHttpClient, FeedHttpError, describe_cause
 from leaks.domain.models import EventKind, EventLevel, RunEvent
 from leaks.storage.event_sink import NullEventSink, SqlAlchemyEventSink
 from leaks.storage.queries import FindingQueryService
@@ -166,6 +166,29 @@ class TestClienteHttpReporta:
 
         assert capturados[-1].level is EventLevel.ERROR
         assert capturados[-1].status_code == 404
+
+    def test_el_error_final_carga_la_causa(self) -> None:
+        """Lo que se guarda en `source_runs` es el texto, no `__cause__`.
+
+        El caso real: darkforums.ru resolvía por DNS pero rechazaba la
+        conexión. Sin la causa en el mensaje, la telemetría solo decía "falló
+        tras N intentos" y no alcanzaba para saber si el foro se había mudado.
+        """
+        raiz = httpx.ConnectError("[Errno 111] Connection refused")
+        try:
+            try:
+                raise raiz
+            except httpx.ConnectError as exc:
+                raise FeedHttpError("https://foro.test/x falló tras 4 intentos") from exc
+        except FeedHttpError as exc:
+            assert describe_cause(exc) == "ConnectError: [Errno 111] Connection refused"
+
+    def test_la_causa_se_acota(self) -> None:
+        """El mensaje no puede arrastrar un body: se trunca."""
+        assert len(describe_cause(RuntimeError("x" * 5000))) <= 160
+
+    def test_sin_causa_no_revienta(self) -> None:
+        assert describe_cause(None) == "sin causa registrada"
 
     def test_sin_sink_el_cliente_funciona_igual(self) -> None:
         """La bitácora es opcional: el pipeline no depende de ella."""

@@ -68,7 +68,12 @@ class Settings(BaseSettings):
 
     # Foros: rotan de dominio (bloqueos, incautaciones). Se prueba en orden y
     # gana el primero que responda.
-    darkforums_base_urls: CsvTuple = ("https://darkforums.ru",)
+    #: Verificado el 2026-09-01: responde `.as`; `.ru` rechaza la conexión y
+    #: `.st` no resuelve. Se dejan de respaldo: vuelven de dominios viejos.
+    darkforums_base_urls: CsvTuple = (
+        "https://darkforums.as",
+        "https://darkforums.ru",
+    )
     #: Vacío a propósito: al 2026-08-14 no hay dominio operativo de
     #: BreachForums (los conocidos están incautados). Ver docs/feeds.md.
     breachforums_base_urls: CsvTuple = ()

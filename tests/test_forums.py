@@ -104,6 +104,30 @@ class TestDominiosRotativos:
         with pytest.raises(RuntimeError, match=r"incautado|respondió"):
             list(adapter.fetch(None))
 
+    @respx.mock
+    def test_el_error_dice_que_falló_en_cada_dominio(self, client: FeedHttpClient) -> None:
+        """Sin el detalle por dominio hay que reproducir el request a mano.
+
+        No es lo mismo que el foro no responda (se mudó: hay que buscar dominio
+        nuevo) que un 403 (nos bloquearon: el dominio sigue siendo el bueno).
+        """
+        respx.get(f"https://caido.test{SYNDICATION_PATH}").mock(return_value=httpx.Response(503))
+        respx.get(f"https://bloqueado.test{SYNDICATION_PATH}").mock(
+            return_value=httpx.Response(403)
+        )
+        adapter = MyBBForumAdapter(
+            client, "darkforums", ("https://caido.test", "https://bloqueado.test")
+        )
+
+        with pytest.raises(RuntimeError) as fallo:
+            list(adapter.fetch(None))
+
+        mensaje = str(fallo.value)
+        assert "https://caido.test" in mensaje and "503" in mensaje
+        assert "https://bloqueado.test" in mensaje and "403" in mensaje
+        # Entra entero en la columna `error` de `source_runs`, que trunca a 500.
+        assert len(mensaje) <= 500
+
     def test_sin_dominios_configurados_no_sale_a_la_red(self, client: FeedHttpClient) -> None:
         """Es el estado de BreachForums hoy: registrado pero sin dominio."""
         adapter = MyBBForumAdapter(client, "breachforums", ())
