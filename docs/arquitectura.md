@@ -85,6 +85,28 @@ feed responde a los intereses de quien publica.
 `critical` exige **corroboración**: una keyword sola no alcanza aunque el
 sector esté marcado crítico (ver el caso Distribuidora Ejemplo Dominicana en el README).
 
+### Cadencia: una diaria, y sondeos para las fuentes efímeras
+
+El scheduler no tiene una sola cadencia. La corrida completa va a la hora
+configurada (`LEAKS_DAILY_RUN_AT`), pero una fuente puede declarar
+`poll_interval_minutes` en el registro y se la sondea aparte, más seguido.
+
+Es para las fuentes cuya **ventana de publicación es más corta que un día**: la
+sindicación de un foro expone los últimos N threads y nada más, así que si el
+foro los rota en horas, verla una vez por día no baja la resolución — pierde lo
+que pasó en el medio. Hoy la declara solo `darkforums` (120 min).
+
+Dos decisiones que sostienen esto:
+
+* **La cadencia es dato, no cableado.** Vive en el `FeedSpec`, como el resto de
+  la política por fuente. Sumar una fuente de ventana corta no toca el
+  scheduler ni el CLI.
+* **Acotar la corrida no saltea ninguna puerta.** `PipelineRunner.run(only=…)`
+  filtra por nombre *después* de resolver el registro, así que el sondeo pasa
+  por el control de IP de salida y por el gate de PII igual que la corrida
+  diaria. Si `only` armara su propia selección, sondear sería la forma de
+  correr una fuente `requires_pii` con la PII deshabilitada.
+
 ### Zona horaria
 
 Naive vs aware se decide **en el borde**: `adapters/parsing.py` convierte todo a

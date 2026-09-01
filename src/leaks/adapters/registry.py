@@ -80,6 +80,11 @@ class FeedSpec:
     high_pii_surface: bool = False
     #: Atributo de `Settings` con el User-Agent a usar para este feed.
     user_agent_setting: str = "http_user_agent"
+    #: Cada cuántos minutos se sondea la fuente, además de la corrida diaria.
+    #: `None` = solo en la corrida diaria. Es para fuentes cuya ventana de
+    #: publicación es más corta que un día: si el feed solo expone los últimos
+    #: N ítems y el foro los rota en horas, una corrida diaria ve una fracción.
+    poll_interval_minutes: int | None = None
     #: Motivo por el que el feed viene apagado, para mostrarlo en la UI.
     disabled_reason: str = ""
     tags: tuple[str, ...] = field(default_factory=tuple)
@@ -160,6 +165,10 @@ FEED_REGISTRY: tuple[FeedSpec, ...] = (
         requires_pii=True,
         # No se persiste texto libre, y el título se redacta.
         high_pii_surface=True,
+        # Medido el 2026-09-01: los 15 threads del Atom cubrían 3,1 horas. Con
+        # una sola corrida diaria se pierde la enorme mayoría de lo publicado.
+        # Es un GET por sondeo, así que cerrar el agujero sale casi gratis.
+        poll_interval_minutes=120,
         tags=("foro", "pii", "metadata"),
     ),
     FeedSpec(

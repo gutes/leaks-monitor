@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from leaks.config import Settings
 from leaks.pipeline.runner import RunReport
-from leaks.pipeline.scheduler import next_run_at, run_forever
+from leaks.pipeline.scheduler import next_run_at, plan_next, run_forever
 
 
 class TestNextRunAt:
@@ -46,7 +47,7 @@ class TestRunForever:
             dormidas.append(segundos)
             instante += timedelta(seconds=segundos + 1)
 
-        def run_once() -> RunReport:
+        def run_once(*, only: Sequence[str] | None = None) -> RunReport:
             corridas.append(1)
             return self._reporte()
 
@@ -61,7 +62,7 @@ class TestRunForever:
         """Un scheduler que se muere deja de monitorear justo cuando hace falta."""
         intentos: list[int] = []
 
-        def run_once() -> RunReport:
+        def run_once(*, only: Sequence[str] | None = None) -> RunReport:
             intentos.append(1)
             raise RuntimeError("la corrida explotó")
 
@@ -86,3 +87,138 @@ class TestValidacionDeHora:
 
     def test_hora_valida(self) -> None:
         assert Settings(daily_run_at="23:59").daily_run_at == "23:59"
+
+
+class TestPlanNext:
+    """Elegir el evento más próximo entre la corrida diaria y los sondeos."""
+
+    AHORA = datetime(2026, 9, 1, 10, 0, tzinfo=UTC)
+
+    def test_sin_sondeos_es_la_corrida_diaria(self) -> None:
+        evento = plan_next(self.AHORA, "03:00", {})
+        assert evento.is_full_run
+        assert evento.at == datetime(2026, 9, 2, 3, 0, tzinfo=UTC)
+
+    def test_un_sondeo_antes_de_la_diaria_gana(self) -> None:
+        polls = {"darkforums": self.AHORA + timedelta(hours=2)}
+        evento = plan_next(self.AHORA, "03:00", polls)
+        assert evento.feeds == ("darkforums",)
+        assert evento.at == self.AHORA + timedelta(hours=2)
+
+    def test_un_sondeo_despues_de_la_diaria_no_gana(self) -> None:
+        """La corrida completa incluye a la fuente: sondear después es al pedo."""
+        polls = {"darkforums": datetime(2026, 9, 2, 5, 0, tzinfo=UTC)}
+        assert plan_next(self.AHORA, "03:00", polls).is_full_run
+
+    def test_empate_gana_la_corrida_completa(self) -> None:
+        polls = {"darkforums": datetime(2026, 9, 2, 3, 0, tzinfo=UTC)}
+        assert plan_next(self.AHORA, "03:00", polls).is_full_run
+
+    def test_los_que_vencen_juntos_van_en_un_solo_evento(self) -> None:
+        cuando = self.AHORA + timedelta(hours=1)
+        polls = {"darkforums": cuando, "breachforums": cuando}
+        evento = plan_next(self.AHORA, "03:00", polls)
+        assert evento.feeds == ("breachforums", "darkforums")
+
+
+class TestSondeos:
+    """El bucle con dos cadencias."""
+
+    def _reloj(self, inicio: datetime) -> tuple[object, object, list[float]]:
+        instante = inicio
+        dormidas: list[float] = []
+
+        def now_fn() -> datetime:
+            return instante
+
+        def sleep_fn(segundos: float) -> None:
+            nonlocal instante
+            dormidas.append(segundos)
+            instante += timedelta(seconds=segundos)
+
+        return now_fn, sleep_fn, dormidas
+
+    def test_sondea_entre_corridas_diarias(self) -> None:
+        """El caso real: el foro rota su ventana en horas, la diaria no alcanza."""
+        # 22:00, con la corrida completa a las 03:00: entran dos sondeos antes.
+        now_fn, sleep_fn, dormidas = self._reloj(datetime(2026, 9, 1, 22, 0, tzinfo=UTC))
+        pedidos: list[tuple[str, ...] | None] = []
+
+        def run_once(*, only: Sequence[str] | None = None) -> RunReport:
+            pedidos.append(tuple(only) if only is not None else None)
+            inicio = datetime(2026, 9, 1, tzinfo=UTC)
+            return RunReport(started_at=inicio, finished_at=inicio)
+
+        run_forever(
+            run_once,
+            daily_at="03:00",
+            polls={"darkforums": 120},
+            now_fn=now_fn,  # type: ignore[arg-type]
+            sleep_fn=sleep_fn,  # type: ignore[arg-type]
+            max_iterations=3,
+        )
+
+        # Dos sondeos de 2 h y recién después la corrida completa de las 03:00.
+        assert pedidos == [("darkforums",), ("darkforums",), None]
+        assert dormidas[0] == pytest.approx(2 * 3600)
+
+    def test_la_corrida_completa_reprograma_los_sondeos(self) -> None:
+        """Ya trajo la fuente: sondearla enseguida sería un request duplicado."""
+        now_fn, sleep_fn, dormidas = self._reloj(datetime(2026, 9, 1, 2, 0, tzinfo=UTC))
+
+        def run_once(*, only: Sequence[str] | None = None) -> RunReport:
+            inicio = datetime(2026, 9, 1, tzinfo=UTC)
+            return RunReport(started_at=inicio, finished_at=inicio)
+
+        run_forever(
+            run_once,
+            daily_at="03:00",
+            polls={"darkforums": 120},
+            now_fn=now_fn,  # type: ignore[arg-type]
+            sleep_fn=sleep_fn,  # type: ignore[arg-type]
+            max_iterations=2,
+        )
+
+        # 1 h hasta la corrida completa; después 2 h enteras, no lo que quedaba.
+        assert dormidas[0] == pytest.approx(3600)
+        assert dormidas[1] == pytest.approx(2 * 3600)
+
+    def test_una_fuente_caida_se_sigue_sondeando(self) -> None:
+        """Si no se reprograma, una falla la saca del ciclo hasta el reinicio."""
+        now_fn, sleep_fn, _ = self._reloj(datetime(2026, 9, 1, 10, 0, tzinfo=UTC))
+        intentos: list[int] = []
+
+        def run_once(*, only: Sequence[str] | None = None) -> RunReport:
+            intentos.append(1)
+            raise RuntimeError("el foro se cayó")
+
+        run_forever(
+            run_once,
+            daily_at="03:00",
+            polls={"darkforums": 120},
+            now_fn=now_fn,  # type: ignore[arg-type]
+            sleep_fn=sleep_fn,  # type: ignore[arg-type]
+            max_iterations=3,
+        )
+
+        assert len(intentos) == 3
+
+
+class TestCadenciaDelRegistro:
+    """La cadencia es dato del registro, no cableado del scheduler."""
+
+    def test_darkforums_declara_su_ventana_corta(self) -> None:
+        from leaks.adapters.registry import get_spec
+
+        spec = get_spec("darkforums")
+        assert spec is not None
+        assert spec.poll_interval_minutes == 120
+
+    def test_las_fuentes_diarias_no_declaran_sondeo(self) -> None:
+        """Los feeds de ransomware publican por día: sondearlos sería ruido."""
+        from leaks.adapters.registry import get_spec
+
+        for nombre in ("ransomware.live", "ransomlook", "dls-monitor"):
+            spec = get_spec(nombre)
+            assert spec is not None
+            assert spec.poll_interval_minutes is None

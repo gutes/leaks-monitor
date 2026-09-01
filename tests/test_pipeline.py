@@ -140,6 +140,58 @@ class TestAislamiento:
         assert resultado.error == "requiere STORE_PII=true"
 
 
+class TestCorridaAcotada:
+    """`only` acota la corrida, pero no puede saltear ninguna puerta."""
+
+    def test_corre_solo_las_fuentes_pedidas(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+    ) -> None:
+        """El sondeo no puede arrastrar al resto: es un feed, un request."""
+        pedido = FakeAdapter([payload_ar()])
+        pedido.name = "efimero"
+        otro = FakeAdapter([payload_ar()])
+        otro.name = "diario"
+
+        runner = PipelineRunner(repository=repository, watchlist=watchlist, settings=settings)
+        reporte = runner.run([(spec_for(pedido), None), (spec_for(otro), None)], only=["efimero"])
+
+        assert [r.source for r in reporte.results] == ["efimero"]
+        assert pedido.fetch_calls == 1
+        assert otro.fetch_calls == 0
+
+    def test_un_sondeo_no_puede_saltear_el_gate_de_pii(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+    ) -> None:
+        """Acotar por nombre pasa DESPUÉS de resolver el registro.
+
+        Si `only` construyera la selección por su cuenta, sondear una fuente
+        `requires_pii` sería la forma de correrla con la PII deshabilitada.
+        """
+        sin_pii = settings.model_copy(update={"store_pii": False})
+        runner = PipelineRunner(repository=repository, watchlist=watchlist, settings=sin_pii)
+
+        reporte = runner.run(only=["darkforums"])
+
+        (resultado,) = reporte.results
+        assert resultado.status is SourceRunStatus.SKIPPED
+        assert "PII" in (resultado.error or "")
+
+    def test_un_nombre_que_no_existe_no_corre_nada(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+    ) -> None:
+        runner = PipelineRunner(repository=repository, watchlist=watchlist, settings=settings)
+        assert runner.run(only=["no-existe"]).results == []
+
+
 class TestIdempotencia:
     """Re-correr el pipeline no duplica hallazgos."""
 

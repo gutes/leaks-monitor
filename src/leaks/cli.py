@@ -295,7 +295,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("Corrida inicial (LEAKS_RUN_ON_START=true)…")
             _print_report(app.runner.run())
         print(f"Scheduler activo. Corrida diaria a las {settings.daily_run_at} (hora local).")
-        run_forever(app.runner.run, daily_at=settings.daily_run_at)
+        # La cadencia sale del registro: sumar una fuente de ventana corta es
+        # una línea de dato, no un cambio acá ni en el scheduler.
+        sondeos = {
+            spec.name: spec.poll_interval_minutes
+            for spec in FEED_REGISTRY
+            if spec.poll_interval_minutes
+        }
+        if sondeos:
+            detalle = ", ".join(f"{f} cada {m} min" for f, m in sorted(sondeos.items()))
+            print(f"Sondeos de fuentes efímeras: {detalle}")
+        run_forever(app.runner.run, daily_at=settings.daily_run_at, polls=sondeos)
         return 0
 
     return 2  # pragma: no cover — argparse ya cubre los comandos desconocidos

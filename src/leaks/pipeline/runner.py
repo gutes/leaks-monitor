@@ -158,6 +158,7 @@ class PipelineRunner:
         self,
         specs: Sequence[tuple[FeedSpec, str | None]] | None = None,
         deps: FeedDeps | None = None,
+        only: Sequence[str] | None = None,
     ) -> RunReport:
         """Corre todos los feeds habilitados.
 
@@ -165,6 +166,11 @@ class PipelineRunner:
         un solo canal de Telegram—. Los dos son por invocación a propósito: el
         coordinador corre en otro hilo y mutar la configuración compartida para
         acotar una corrida se pisaría con la corrida diaria.
+
+        `only` acota por nombre **después** de resolver el registro, así que un
+        sondeo de una sola fuente sigue pasando por las mismas puertas que la
+        corrida diaria: si el feed requiere PII y no está habilitada, se saltea
+        igual. Acotar la corrida nunca puede ser una forma de saltear un gate.
         """
         pii_habilitado = (
             self._pii_sources_provider() if self._pii_sources_provider is not None else False
@@ -174,6 +180,9 @@ class PipelineRunner:
             if specs is not None
             else list(resolve_enabled(self._settings, pii_habilitado))
         )
+        if only is not None:
+            pedidos = set(only)
+            seleccion = [par for par in seleccion if par[0].name in pedidos]
 
         # Configuración vigente para esta corrida.
         if self._watchlist_provider is not None:

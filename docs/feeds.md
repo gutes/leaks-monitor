@@ -202,6 +202,18 @@ adapter** parametrizado por dominio.
 URL—. No se entra a los threads, no se descargan adjuntos y no se persiste el
 cuerpo del post.
 
+**Cadencia: se sondea cada 2 horas, no una vez por día.** La sindicación es una
+ventana de los últimos 15 threads, sin historial ni paginación. Medido el
+2026-09-01, esos 15 cubrían **3,1 horas**: con una sola corrida diaria no se
+monitorea el foro con menos resolución, se pierde la mayor parte de lo
+publicado. El caso testigo fue un thread del 28-ago que nunca vimos.
+
+La cadencia se declara en el registro (`FeedSpec.poll_interval_minutes=120`) y
+el scheduler la lee de ahí; el sondeo pasa por las mismas puertas que la corrida
+diaria —control de IP de salida, gate de PII, watchlist vigente— y cuesta un
+solo GET. Las fuentes de ransomware no declaran sondeo: publican por día y
+sondearlas sería ruido.
+
 **Por qué van detrás del flag de PII.** El contenido de estos threads son
 volcados de datos: muestras con emails, documentos y contraseñas. Los dos van
 marcados `requires_pii` (no corren si no se habilitan a propósito) y
