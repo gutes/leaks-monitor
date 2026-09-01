@@ -213,3 +213,24 @@ Los datos **no se sincronizan solos**: cada instancia diverge desde el momento
 en que se importa el paquete. Si el equipo tiene que ver lo mismo, la instancia
 compartida (opción A) es el único camino que no requiere repartir un paquete
 nuevo cada vez.
+
+---
+
+## `.env` y Docker: qué NO poner
+
+`.env.example` sirve para dos escenarios y no son iguales. Las variables de
+**rutas** y `LEAKS_API_HOST` vienen **comentadas** a propósito, porque
+`docker-compose.yml` las inyecta con `env_file` y le pisan a la imagen las
+suyas:
+
+| Variable | Si se define con Docker |
+|---|---|
+| `LEAKS_DATABASE_URL` | apunta a una ruta del host que adentro no existe → arranca contra una base vacía y muere con `no such table: watchlist_entries`, en bucle |
+| `LEAKS_WATCHLIST_PATH`, `LEAKS_ALEMBIC_*`, `LEAKS_FRONTEND_DIR` | mismo problema: rutas relativas al checkout |
+| `LEAKS_API_HOST` | la API queda escuchando en el loopback **del contenedor** y el puerto publicado no llega: la UI no abre y no hay ningún error |
+
+Descomentalas **solo** para correr sin Docker desde el checkout. Con Docker, la
+exposición se controla en `ports:` del compose, no acá.
+
+Los dos casos se encontraron levantando el prototipo con un `.env` recién
+copiado, que es exactamente lo que hace alguien que sigue esta guía.
