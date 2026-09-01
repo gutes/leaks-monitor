@@ -15,6 +15,7 @@ from collections.abc import Iterable
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from cryptography.fernet import Fernet
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -375,6 +376,44 @@ class TestWatchdogEnLaCorrida:
         runner = self._runner(repository, watchlist, settings)
 
         assert runner.run([(spec_for(adapter), None)]).stale_sources == ()
+
+
+class TestVentanaMedida:
+    """Medir la ventana es lo que permite ajustar la cadencia con datos."""
+
+    def test_registra_los_extremos_de_la_ventana(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+    ) -> None:
+        viejo = datetime(2026, 9, 1, 0, 0, tzinfo=UTC)
+        nuevo = datetime(2026, 9, 1, 20, 30, tzinfo=UTC)
+        adapter = FakeAdapter(
+            [payload_ar(discovered=viejo), payload_ar(domain="y.gob.ar", discovered=nuevo)]
+        )
+        spec = replace(spec_for(adapter), bounded_window=True)
+
+        runner = PipelineRunner(repository=repository, watchlist=watchlist, settings=settings)
+        (resultado,) = runner.run([(spec, None)]).results
+
+        assert resultado.window_from == viejo
+        assert resultado.window_to == nuevo
+        assert resultado.window_hours == pytest.approx(20.5)
+
+    def test_una_fuente_de_ventana_abierta_no_la_mide(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+    ) -> None:
+        """En un feed con histórico entero, el span sería la edad del feed."""
+        adapter = FakeAdapter([payload_ar()])
+        runner = PipelineRunner(repository=repository, watchlist=watchlist, settings=settings)
+
+        (resultado,) = runner.run([(spec_for(adapter), None)]).results
+
+        assert resultado.window_hours is None
 
 
 class TestIdempotencia:

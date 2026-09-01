@@ -609,6 +609,9 @@ class PipelineRunner:
         error: str | None = None
         cursor_nuevo: datetime | None = None
         mas_viejo: datetime | None = None
+        mas_nuevo: datetime | None = None
+        ventana_desde: datetime | None = None
+        ventana_hasta: datetime | None = None
         gap_from: datetime | None = None
         gap_to: datetime | None = None
         pii_guardados = 0
@@ -641,10 +644,12 @@ class PipelineRunner:
                 if item is None:
                     continue
 
-                # Lo más viejo de la ventana, ANTES del filtro incremental: es
-                # lo que dice hasta dónde llegaba la vista de la fuente.
+                # Los extremos de la ventana, ANTES del filtro incremental:
+                # es lo que dice hasta dónde llegaba la vista de la fuente.
                 if mas_viejo is None or item.discovered_at < mas_viejo:
                     mas_viejo = item.discovered_at
+                if mas_nuevo is None or item.discovered_at > mas_nuevo:
+                    mas_nuevo = item.discovered_at
 
                 # Incremental: el feed no filtra por fecha, filtramos acá.
                 if desde is not None and item.discovered_at <= desde:
@@ -680,6 +685,15 @@ class PipelineRunner:
             fallos = getattr(adapter, "errores", None)
             if fallos and self._channel_error_sink is not None:
                 self._channel_error_sink(dict(fallos))
+
+            # Solo tiene sentido en fuentes de ventana acotada: en un feed que
+            # publica su histórico entero, el "span" sería la edad del feed.
+            if spec.bounded_window and mas_viejo is not None and mas_nuevo is not None:
+                ventana_desde, ventana_hasta = mas_viejo, mas_nuevo
+                horas_ventana = (mas_nuevo - mas_viejo).total_seconds() / 3600
+                logger.info(
+                    "feed %s: ventana de %.1f h (%d ítems)", spec.name, horas_ventana, fetched
+                )
 
             gap_from, gap_to = self._detectar_hueco(spec, desde, mas_viejo)
             if gap_from is not None and gap_to is not None:
@@ -754,6 +768,8 @@ class PipelineRunner:
                 error=error,
                 gap_from=gap_from,
                 gap_to=gap_to,
+                window_from=ventana_desde,
+                window_to=ventana_hasta,
             ),
             pii_guardados,
         )

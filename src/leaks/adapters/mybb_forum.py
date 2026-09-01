@@ -74,16 +74,20 @@ class MyBBForumAdapter:
         name: str,
         base_urls: Sequence[str],
         syndication_path: str = SYNDICATION_PATH,
+        fids: Sequence[str] = (),
     ) -> None:
         self.name = name
         self._client = client
         self._base_urls = tuple(u.rstrip("/") for u in base_urls if u.strip())
         self._path = syndication_path
+        #: Subforos a consultar además del índice global. Cada uno trae SUS
+        #: últimos 50 threads, así que suman ventana en vez de repetirla.
+        self._fids = tuple(f.strip() for f in fids if f.strip())
         #: Dominio que respondió, para absolutizar enlaces relativos.
         self._active_base: str | None = None
 
     def fetch(self, since: datetime | None) -> Iterable[RawItem]:
-        """Trae el índice del primer dominio que responda.
+        """Trae el índice global y, si hay subforos configurados, los de cada uno.
 
         El recorte incremental lo hace el runner sobre el item normalizado: el
         feed devuelve unas decenas de threads, no hace falta filtrar antes.
@@ -104,7 +108,19 @@ class MyBBForumAdapter:
                 continue
 
             self._active_base = base
-            yield from self._parse(xml)
+            # Un thread aparece en el índice global y otra vez en el de su
+            # subforo. Se deduplica acá y no en el storage para que la
+            # telemetría diga cuántos threads distintos vimos, no cuántas
+            # veces los vimos.
+            vistos: set[str] = set()
+            for item in self._parse(xml):
+                clave = self._clave(item)
+                if clave in vistos:
+                    continue
+                vistos.add(clave)
+                yield item
+
+            yield from self._fetch_subforos(base, vistos)
             return
 
         # Se detalla candidato por candidato: "no respondió ninguno" no alcanza
@@ -114,6 +130,39 @@ class MyBBForumAdapter:
             f"Ningún dominio de {self.name} respondió. {'; '.join(fallas)}. "
             "¿Cambió de dominio o fue incautado?"
         ) from ultimo_error
+
+    @staticmethod
+    def _clave(item: RawItem) -> str:
+        """Identidad del thread. La URL es lo único estable entre feeds."""
+        payload = item.payload
+        return str(payload.get("link") or payload.get("id") or payload.get("title") or "")
+
+    def _fetch_subforos(self, base: str, vistos: set[str]) -> Iterable[RawItem]:
+        """Suma la ventana de cada subforo configurado.
+
+        Cada subforo trae sus últimos 50 threads: uno activo cubre días donde
+        el índice global cubre horas, y uno tranquilo, años.
+
+        Un subforo que falla **no tumba la fuente**: se registra y se sigue con
+        los demás, igual que un feed caído no tumba la corrida. Los ids se
+        cargan a mano y pueden quedar viejos si el foro reordena sus secciones.
+        """
+        for fid in self._fids:
+            url = f"{base}{self._path}&fid={fid}"
+            try:
+                xml = self._client.get_text(url)
+            except Exception as exc:
+                logger.warning(
+                    "El subforo %s de %s no respondió: %s", fid, self.name, describe_cause(exc)
+                )
+                continue
+
+            for item in self._parse(xml):
+                clave = self._clave(item)
+                if clave in vistos:
+                    continue
+                vistos.add(clave)
+                yield item
 
     def _parse(self, xml: str) -> Iterable[RawItem]:
         """Parsea el Atom. XML de fuente hostil: se usa defusedxml."""

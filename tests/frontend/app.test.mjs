@@ -660,6 +660,30 @@ test("con canales configurados el panel informa el estado real", async () => {
   assert.match(textoDe(el("alerts-resumen")), /Última:/);
 });
 
+test("la ventana medida del feed se muestra", async () => {
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/fuentes",
+    respuestas: {
+      ...RESPUESTAS_BASE,
+      "/api/sources": [
+        {
+          name: "darkforums",
+          enabled: true,
+          last_run: {
+            source: "darkforums", status: "ok",
+            started_at: "2026-09-01T15:26:53Z", finished_at: "2026-09-01T15:26:57Z",
+            items_fetched: 50, items_matched: 0, items_persisted: 0, error: null,
+            window_from: "2026-08-31T19:00:00Z", window_to: "2026-09-01T15:00:00Z",
+          },
+        },
+      ],
+    },
+  });
+
+  assert.match(textoDe(el("sources")), /Ventana del feed: 20\.0 h/);
+});
+
 test("un hueco de cobertura se muestra aunque la corrida haya andado", async () => {
   // El caso que esto existe para evitar: la fuente responde OK, no trae nada
   // nuevo, y la pérdida se lee igual que "no hubo novedades".

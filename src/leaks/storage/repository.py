@@ -255,6 +255,8 @@ class SqlAlchemyFindingRepository:
                     error=result.error[:500] if result.error else None,
                     gap_from=result.gap_from,
                     gap_to=result.gap_to,
+                    window_from=result.window_from,
+                    window_to=result.window_to,
                 )
             )
 

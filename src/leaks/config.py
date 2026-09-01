@@ -78,6 +78,16 @@ class Settings(BaseSettings):
     #: BreachForums (los conocidos están incautados). Ver docs/feeds.md.
     breachforums_base_urls: CsvTuple = ()
 
+    # Subforos a consultar además del índice global. Cada uno trae SUS últimos
+    # 50 threads, así que suman ventana: medido el 2026-09-01, el índice global
+    # cubría 20,6 h y un subforo activo 1,8 días.
+    #
+    # Se cargan A MANO: los ids salen del navegador del investigador, donde el
+    # desafío JS del foro se resuelve solo. El pipeline nunca toca el HTML —
+    # pasar ese control sería evadirlo, y acá no se hace (ver docs/feeds.md).
+    darkforums_fids: CsvTuple = ()
+    breachforums_fids: CsvTuple = ()
+
     # Hudson Rock consulta dominio por dominio contra un proveedor extranjero.
     # NO lee la watchlist a propósito: cada dominio que se consulta es una
     # decisión explícita, no un efecto secundario de la watchlist.
@@ -238,6 +248,8 @@ class Settings(BaseSettings):
         "hudsonrock_domains",
         "darkforums_base_urls",
         "breachforums_base_urls",
+        "darkforums_fids",
+        "breachforums_fids",
         "egress_providers",
         "egress_blocked_countries",
         mode="before",

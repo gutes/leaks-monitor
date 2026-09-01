@@ -122,11 +122,15 @@ def _telegram(_settings: Settings, client: FeedHttpClient, deps: FeedDeps) -> Fe
 
 
 def _darkforums(settings: Settings, client: FeedHttpClient, _deps: FeedDeps) -> FeedAdapter:
-    return mybb_forum.MyBBForumAdapter(client, "darkforums", settings.darkforums_base_urls)
+    return mybb_forum.MyBBForumAdapter(
+        client, "darkforums", settings.darkforums_base_urls, fids=settings.darkforums_fids
+    )
 
 
 def _breachforums(settings: Settings, client: FeedHttpClient, _deps: FeedDeps) -> FeedAdapter:
-    return mybb_forum.MyBBForumAdapter(client, "breachforums", settings.breachforums_base_urls)
+    return mybb_forum.MyBBForumAdapter(
+        client, "breachforums", settings.breachforums_base_urls, fids=settings.breachforums_fids
+    )
 
 
 #: Registro inmutable. El orden es el de ejecución del run diario.

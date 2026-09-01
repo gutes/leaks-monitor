@@ -202,6 +202,26 @@ adapter** parametrizado por dominio.
 URL—. No se entra a los threads, no se descargan adjuntos y no se persiste el
 cuerpo del post.
 
+**Subforos: más ventana, sin tocar el HTML.** `syndication.php` acepta `fid`, y
+cada subforo devuelve **sus** últimos 50 threads. Medido el 2026-09-01: el
+índice global cubría 20,6 h, un subforo activo (`fid=10`) 1,8 días y uno
+tranquilo (`fid=2`) 1.130 días con 17 threads. Los ids se cargan a mano en
+`LEAKS_DARKFORUMS_FIDS`; el adapter pide el global más uno por id y deduplica
+por URL de thread, así que la telemetría cuenta threads distintos y no
+repeticiones. Un subforo que falla no tumba la fuente.
+
+**Por qué los ids van a mano y no descubiertos.** El HTML del foro está detrás
+de un desafío JS (`index.php` devuelve *"Checking your browser…"* de vshield).
+`syndication.php` no lo tiene, y es lo único que consumimos. Descubrir los ids
+implicaría pasar ese control con un browser headless: eso es **evadir un
+control de acceso**, no leer una fuente abierta, y no se hace. Los ids salen del
+navegador del investigador, donde el desafío se resuelve normalmente — la misma
+regla que para los dominios que rotan.
+
+**Lo que esto NO resuelve.** Un thread que ya se cayó de todas las ventanas no
+se recupera: el subforo activo llega a ~2 días, no a la semana pasada. Esto
+compra resiliencia hacia adelante, no historia hacia atrás.
+
 **Cadencia: se sondea cada 2 horas, no una vez por día.** La sindicación es una
 ventana de los últimos 15 threads, sin historial ni paginación. Medido el
 2026-09-01, esos 15 cubrían **3,1 horas**: con una sola corrida diaria no se

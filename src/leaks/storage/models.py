@@ -123,6 +123,10 @@ class SourceRunRow(Base):
     # Tramo que la fuente publicó sin que lo viéramos. Nulo = sin hueco.
     gap_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     gap_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Tramo que el feed alcanzaba a mostrar en esta corrida. Es la medición que
+    # permite ajustar la cadencia con datos y no con una estimación.
+    window_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    window_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (Index("ix_source_runs_source_started", "source", "started_at"),)
 

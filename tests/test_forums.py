@@ -104,6 +104,61 @@ class TestVentanaDeSindicacion:
         assert len(list(adapter.fetch(None))) == 6
 
 
+class TestSubforos:
+    """Cada subforo trae SUS últimos 50: suman ventana en vez de repetirla."""
+
+    @respx.mock
+    def test_consulta_el_global_y_cada_subforo(self, client: FeedHttpClient) -> None:
+        atom = read_fixture("darkforums_atom.xml")
+        global_ = respx.get(FEED_URL).mock(return_value=httpx.Response(200, text=atom))
+        uno = respx.get(f"{FEED_URL}&fid=10").mock(return_value=httpx.Response(200, text=atom))
+        otro = respx.get(f"{FEED_URL}&fid=23").mock(return_value=httpx.Response(200, text=atom))
+
+        adapter = MyBBForumAdapter(client, "darkforums", (BASE,), fids=("10", "23"))
+        list(adapter.fetch(None))
+
+        assert global_.called and uno.called and otro.called
+
+    @respx.mock
+    def test_el_mismo_thread_no_se_cuenta_dos_veces(self, client: FeedHttpClient) -> None:
+        """Un thread está en el índice global y otra vez en el de su subforo.
+
+        Se deduplica en el adapter y no en el storage para que la telemetría
+        diga cuántos threads distintos vimos, no cuántas veces los vimos.
+        """
+        atom = read_fixture("darkforums_atom.xml")
+        respx.get(FEED_URL).mock(return_value=httpx.Response(200, text=atom))
+        respx.get(f"{FEED_URL}&fid=10").mock(return_value=httpx.Response(200, text=atom))
+
+        adapter = MyBBForumAdapter(client, "darkforums", (BASE,), fids=("10",))
+
+        # La fixture tiene 6 threads; pedirla dos veces sigue dando 6.
+        assert len(list(adapter.fetch(None))) == 6
+
+    @respx.mock
+    def test_un_subforo_caido_no_tumba_la_fuente(self, client: FeedHttpClient) -> None:
+        """Los ids se cargan a mano: pueden quedar viejos si el foro reordena."""
+        atom = read_fixture("darkforums_atom.xml")
+        respx.get(FEED_URL).mock(return_value=httpx.Response(200, text=atom))
+        respx.get(f"{FEED_URL}&fid=99").mock(return_value=httpx.Response(404))
+
+        adapter = MyBBForumAdapter(client, "darkforums", (BASE,), fids=("99",))
+
+        assert len(list(adapter.fetch(None))) == 6
+
+    @respx.mock
+    def test_sin_subforos_no_hace_pedidos_de_mas(self, client: FeedHttpClient) -> None:
+        """El default es vacío: nadie paga requests que no pidió."""
+        ruta = respx.get(FEED_URL).mock(
+            return_value=httpx.Response(200, text=read_fixture("darkforums_atom.xml"))
+        )
+        adapter = MyBBForumAdapter(client, "darkforums", (BASE,))
+        list(adapter.fetch(None))
+
+        assert ruta.call_count == 1
+        assert len(respx.calls) == 1
+
+
 class TestDominiosRotativos:
     """Estos foros cambian de dominio: hay que sobrevivirlo."""
 

@@ -230,7 +230,18 @@ class SourceRunResult(BaseModel):
     #: una invisible parece "no hubo novedades".
     gap_from: datetime | None = None
     gap_to: datetime | None = None
+    #: Tramo que el feed alcanzaba a mostrar. Medirlo es lo que permite ajustar
+    #: la cadencia de sondeo con datos en vez de con una estimación.
+    window_from: datetime | None = None
+    window_to: datetime | None = None
 
     @property
     def has_gap(self) -> bool:
         return self.gap_from is not None and self.gap_to is not None
+
+    @property
+    def window_hours(self) -> float | None:
+        """Cuántas horas de historia mostraba el feed. `None` si no se midió."""
+        if self.window_from is None or self.window_to is None:
+            return None
+        return (self.window_to - self.window_from).total_seconds() / 3600

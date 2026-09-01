@@ -449,6 +449,8 @@ class FindingQueryService:
                     "error": f.error,
                     "gap_from": _as_utc(f.gap_from) if f.gap_from else None,
                     "gap_to": _as_utc(f.gap_to) if f.gap_to else None,
+                    "window_from": _as_utc(f.window_from) if f.window_from else None,
+                    "window_to": _as_utc(f.window_to) if f.window_to else None,
                 }
                 for f in filas
             )

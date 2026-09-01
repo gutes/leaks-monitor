@@ -94,6 +94,9 @@ class SourceRunOut(BaseModel):
     #: Tramo que la fuente publicó y no llegamos a ver. Nulo = sin hueco.
     gap_from: datetime | None = None
     gap_to: datetime | None = None
+    #: Ventana que el feed alcanzaba a mostrar en esa corrida.
+    window_from: datetime | None = None
+    window_to: datetime | None = None
 
 
 class SourceOut(BaseModel):

@@ -266,6 +266,13 @@ async function loadSources() {
         el("div", `${run.items_fetched} traídos · ${run.items_matched} AR · ${run.items_persisted} nuevos`, "hint"),
         el("div", `Última corrida: ${fmtDate(run.started_at)}`, "hint"),
       );
+      // Cuánta historia alcanzaba a mostrar el feed. Es lo que dice si la
+      // cadencia de sondeo tiene margen o está al límite.
+      if (run.window_from && run.window_to) {
+        const h = (new Date(run.window_to) - new Date(run.window_from)) / 36e5;
+        const ventana = h >= 48 ? `${(h / 24).toFixed(1)} días` : `${h.toFixed(1)} h`;
+        card.append(el("div", `Ventana del feed: ${ventana}`, "hint"));
+      }
       if (run.error) card.append(el("div", run.error, "error"));
       // Un hueco no es un error: la corrida anduvo. Es cobertura perdida, y
       // se muestra porque si no se lee igual que "no hubo novedades".
