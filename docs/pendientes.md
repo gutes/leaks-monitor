@@ -1,12 +1,64 @@
 # Pendientes y decisiones abiertas
 
-Estado verificado contra el código el **2026-08-18**: 573 tests backend + 30
-frontend, 90% de cobertura, imagen Docker corriendo, 232 hallazgos argentinos y
-1.353 víctimas regionales en la base.
+Estado verificado contra el código el **2026-09-01**: 716 tests backend + 43
+frontend, imagen Docker corriendo, migración `0015` aplicada.
 
 > Este archivo se desactualizó una vez y decía cosas falsas («Alertas — no
 > existe nada» cuando ya existían). Cada ítem de acá se cruzó contra el código,
 > no contra la memoria.
+
+---
+
+## 0. Lo último que se hizo (sesión del 2026-09-01)
+
+El disparador: un thread argentino del **28-ago** que el pipeline nunca trajo.
+La investigación encontró tres causas encadenadas, y se atacaron las tres.
+
+**Hecho y verificado** (commits `416a67f`, `1c9662f`, `856a393`, `33d8135`,
+`92f1c04`, todos pusheados):
+
+1. **darkforums.ru murió** — el DNS resolvía pero el 443 rechazaba la conexión.
+   El dominio vivo hoy es `darkforums.as`. El error del adapter ahora dice la
+   causa por dominio (`describe_cause`), que antes había que reproducir a mano.
+2. **La ventana era de 3,3 h** — `syndication.php` acepta `limit`, y con
+   `limit=50` (el tope de MyBB) pasó a 20,6 h medidas.
+3. **La corrida era diaria** — `FeedSpec.poll_interval_minutes`; darkforums se
+   sondea cada 120 min. El scheduler elige el evento más próximo (`plan_next`).
+4. **Las pérdidas eran invisibles** — `source_runs.gap_from/gap_to` declara el
+   tramo que la fuente publicó y no vimos, y `window_from/window_to` mide la
+   ventana real en cada corrida. Los dos se ven en la pantalla Fuentes.
+5. **Nadie avisaba que el pipeline estaba caído** — `pipeline/watchdog.py`, que
+   mide contra la última corrida **exitosa**. Umbral
+   `LEAKS_WATCHDOG_MAX_SILENCE_HOURS`, 26 h.
+6. **Los subforos suman ventana** — `LEAKS_DARKFORUMS_FIDS`, y
+   `leaks discover-fids` + botón "Buscar subforos" en la tarjeta del foro para
+   encontrarlos por la sindicación abierta.
+
+### El pendiente inmediato
+
+**Elegir qué fids activar.** El barrido encontró 20 subforos en el rango 1..30,
+con ventanas de 1,8 a 1.226 días, pero `LEAKS_DARKFORUMS_FIDS` **sigue vacío**.
+Recomendación dada al líder técnico y todavía sin respuesta: empezar por **25**
+(*All Stealers, Discord breaches*), **13** (*SMTPs / WEBMAILS / OFFICE365*) y
+**10** (bases de datos), que son los temáticamente relevantes. Los otros —
+crypto-cash, métodos de TikTok— traerían ruido, y cada fid es un GET más por
+sondeo.
+
+Al activarlos, la primera corrida va a traer una tanda de threads viejos de
+golpe. No inunda de alertas porque `alert_max_age_days` (30) filtra lo viejo,
+pero el conteo de hallazgos va a saltar.
+
+### Lo que NO se pudo hacer, y por qué
+
+**El thread del 28-ago no se recuperó.** Ninguna ventana llega hasta ahí. Sí
+aparecieron dos hallazgos argentinos que se habían perdido y que los subforos sí
+alcanzan (`fid=13`, 26-ago; `fid=25`, 21-ago) — otro argumento para activarlos.
+
+**El HTML del foro está vetado.** `index.php` devuelve un desafío JS de vshield;
+`syndication.php` no lo tiene. Pasar ese control con un browser headless sería
+evadir un control de acceso: **no se hace**, y por eso el descubrimiento se
+apoya solo en la sindicación. Esto ya está escrito en `docs/feeds.md`; si
+reaparece la idea de scrapear la búsqueda del foro, la respuesta es esta.
 
 ---
 
