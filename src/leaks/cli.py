@@ -20,6 +20,7 @@ import logging
 import sys
 import time
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 
 from leaks.adapters.fid_discovery import DEFAULT_FIRST_FID, DEFAULT_LAST_FID
@@ -101,18 +102,29 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+#: Fecha y hora en el log. Va la FECHA además de la hora: sin ella, mirando el
+#: log no se puede distinguir la corrida de hoy de la de la semana pasada, que
+#: es justamente lo que hay que poder ver.
+_FORMATO_FECHA = "%Y-%m-%d %H:%M:%S %Z"
+
+
+def _sello(momento: datetime) -> str:
+    """Marca temporal en hora local: el investigador razona en su horario."""
+    return momento.astimezone().strftime(_FORMATO_FECHA)
+
+
 def _print_report(report: RunReport) -> None:
     """Resumen legible de la corrida, fuente por fuente."""
     duracion = (report.finished_at - report.started_at).total_seconds()
 
     if report.blocked:
         print("\n" + "=" * 72)
-        print("  CORRIDA BLOQUEADA — no se consultó ninguna fuente")
+        print(f"  [{_sello(report.started_at)}] CORRIDA BLOQUEADA — no se consultó ninguna fuente")
         print(f"  {report.blocked_reason}")
-        print("=" * 72)
+        print("=" * 72, flush=True)
         return
 
-    print(f"\nCorrida terminada en {duracion:.1f} s")
+    print(f"\n[{_sello(report.started_at)}] Corrida terminada en {duracion:.1f} s")
     print(f"{'FUENTE':<20} {'ESTADO':<9} {'TRAÍDOS':>8} {'AR':>6} {'NUEVOS':>7}")
     for r in report.results:
         print(
@@ -122,7 +134,8 @@ def _print_report(report: RunReport) -> None:
         if r.error:
             print(f"{'':<20} └─ {r.error}")
     print(
-        f"\nTotal: {report.total_fetched} traídos, {report.total_matched} relevantes AR, "
+        f"\n[{_sello(report.finished_at)}] Total: {report.total_fetched} traídos, "
+        f"{report.total_matched} relevantes AR, "
         f"{report.total_new} nuevos."
     )
     if report.pii_stored:
@@ -328,9 +341,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         if settings.run_on_start:
             # Sin esto el tablero queda vacío hasta la primera corrida
             # programada, y parece roto cuando en realidad no arrancó todavía.
-            print("Corrida inicial (LEAKS_RUN_ON_START=true)…")
+            print(
+                f"[{_sello(datetime.now(UTC))}] Corrida inicial (LEAKS_RUN_ON_START=true)…",
+                flush=True,
+            )
             _print_report(app.runner.run())
-        print(f"Scheduler activo. Corrida diaria a las {settings.daily_run_at} (hora local).")
+        print(
+            f"[{_sello(datetime.now(UTC))}] Scheduler activo. "
+            f"Corrida diaria a las {settings.daily_run_at} (hora local)."
+        )
         # La cadencia sale del registro: sumar una fuente de ventana corta es
         # una línea de dato, no un cambio acá ni en el scheduler.
         sondeos = {
@@ -340,7 +359,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
         if sondeos:
             detalle = ", ".join(f"{f} cada {m} min" for f, m in sorted(sondeos.items()))
-            print(f"Sondeos de fuentes efímeras: {detalle}")
+            print(f"Sondeos de fuentes efímeras: {detalle}", flush=True)
         run_forever(app.runner.run, daily_at=settings.daily_run_at, polls=sondeos)
         return 0
 

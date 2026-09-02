@@ -7,6 +7,7 @@ módulos: acá interesa el cableado.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -82,6 +83,22 @@ class TestRun:
         salida = capsys.readouterr().out
         assert "Corrida terminada" in salida
         assert "ransomware.live" in salida
+
+    def test_el_resumen_lleva_fecha_y_no_solo_hora(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Sin la fecha no se distingue la corrida de hoy de la de la semana pasada.
+
+        El log del scheduler es un chorro continuo de corridas: la hora sola no
+        alcanza para saber cuál es cuál.
+        """
+        monkeypatch.setattr(
+            "leaks.pipeline.runner.PipelineRunner.run", lambda *_a, **_k: _reporte(ok=True)
+        )
+        main(["run"])
+        salida = capsys.readouterr().out
+
+        assert re.search(r"\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", salida), salida[:200]
 
     def test_si_no_respondio_ninguna_fuente_devuelve_uno(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

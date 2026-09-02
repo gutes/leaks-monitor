@@ -9,6 +9,10 @@ services:
     build: .
     image: leaks-monitor:0.1.0
     command: ["leaks", "serve"]
+    environment:
+      # Misma zona que el scheduler: las fechas que muestra la UI se arman con
+      # los datos de la base, pero los logs de este proceso también se leen.
+      TZ: ${TZ:-America/Argentina/Buenos_Aires}
     ports:
       # Solo a loopback: la API no tiene autenticación (ver README).
       - "127.0.0.1:8000:8000"
@@ -41,6 +45,11 @@ services:
       # Corrida apenas arranca: sin esto el tablero queda vacío hasta la hora
       # programada y parece roto cuando en realidad todavía no corrió.
       LEAKS_RUN_ON_START: "true"
+      # Sin esto el contenedor corre en UTC y `LEAKS_DAILY_RUN_AT` —que el
+      # código documenta como "hora local"— cae tres horas corridas: 03:00
+      # resultaba ser medianoche argentina. También hace que las fechas del
+      # log sean las del investigador y no las del contenedor.
+      TZ: ${TZ:-America/Argentina/Buenos_Aires}
       LEAKS_DAILY_RUN_AT: "03:00"
       # Control de OPSEC: el scheduler no consulta nada si la salida es AR.
       LEAKS_EGRESS_BLOCKED_COUNTRIES: "AR"

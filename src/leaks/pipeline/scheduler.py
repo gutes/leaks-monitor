@@ -29,6 +29,10 @@ from leaks.pipeline.runner import RunReport
 
 logger = logging.getLogger(__name__)
 
+#: Fecha y hora en el log, en hora local. Va la FECHA además de la hora: sin
+#: ella no se distingue la corrida de hoy de la de la semana pasada.
+FORMATO_FECHA = "%Y-%m-%d %H:%M:%S %Z"
+
 
 def parse_daily_time(value: str) -> tuple[int, int]:
     """Convierte "HH:MM" en (hora, minuto). Ya validado por `Settings`."""
@@ -129,7 +133,14 @@ def run_forever(
             if evento.is_full_run
             else f"sondeo de {', '.join(evento.feeds or ())}"
         )
-        logger.info("Próximo: %s a las %s (en %.0f s)", que, evento.at.isoformat(), espera)
+        # Fecha completa y en hora local: sin la fecha, mirando el log no se
+        # distingue lo de hoy de lo de la semana pasada.
+        logger.info(
+            "Próximo: %s el %s (en %.0f s)",
+            que,
+            evento.at.astimezone().strftime(FORMATO_FECHA),
+            espera,
+        )
         sleep_fn(espera)
 
         try:
