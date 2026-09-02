@@ -222,3 +222,89 @@ class TestCadenciaDelRegistro:
             spec = get_spec(nombre)
             assert spec is not None
             assert spec.poll_interval_minutes is None
+
+
+class TestRecuperacionAlDespertar:
+    """El caso del portátil: la máquina duerme y la corrida agendada no ocurre."""
+
+    def test_sin_saltearse_nada_no_adelanta(self) -> None:
+        """Corrió después de la última agendada: no hay nada que recuperar."""
+        ahora = datetime(2026, 9, 2, 14, 47, tzinfo=UTC)
+        corrio_hoy = datetime(2026, 9, 2, 3, 0, tzinfo=UTC)
+        evento = plan_next(ahora, "03:00", {}, last_full_run=corrio_hoy, catchup=True)
+
+        assert evento.catchup is False
+        assert evento.at == datetime(2026, 9, 3, 3, 0, tzinfo=UTC)
+
+    def test_si_se_salteo_la_agendada_corre_ya(self) -> None:
+        """El caso real: la máquina durmió de las 19:01 a las 14:47 del otro día.
+
+        Son 19,7 h de atraso: con un umbral de horas (24, 26) esto NO
+        dispararía, y sin embargo la corrida de las 03:00 no ocurrió.
+        """
+        ahora = datetime(2026, 9, 2, 14, 47, tzinfo=UTC)
+        anoche = datetime(2026, 9, 1, 19, 1, tzinfo=UTC)
+        evento = plan_next(ahora, "03:00", {}, last_full_run=anoche, catchup=True)
+
+        assert evento.catchup is True
+        assert evento.is_full_run
+        assert evento.at == ahora  # sin espera
+
+    def test_gana_sobre_un_sondeo_pendiente(self) -> None:
+        """La corrida entera incluye al sondeo: sondear primero sería al pedo."""
+        ahora = datetime(2026, 9, 2, 14, 47, tzinfo=UTC)
+        anoche = datetime(2026, 9, 1, 19, 1, tzinfo=UTC)
+        polls = {"darkforums": ahora + timedelta(minutes=1)}
+        evento = plan_next(ahora, "03:00", polls, last_full_run=anoche, catchup=True)
+
+        assert evento.catchup is True
+        assert evento.feeds is None
+
+    def test_apagado_no_adelanta(self) -> None:
+        ahora = datetime(2026, 9, 2, 14, 47, tzinfo=UTC)
+        anoche = datetime(2026, 9, 1, 19, 1, tzinfo=UTC)
+
+        assert plan_next(ahora, "03:00", {}, last_full_run=anoche, catchup=False).catchup is False
+
+    def test_al_arrancar_no_dispara(self) -> None:
+        """`last_full_run` arranca en "ahora": un reinicio no es una corrida vieja."""
+        ahora = datetime(2026, 9, 2, 14, 47, tzinfo=UTC)
+
+        assert plan_next(ahora, "03:00", {}, last_full_run=ahora, catchup=True).catchup is False
+
+    def test_la_suspension_dispara_una_sola_recuperacion(self) -> None:
+        """No puede quedar en bucle: apenas corre, ya no hay nada salteado."""
+        instante = datetime(2026, 9, 1, 19, 1, tzinfo=UTC)
+        pedidos: list[tuple[str, ...] | None] = []
+        saltado = False
+
+        def now_fn() -> datetime:
+            return instante
+
+        def sleep_fn(segundos: float) -> None:
+            nonlocal instante, saltado
+            if not saltado:
+                # La máquina se suspende: el sleep de 2 h tarda 19,7 h.
+                instante += timedelta(hours=19, minutes=46)
+                saltado = True
+                return
+            instante += timedelta(seconds=segundos)
+
+        def run_once(*, only: Sequence[str] | None = None) -> RunReport:
+            pedidos.append(tuple(only) if only is not None else None)
+            inicio = datetime(2026, 9, 1, tzinfo=UTC)
+            return RunReport(started_at=inicio, finished_at=inicio)
+
+        run_forever(
+            run_once,
+            daily_at="03:00",
+            polls={"darkforums": 120},
+            catchup=True,
+            now_fn=now_fn,  # type: ignore[arg-type]
+            sleep_fn=sleep_fn,  # type: ignore[arg-type]
+            max_iterations=3,
+        )
+
+        # Sondeo atrasado, después UNA recuperación completa, y de ahí en más
+        # el ciclo normal — no una corrida entera detrás de la otra.
+        assert pedidos == [("darkforums",), None, ("darkforums",)]

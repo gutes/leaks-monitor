@@ -118,6 +118,10 @@ class Settings(BaseSettings):
     #: 26 y no 24: una corrida diaria que sale un rato tarde no es una falla.
     #: 0 apaga el watchdog.
     watchdog_max_silence_hours: int = Field(default=26, ge=0)
+    #: Si la corrida agendada se salteó —la máquina estaba suspendida—, correr
+    #: al despertar en vez de esperar a la próxima. En un portátil que duerme
+    #: de noche, sin esto la corrida de las 03:00 no ocurre nunca.
+    scheduler_catchup: bool = True
 
     #: Ensayo: se arma el aviso y se registra qué se habría mandado, pero NO
     #: sale nada ni se marca nada como avisado.

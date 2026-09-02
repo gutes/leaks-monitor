@@ -107,6 +107,25 @@ Dos decisiones que sostienen esto:
   diaria. Si `only` armara su propia selección, sondear sería la forma de
   correr una fuente `requires_pii` con la PII deshabilitada.
 
+### Recuperación al despertar
+
+El scheduler duerme con `sleep()`, así que **duerme con la máquina**. En un
+portátil, la corrida de las 03:00 no ocurre: el proceso sigue vivo, pero su
+espera se estira lo que dure la suspensión. Pasó del 26 al 31 de agosto (seis
+días sin correr) y otra vez la noche del 1 de septiembre.
+
+Por eso `plan_next` mira si la **última ocurrencia agendada quedó sin correr**
+—última corrida completa anterior a esa hora— y en ese caso corre ya, sin
+esperar a la próxima. Es el criterio de anacron.
+
+El criterio es "se salteó la agendada" y **no** "pasaron N horas" a propósito:
+la suspensión real fue de 19,7 h, así que cualquier umbral razonable (24, 26 h)
+la habría dejado pasar aunque la corrida de las 03:00 nunca ocurrió.
+
+No entra en bucle: apenas corre, ya no hay nada salteado. Y al arrancar el
+proceso, `last_full_run` empieza en "ahora", así que un reinicio no se confunde
+con una corrida vieja. Se apaga con `LEAKS_SCHEDULER_CATCHUP=false`.
+
 ### Vigilar el propio monitoreo
 
 Un monitoreo que se cae en silencio es peor que no tenerlo: da la tranquilidad

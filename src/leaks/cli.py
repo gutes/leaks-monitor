@@ -360,7 +360,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         if sondeos:
             detalle = ", ".join(f"{f} cada {m} min" for f, m in sorted(sondeos.items()))
             print(f"Sondeos de fuentes efímeras: {detalle}", flush=True)
-        run_forever(app.runner.run, daily_at=settings.daily_run_at, polls=sondeos)
+        if settings.scheduler_catchup:
+            print(
+                "Recuperación activa: si la máquina estuvo suspendida a la hora "
+                "agendada, la corrida sale al despertar.",
+                flush=True,
+            )
+        run_forever(
+            app.runner.run,
+            daily_at=settings.daily_run_at,
+            polls=sondeos,
+            catchup=settings.scheduler_catchup,
+        )
         return 0
 
     return 2  # pragma: no cover — argparse ya cubre los comandos desconocidos

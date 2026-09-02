@@ -53,6 +53,15 @@ def next_run_at(now: datetime, daily_at: str) -> datetime:
     return candidato
 
 
+def previous_run_at(now: datetime, daily_at: str) -> datetime:
+    """Última ocurrencia de `daily_at` anterior o igual a `now`."""
+    hora, minuto = parse_daily_time(daily_at)
+    candidato = now.replace(hour=hora, minute=minuto, second=0, microsecond=0)
+    if candidato > now:
+        candidato -= timedelta(days=1)
+    return candidato
+
+
 @dataclass(frozen=True)
 class ScheduledEvent:
     """Lo próximo que hay que hacer y cuándo."""
@@ -60,6 +69,9 @@ class ScheduledEvent:
     at: datetime
     #: Fuentes a correr. `None` = la corrida completa.
     feeds: tuple[str, ...] | None = None
+    #: La corrida se adelantó porque la anterior quedó vieja (la máquina
+    #: estuvo suspendida). Se distingue para que el log lo diga.
+    catchup: bool = False
 
     @property
     def is_full_run(self) -> bool:
@@ -70,12 +82,33 @@ def plan_next(
     now: datetime,
     daily_at: str,
     next_polls: Mapping[str, datetime],
+    *,
+    last_full_run: datetime | None = None,
+    catchup: bool = False,
 ) -> ScheduledEvent:
     """Elige el evento más próximo entre la corrida diaria y los sondeos.
 
     Ante un empate gana la corrida completa: hace todo lo que haría el sondeo y
     además el resto, así que sondear en el mismo instante sería trabajo al pedo.
+
+    **Recuperación al despertar** (`catchup`). Si la última ocurrencia agendada
+    ya pasó y la última corrida completa es anterior a ella, esa corrida se
+    salteó: se corre YA en vez de esperar a la próxima.
+
+    El caso real: en un portátil el proceso duerme con la máquina, así que la
+    corrida de las 03:00 nunca ocurre y esperar a la siguiente 03:00 —con la
+    máquina otra vez dormida— no arregla nada. Pasó del 26 al 31 de agosto y
+    otra vez la noche del 1 de septiembre.
+
+    El criterio es "se salteó la agendada" y no "pasaron N horas" a propósito:
+    con un umbral de horas, una suspensión de 19,7 h —la real— no llegaba a
+    dispararlo aunque la corrida de las 03:00 no hubiera ocurrido.
     """
+    if catchup and last_full_run is not None and last_full_run < previous_run_at(now, daily_at):
+        # `at=now` => se corre sin esperar. No hace bucle: apenas corre, el
+        # llamador actualiza `last_full_run` y esta rama deja de dispararse.
+        return ScheduledEvent(at=now, catchup=True)
+
     completa = ScheduledEvent(at=next_run_at(now, daily_at))
     if not next_polls:
         return completa
@@ -100,6 +133,7 @@ def run_forever(
     *,
     daily_at: str,
     polls: Mapping[str, int] | None = None,
+    catchup: bool = True,
     now_fn: Callable[[], datetime] = datetime.now,
     sleep_fn: Callable[[float], None] = time.sleep,
     max_iterations: int | None = None,
@@ -122,11 +156,21 @@ def run_forever(
     # correr) la corrida completa, y sondear encima sería duplicar el request.
     ahora = now_fn()
     proximos = {f: ahora + timedelta(minutes=m) for f, m in intervalos.items() if m > 0}
+    # Se arranca contando desde ahora: el proceso acaba de levantar y, con
+    # `LEAKS_RUN_ON_START`, de correr. Suponer que hace días que no corre
+    # dispararía una corrida de recuperación en cada reinicio.
+    ultima_completa = ahora
 
     iteraciones = 0
     while max_iterations is None or iteraciones < max_iterations:
         ahora = now_fn()
-        evento = plan_next(ahora, daily_at, proximos)
+        evento = plan_next(
+            ahora,
+            daily_at,
+            proximos,
+            last_full_run=ultima_completa,
+            catchup=catchup,
+        )
         espera = max((evento.at - ahora).total_seconds(), 0.0)
         que = (
             "corrida completa"
@@ -162,6 +206,7 @@ def run_forever(
         # quedar fuera del ciclo hasta el próximo reinicio.
         despues = now_fn()
         if evento.is_full_run:
+            ultima_completa = despues
             # La corrida completa ya trajo todas las fuentes: los sondeos
             # arrancan de nuevo desde acá y no se apilan justo detrás.
             for f, m in intervalos.items():
