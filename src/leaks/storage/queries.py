@@ -18,6 +18,7 @@ from typing import Any, ClassVar
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from leaks.adapters.registry import FEED_REGISTRY
 from leaks.domain.models import SEVERITY_RANK
 from leaks.storage.models import FindingRow, RunEventRow, SourceRunRow
 from leaks.storage.session import session_scope
@@ -412,6 +413,35 @@ class FindingQueryService:
             ultimo = session.scalar(select(func.max(FindingRow.alerted_at)))
 
         return {"pending": pendientes, "sent_total": enviados, "last_sent_at": _as_utc(ultimo)}
+
+    def last_run_at(self) -> datetime | None:
+        """Cuándo terminó la última corrida, de la fuente que sea.
+
+        Incluye los sondeos de una sola fuente: son corridas igual, y lo que
+        esto responde es "¿el pipeline está vivo?".
+        """
+        with session_scope(self._session_factory) as session:
+            valor = session.scalar(select(func.max(SourceRunRow.finished_at)))
+            return _as_utc(valor) if valor else None
+
+    def last_full_run_at(self) -> datetime | None:
+        """Cuándo terminó la última corrida **completa**.
+
+        Se mide sobre las fuentes que no se sondean aparte: esas solo corren
+        dentro de una corrida entera, así que su última corrida ES la última
+        corrida completa. Sin esta distinción, un sondeo de darkforums cada dos
+        horas haría parecer que el pipeline entero corrió recién.
+        """
+        solo_completas = [s.name for s in FEED_REGISTRY if not s.poll_interval_minutes]
+        if not solo_completas:
+            return None
+        with session_scope(self._session_factory) as session:
+            valor = session.scalar(
+                select(func.max(SourceRunRow.finished_at)).where(
+                    SourceRunRow.source.in_(solo_completas)
+                )
+            )
+            return _as_utc(valor) if valor else None
 
     def latest_runs(self) -> tuple[dict[str, Any], ...]:
         """Última corrida de cada fuente.

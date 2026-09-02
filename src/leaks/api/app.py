@@ -1057,6 +1057,7 @@ def create_app(
                     license_note=spec.license_note,
                     docs_url=spec.docs_url,
                     tags=list(spec.tags),
+                    poll_interval_minutes=spec.poll_interval_minutes,
                     last_run=SourceRunOut.model_validate(ultima) if ultima else None,
                 )
             )
@@ -1075,6 +1076,8 @@ def create_app(
             findings=int(queries.stats()["total"]),
             sources_ok=sum(1 for r in corridas if r["status"] == "ok"),
             sources_failed=sum(1 for r in corridas if r["status"] == "failed"),
+            last_run_at=queries.last_run_at(),
+            last_full_run_at=queries.last_full_run_at(),
         )
 
     # -- Frontend estático ---------------------------------------------------

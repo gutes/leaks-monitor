@@ -111,6 +111,10 @@ class SourceOut(BaseModel):
     license_note: str = ""
     docs_url: str = ""
     tags: list[str] = Field(default_factory=list)
+    #: Cada cuántos minutos se sondea aparte de la corrida diaria. `None` = solo
+    #: en la corrida completa, que es lo que permite distinguir "corrió el
+    #: pipeline entero" de "se sondeó un foro".
+    poll_interval_minutes: int | None = None
     last_run: SourceRunOut | None = None
 
 
@@ -142,6 +146,10 @@ class HealthOut(BaseModel):
     findings: int
     sources_ok: int
     sources_failed: int
+    #: Última corrida de cualquier fuente, sondeos incluidos: responde "¿está
+    #: vivo?". `last_full_run_at` responde "¿miró todo?", que no es lo mismo.
+    last_run_at: datetime | None = None
+    last_full_run_at: datetime | None = None
 
 
 class EventOut(BaseModel):

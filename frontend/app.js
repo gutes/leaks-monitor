@@ -121,6 +121,39 @@ function fmtTime(iso) {
   return Number.isNaN(d.getTime()) ? "--:--:--" : d.toTimeString().slice(0, 8);
 }
 
+/**
+ * Sello corto para la consola: "09-02 13:08:53".
+ *
+ * Lleva el día además de la hora porque la consola es un chorro continuo: una
+ * línea de las 03:00 puede ser de hoy o de la semana pasada, y sin el día no
+ * hay forma de saberlo. El año va en el tooltip, que es donde no estorba.
+ */
+function fmtStamp(iso) {
+  const d = new Date(iso);
+  if (!iso || Number.isNaN(d.getTime())) return "--:--:--";
+  return `${fmtDate(iso).slice(5)} ${d.toTimeString().slice(0, 8)}`;
+}
+
+/** Fecha y hora completas, en hora local. Para tooltips y sellos. */
+function fmtDateTime(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return `${fmtDate(iso)} ${d.toTimeString().slice(0, 8)}`;
+}
+
+/** "hace 12 min" — para decir de un vistazo si algo está fresco o viejo. */
+function fmtHace(iso) {
+  const d = new Date(iso);
+  if (!iso || Number.isNaN(d.getTime())) return null;
+  const min = Math.round((Date.now() - d.getTime()) / 60000);
+  if (min < 1) return "recién";
+  if (min < 60) return `hace ${min} min`;
+  const horas = min / 60;
+  if (horas < 48) return `hace ${Math.round(horas)} h`;
+  return `hace ${Math.round(horas / 24)} días`;
+}
+
 /** Bytes legibles: 112406 -> "110 KB". */
 function fmtBytes(n) {
   if (n === null || n === undefined) return null;
@@ -330,6 +363,54 @@ function pintarSubforos(cont, estado) {
   }
 }
 
+/**
+ * Sello de "cuándo corrió el pipeline" en el encabezado, al lado del estado.
+ *
+ * Se distinguen dos cosas, porque confundirlas es lo que hizo que un apagón de
+ * seis días pasara inadvertido:
+ *
+ * * **Última corrida** — cualquiera, sondeos incluidos. Responde "¿está vivo?".
+ * * **Completa** — la que mira todas las fuentes. Responde "¿miró todo?". Se
+ *   deriva de las fuentes que NO se sondean aparte: esas solo corren dentro de
+ *   una corrida entera.
+ *
+ * Si la completa quedó vieja se pinta en ámbar: es exactamente el síntoma de
+ * que la máquina estuvo suspendida a la hora agendada.
+ */
+function renderLastRun(sources) {
+  const nodo = $("last-run");
+  if (!nodo) return;
+
+  const fechas = (sources || []).map((s) => s.last_run && s.last_run.finished_at).filter(Boolean);
+  if (!fechas.length) {
+    nodo.textContent = "Sin corridas registradas";
+    nodo.className = "last-run last-run-stale";
+    return;
+  }
+
+  const ultima = fechas.reduce((a, b) => (new Date(a) > new Date(b) ? a : b));
+  const completas = (sources || [])
+    .filter((s) => !s.poll_interval_minutes && s.last_run && s.last_run.finished_at)
+    .map((s) => s.last_run.finished_at);
+  const completa = completas.length
+    ? completas.reduce((a, b) => (new Date(a) > new Date(b) ? a : b))
+    : null;
+
+  let texto = `Última corrida: ${fmtHace(ultima)}`;
+  if (completa && fmtHace(completa) !== fmtHace(ultima)) {
+    texto += ` · completa ${fmtHace(completa)}`;
+  }
+  nodo.textContent = texto;
+  nodo.title = completa
+    ? `Última corrida: ${fmtDateTime(ultima)}\nÚltima completa: ${fmtDateTime(completa)}`
+    : `Última corrida: ${fmtDateTime(ultima)}`;
+
+  // Más de 26 h sin corrida completa es el umbral del watchdog: si se pasó,
+  // algo no está corriendo como debería.
+  const horas = completa ? (Date.now() - new Date(completa).getTime()) / 36e5 : Infinity;
+  nodo.className = horas > 26 ? "last-run last-run-stale" : "last-run";
+}
+
 async function loadSources() {
   const sources = await api("/api/sources");
 
@@ -344,6 +425,7 @@ async function loadSources() {
   }
 
   renderSourcesSummary(sources);
+  renderLastRun(sources);
 
   for (const s of sources || []) {
     const run = s.last_run;
@@ -2095,7 +2177,12 @@ async function loadEgress(force = false) {
 function renderEvent(ev) {
   const line = el("div", "", `cline cline-${ev.level}`);
 
-  line.append(el("span", fmtTime(ev.occurred_at), "cline-time"));
+  // La hora sola no alcanza: la consola es un chorro continuo y una línea de
+  // las 03:00 puede ser de hoy o de la semana pasada. El día va en un separador
+  // (ver `renderEvents`) y la fecha completa en el tooltip de cada línea.
+  const hora = el("span", fmtStamp(ev.occurred_at), "cline-time");
+  hora.title = fmtDateTime(ev.occurred_at);
+  line.append(hora);
   line.append(el("span", ev.source || "pipeline", "cline-source"));
 
   const cuerpo = el("span", "", "cline-msg");

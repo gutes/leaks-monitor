@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { buscar, cargarApp, disparar, textoDe } from "./dom.mjs";
+import { buscar, cargarApp, disparar, textoDe, tieneClase } from "./dom.mjs";
 
 const HTML = readFileSync(new URL("../../frontend/index.html", import.meta.url), "utf8");
 const APP = readFileSync(new URL("../../frontend/app.js", import.meta.url), "utf8");
@@ -688,6 +688,58 @@ test("los foros ofrecen buscar subforos; el resto de las fuentes no", async () =
   const botones = buscar(el("sources"), (n) => n.tag === "button");
   const textos = botones.map((b) => b.textContent);
   assert.deepEqual(textos, ["Buscar subforos"], "solo el foro lo ofrece");
+});
+
+test("el encabezado dice cuándo corrió el pipeline por última vez", async () => {
+  const ahora = Date.now();
+  const hace10min = new Date(ahora - 10 * 60000).toISOString();
+  const hace3h = new Date(ahora - 3 * 3600000).toISOString();
+
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/hallazgos",
+    respuestas: {
+      ...RESPUESTAS_BASE,
+      "/api/sources": [
+        // Sondeado hace 10 min: dice que está vivo, pero no que miró todo.
+        { name: "darkforums", enabled: true, poll_interval_minutes: 120,
+          last_run: { source: "darkforums", status: "ok", finished_at: hace10min } },
+        // Solo corre en la corrida completa: es el que fecha "completa".
+        { name: "ransomware.live", enabled: true, poll_interval_minutes: null,
+          last_run: { source: "ransomware.live", status: "ok", finished_at: hace3h } },
+      ],
+    },
+  });
+
+  const texto = textoDe(el("last-run"));
+  assert.match(texto, /Última corrida: hace 10 min/);
+  assert.match(texto, /completa hace 3 h/, "distingue el sondeo de la corrida entera");
+});
+
+test("una corrida completa vieja se marca, aunque los sondeos sigan", async () => {
+  // El síntoma del apagón: la fuente sondeada responde y todo parece bien,
+  // pero hace días que no corre el pipeline entero.
+  const ahora = Date.now();
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/hallazgos",
+    respuestas: {
+      ...RESPUESTAS_BASE,
+      "/api/sources": [
+        { name: "darkforums", enabled: true, poll_interval_minutes: 120,
+          last_run: { source: "darkforums", status: "ok",
+            finished_at: new Date(ahora - 60000).toISOString() } },
+        { name: "ransomware.live", enabled: true, poll_interval_minutes: null,
+          last_run: { source: "ransomware.live", status: "ok",
+            finished_at: new Date(ahora - 72 * 3600000).toISOString() } },
+      ],
+    },
+  });
+
+  assert.ok(
+    tieneClase(el("last-run"), "last-run-stale"),
+    "la corrida completa de hace 3 días tiene que verse como problema",
+  );
 });
 
 test("la ventana medida del feed se muestra", async () => {

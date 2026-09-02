@@ -393,6 +393,23 @@ class TestDescubrimientoDeSubforos:
         }
 
 
+class TestUltimaCorrida:
+    """Cuándo corrió el pipeline: "está vivo" y "miró todo" son distintas."""
+
+    def test_health_expone_las_dos_fechas(self, client: TestClient) -> None:
+        datos = client.get("/api/health").json()
+
+        assert "last_run_at" in datos
+        assert "last_full_run_at" in datos
+
+    def test_las_fuentes_declaran_su_cadencia(self, client: TestClient) -> None:
+        """Es lo que deja distinguir un sondeo de una corrida entera."""
+        fuentes = {s["name"]: s for s in client.get("/api/sources").json()}
+
+        assert fuentes["darkforums"]["poll_interval_minutes"] == 120
+        assert fuentes["ransomware.live"]["poll_interval_minutes"] is None
+
+
 class TestSoloLectura:
     @pytest.mark.parametrize("metodo", ["post", "put", "patch", "delete"])
     def test_no_hay_endpoints_de_escritura(self, client: TestClient, metodo: str) -> None:
