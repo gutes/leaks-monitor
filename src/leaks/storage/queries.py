@@ -44,6 +44,9 @@ class FindingFilters:
     until: datetime | None = None
     #: Búsqueda por texto sobre nombre y dominio de la víctima.
     q: str | None = None
+    #: Un hallazgo puntual. Es lo que hace que un hallazgo tenga URL propia:
+    #: el widget de avisos pendientes enlaza acá.
+    dedup_hash: str | None = None
     #: `reciente`, `historico` o `sin_fecha`. Se calcula sobre `occurred_at`.
     freshness: str | None = None
     #: Umbral en días para decidir qué es reciente.
@@ -142,6 +145,11 @@ class FindingQueryService:
     @staticmethod
     def _apply(stmt: Select[Any], filters: FindingFilters) -> Select[Any]:
         """Aplica los filtros activos. Los `None` no filtran."""
+        # Primero el puntual: si se pide un hallazgo por su hash, el resto de
+        # los filtros sobra y además podría esconderlo (un enlace a un hallazgo
+        # viejo no puede fallar porque el filtro de fecha esté en "reciente").
+        if filters.dedup_hash:
+            return stmt.where(FindingRow.dedup_hash == filters.dedup_hash)
         if filters.source:
             stmt = stmt.where(FindingRow.source == filters.source)
         if filters.sector:
@@ -187,6 +195,8 @@ class FindingQueryService:
         """Proyección explícita: se lista campo por campo lo que sale a la API."""
         return {
             "id": row.id,
+            # Clave estable: es lo que le da URL propia a un hallazgo.
+            "dedup_hash": row.dedup_hash,
             "source": row.source,
             "leak_type": row.leak_type,
             "victim_name": row.victim_name,
@@ -298,6 +308,8 @@ class FindingQueryService:
         hasta: datetime | None = None,
         campo: str = "first_seen",
         estado: str = "todas",
+        avisables: bool = False,
+        max_age_days: int | None = None,
     ) -> Page:
         """Alertas para que las consuma otro software.
 
@@ -311,6 +323,11 @@ class FindingQueryService:
         inicial ni lo que no se pudo fechar: eso es política de a-quién-
         interrumpir, y un consumidor que pide un rango explícito quiere lo que
         hay. Cada ítem trae `backfill` y `occurred_at` para que decida solo.
+
+        `avisables=True` invierte eso y aplica **la política del despachador**:
+        sin importación inicial y sin eventos más viejos que `max_age_days`.
+        Existe porque el panel de alertas cuenta con ese criterio, y un widget
+        que liste otro conjunto contradice al número que tiene al lado.
         """
         piso = SEVERITY_RANK.get(min_severity.lower(), 0)
         alcanzan = [s for s, rango in SEVERITY_RANK.items() if rango >= piso]
@@ -326,6 +343,17 @@ class FindingQueryService:
                 stmt = stmt.where(columna.is_not(None), columna >= desde)
             if hasta is not None:
                 stmt = stmt.where(columna.is_not(None), columna <= hasta)
+            if avisables:
+                # La misma política que `list_pending_alerts`: el histórico que
+                # recién importamos no es una novedad, y sin fecha no se puede
+                # afirmar que algo sea reciente.
+                stmt = stmt.where(FindingRow.backfill.is_(False))
+                if max_age_days is not None:
+                    limite = datetime.now(UTC) - timedelta(days=max_age_days)
+                    stmt = stmt.where(
+                        FindingRow.occurred_at.is_not(None),
+                        FindingRow.occurred_at >= limite,
+                    )
             return stmt
 
         with session_scope(self._session_factory) as session:

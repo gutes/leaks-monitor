@@ -107,6 +107,15 @@ main { max-width: 1280px; margin: 0 auto; padding: 20px 24px 48px; }
 .warn { color: var(--warn); font-size: 12.5px; margin: 4px 0; word-break: break-word; }
 .last-run { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
 .last-run-stale { color: var(--warn); }
+.alert-pendientes { margin-top: 12px; }
+.alert-pend-item {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  padding: 7px 0; border-top: 1px solid var(--border);
+}
+.alert-pend-link { color: var(--accent); text-decoration: none; font-weight: 550; }
+.alert-pend-link:hover { text-decoration: underline; }
+.alert-pend-meta { color: var(--muted); font-size: 12.5px; }
+.alert-pend-mas { margin-top: 8px; }
 .subforos { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
 .subforos-salida { margin-top: 6px; }
 .subforo-fila { margin: 4px 0; }

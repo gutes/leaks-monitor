@@ -300,6 +300,8 @@ def create_app(
         since: datetime | None = None,
         until: datetime | None = None,
         q: Annotated[str | None, Query(max_length=200)] = None,
+        #: Un hallazgo puntual, por su clave estable. Es lo que le da URL propia.
+        dedup_hash: Annotated[str | None, Query(min_length=64, max_length=64)] = None,
         freshness: Annotated[str | None, Query(pattern="^(reciente|historico|sin_fecha)$")] = None,
         limit: Annotated[int, Query(ge=1)] = 50,
         offset: Annotated[int, Query(ge=0)] = 0,
@@ -320,6 +322,7 @@ def create_app(
                 since=since,
                 until=until,
                 q=q,
+                dedup_hash=dedup_hash,
                 freshness=freshness,
                 fresh_days=config.freshness_days,
             ),
@@ -965,6 +968,7 @@ def create_app(
         ] = "first_seen",
         estado: Annotated[str, Query(pattern="^(todas|pendientes|enviadas)$")] = "todas",
         min_severity: Annotated[str | None, Query(pattern="^(low|medium|high|critical)$")] = None,
+        avisables: bool = False,
     ) -> AlertFeedOut:
         """Alertas para que las consuma otro software.
 
@@ -987,6 +991,11 @@ def create_app(
         Cada ítem trae `dedup_hash` para deduplicar del lado del consumidor, y
         `backfill` para distinguir el histórico que recién importamos de una
         novedad real.
+
+        `avisables=true` aplica la política del despachador —sin importación
+        inicial, sin eventos más viejos que `LEAKS_ALERT_MAX_AGE_DAYS`—, que es
+        el mismo criterio con el que `/api/alerts` cuenta los pendientes. Es lo
+        que usa el widget de la UI para no contradecir al número de al lado.
         """
         acotado = min(limit, config.api_max_page_size)
         pagina = queries.alert_feed(
@@ -997,6 +1006,8 @@ def create_app(
             hasta=_a_utc(hasta),
             campo=campo,
             estado=estado,
+            avisables=avisables,
+            max_age_days=config.alert_max_age_days,
         )
         return AlertFeedOut(
             items=[AlertItemOut.model_validate(i) for i in pagina.items],

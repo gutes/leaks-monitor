@@ -268,6 +268,68 @@ async function loadAlerts() {
     }
     canales.append(fila);
   }
+
+  await loadAlertasPendientes(pendientes);
+}
+
+//: Cuántos avisos pendientes se listan. El panel dice el total igual; esto es
+//: para poder ir a los primeros sin convertir el panel en una segunda tabla.
+const MAX_PENDIENTES = 15;
+
+/**
+ * Lista los avisos que están esperando, con enlace a cada hallazgo.
+ *
+ * El panel ya decía "13 hallazgos esperando", pero no dejaba llegar a ellos:
+ * sabías que había señal y no podías verla. Cada fila enlaza al hallazgo por
+ * su `dedup_hash`, que es su clave estable.
+ *
+ * El enlace es **a nuestra UI**, nunca a `raw_ref`: la referencia de origen es
+ * un sitio de extorsión o un foro de volcados, y se muestra para leer, no para
+ * navegar por accidente.
+ */
+async function loadAlertasPendientes(total) {
+  const cont = $("alerts-pendientes");
+  if (!cont) return;
+  cont.replaceChildren();
+  if (!total) return;
+
+  // `avisables`: la misma política con la que el panel cuenta los pendientes
+  // —sin importación inicial ni eventos viejos—. Sin esto el widget listaba 38
+  // donde el panel decía 13, y el que manda es el criterio del despachador.
+  const pagina = await api("/api/alerts/feed", {
+    estado: "pendientes",
+    avisables: "true",
+    limit: MAX_PENDIENTES,
+  });
+  const items = (pagina && pagina.items) || [];
+  if (!items.length) return;
+
+  cont.append(el("p", "Esperando aviso:", "hint"));
+
+  for (const a of items) {
+    const fila = el("div", "", "alert-pend-item");
+    fila.append(el("span", a.severity, `pill pill-${a.severity}`));
+
+    // `<a>` de verdad y no un botón: se puede copiar, abrir en otra pestaña y
+    // compartir. Es el pedido — que el aviso tenga URL.
+    const enlace = el("a", a.victim_name || a.victim_domain || "(sin nombre)", "alert-pend-link");
+    enlace.href = `#/hallazgos?hallazgo=${encodeURIComponent(a.dedup_hash)}`;
+    fila.append(enlace);
+
+    const cuando = a.occurred_at ? fmtDate(a.occurred_at) : "sin fecha";
+    const partes = [a.source, cuando];
+    if (a.actor) partes.splice(1, 0, a.actor);
+    fila.append(el("span", partes.join(" · "), "alert-pend-meta"));
+
+    cont.append(fila);
+  }
+
+  if (total > items.length) {
+    cont.append(
+      el("p", `y ${total - items.length} más — se listan los ${items.length} más recientes.`,
+         "hint alert-pend-mas"),
+    );
+  }
 }
 
 /**
@@ -492,6 +554,30 @@ function filtrarPorActor(actor) {
 function renderActiveFilters() {
   const cont = $("active-filters");
   cont.replaceChildren();
+
+  // Un hallazgo fijado por URL. Sin el chip, la tabla mostraría una sola fila
+  // y parecería que se perdió todo lo demás.
+  if (state.filters.dedup_hash) {
+    const chip = el("span", "", "filter-chip");
+    chip.append(
+      el("span", "hallazgo: ", "filter-chip-key"),
+      el("strong", `${state.filters.dedup_hash.slice(0, 12)}…`),
+    );
+    const quitar = el("button", "×", "filter-chip-x");
+    quitar.type = "button";
+    quitar.title = "Ver todos los hallazgos";
+    quitar.addEventListener("click", () => {
+      delete state.filters.dedup_hash;
+      state.offset = 0;
+      // Se limpia también de la URL: si no, recargar volvería a fijarlo.
+      if (paramsFromHash().get("hallazgo")) window.location.hash = "#/hallazgos";
+      renderActiveFilters();
+      loadFindings();
+    });
+    chip.append(quitar);
+    cont.append(chip);
+  }
+
   if (!state.filters.actor) return;
 
   const chip = el("span", "", "filter-chip");
@@ -1114,8 +1200,31 @@ async function refreshNow() {
  * "Reglas" no tiene por qué disparar la consulta de hallazgos.
  */
 function viewFromHash() {
-  const nombre = (window.location.hash || "").replace(/^#\/?/, "");
+  // El hash puede llevar parámetros (`#/hallazgos?hallazgo=<hash>`), que es lo
+  // que le da URL propia a un hallazgo: compartible y con "atrás" funcionando.
+  const nombre = (window.location.hash || "").replace(/^#\/?/, "").split("?")[0];
   return VIEWS.includes(nombre) ? nombre : VIEWS[0];
+}
+
+/** Parámetros del hash, si los hay. */
+function paramsFromHash() {
+  const partes = (window.location.hash || "").split("?");
+  return new URLSearchParams(partes[1] || "");
+}
+
+/**
+ * Aplica el hallazgo pedido por la URL, si lo hay.
+ *
+ * Fijar uno **reemplaza** los demás filtros a propósito: un enlace a un
+ * hallazgo puntual no puede fallar porque el filtro de frescura quedó en
+ * "reciente" y el hallazgo es de hace dos meses.
+ */
+function aplicarHallazgoDeLaUrl() {
+  const pedido = paramsFromHash().get("hallazgo");
+  if (!pedido) return false;
+  state.filters = { dedup_hash: pedido };
+  state.offset = 0;
+  return true;
 }
 
 function showView(nombre) {
@@ -2293,8 +2402,10 @@ async function refreshAll() {
 
 $("filters").addEventListener("submit", (e) => {
   e.preventDefault();
+  // `readFilters` no conserva el hallazgo fijado: filtrar es salir de él.
   state.filters = readFilters();
   state.offset = 0;
+  renderActiveFilters();
   loadFindings();
 });
 
@@ -2449,14 +2560,23 @@ sourcesPanel.addEventListener("toggle", () => {
   localStorage.setItem("sources-open", sourcesPanel.open ? "1" : "0");
 });
 
-window.addEventListener("hashchange", () => showView(viewFromHash()));
+window.addEventListener("hashchange", () => {
+  const fijado = aplicarHallazgoDeLaUrl();
+  showView(viewFromHash());
+  if (fijado) {
+    renderActiveFilters();
+    loadFindings();
+  }
+});
 
 // Arranque: se pinta la vista del hash y se traen los datos comunes.
 // La IP de salida se resuelve ANTES de pintar nada: si arranca bloqueado, no
 // tiene que salir ni un pedido de datos. (Antes se pintaba la vista primero y
 // recién después se sabía que estaba bloqueado.)
 loadEgress().then(() => {
+  aplicarHallazgoDeLaUrl();
   showView(viewFromHash());
+  renderActiveFilters();
   refreshAll();
 });
 

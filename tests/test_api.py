@@ -410,6 +410,69 @@ class TestUltimaCorrida:
         assert fuentes["ransomware.live"]["poll_interval_minutes"] is None
 
 
+class TestAvisosPendientesDelWidget:
+    """El widget y el contador del panel tienen que decir lo mismo."""
+
+    def test_avisables_coincide_con_el_contador_del_panel(self, client: TestClient) -> None:
+        """Sin esto el widget listaba 38 donde el panel decía 13.
+
+        El feed sin acotar es para integradores: trae el histórico importado y
+        los eventos viejos, y el consumidor decide. El panel cuenta con la
+        política del despachador. Un widget al lado del número tiene que usar
+        la del panel.
+        """
+        pendientes = client.get("/api/alerts").json()["pending"]
+        feed = client.get(
+            "/api/alerts/feed", params={"estado": "pendientes", "avisables": "true"}
+        ).json()
+
+        assert feed["total"] == pendientes
+
+    def test_sin_avisables_el_feed_sigue_trayendo_todo(self, client: TestClient) -> None:
+        """No se cambia el contrato del integrador: el default no filtra."""
+        acotado = client.get(
+            "/api/alerts/feed", params={"estado": "pendientes", "avisables": "true"}
+        ).json()["total"]
+        todo = client.get("/api/alerts/feed", params={"estado": "pendientes"}).json()["total"]
+
+        assert todo >= acotado
+
+
+class TestHallazgoDireccionable:
+    """Un hallazgo con URL propia: es lo que enlaza el widget de avisos."""
+
+    def test_se_pide_por_dedup_hash(self, client: TestClient) -> None:
+        todos = client.get("/api/findings").json()["items"]
+        buscado = todos[0]["dedup_hash"]
+
+        datos = client.get("/api/findings", params={"dedup_hash": buscado}).json()
+
+        assert datos["total"] == 1
+        assert datos["items"][0]["dedup_hash"] == buscado
+
+    def test_el_hash_manda_sobre_el_resto_de_los_filtros(self, client: TestClient) -> None:
+        """Un enlace no puede fallar porque quedó un filtro puesto.
+
+        Es el caso real: el aviso es de un evento de hace dos meses y el filtro
+        de frescura está en "reciente". El enlace tiene que llevar igual.
+        """
+        todos = client.get("/api/findings").json()["items"]
+        buscado = todos[0]["dedup_hash"]
+
+        datos = client.get(
+            "/api/findings",
+            params={"dedup_hash": buscado, "severity": "low", "source": "no-existe"},
+        ).json()
+
+        assert datos["total"] == 1
+
+    def test_un_hash_desconocido_no_devuelve_nada(self, client: TestClient) -> None:
+        datos = client.get("/api/findings", params={"dedup_hash": "f" * 64}).json()
+
+        assert datos["total"] == 0
+        assert datos["items"] == []
+
+
 class TestSoloLectura:
     @pytest.mark.parametrize("metodo", ["post", "put", "patch", "delete"])
     def test_no_hay_endpoints_de_escritura(self, client: TestClient, metodo: str) -> None:

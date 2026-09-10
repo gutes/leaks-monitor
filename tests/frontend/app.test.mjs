@@ -766,6 +766,100 @@ test("la ventana medida del feed se muestra", async () => {
   assert.match(textoDe(el("sources")), /Ventana del feed: 20\.0 h/);
 });
 
+const ALERTA_PENDIENTE = {
+  id: 7,
+  dedup_hash: "a".repeat(64),
+  source: "ransomware.live",
+  leak_type: "ransomware",
+  victim_name: "Ministerio X",
+  victim_domain: "x.gob.ar",
+  severity: "critical",
+  actor: "LockBit",
+  occurred_at: "2026-08-30T10:00:00Z",
+  discovered_at: "2026-08-31T10:00:00Z",
+  notified: false,
+};
+
+test("los avisos pendientes se listan con enlace al hallazgo", async () => {
+  // El panel decía "13 esperando" y no dejaba llegar a ninguno: sabías que
+  // había señal y no podías verla.
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/fuentes",
+    respuestas: {
+      ...RESPUESTAS_BASE,
+      "/api/alerts": {
+        enabled: false,
+        channels: [],
+        min_severity: "high", max_age_days: 30, pending: 13, sent_total: 0,
+      },
+      "/api/alerts/feed": { items: [ALERTA_PENDIENTE], total: 13, limit: 15, offset: 0 },
+    },
+  });
+
+  const cont = el("alerts-pendientes");
+  assert.match(textoDe(cont), /Ministerio X/);
+  assert.match(textoDe(cont), /LockBit/, "dice de un vistazo de qué se trata");
+  assert.match(textoDe(cont), /y 12 más/, "no esconde que hay más");
+
+  const enlace = buscar(cont, (n) => n.tag === "a")[0];
+  assert.ok(enlace, "cada aviso tiene que ser un enlace de verdad");
+  assert.equal(enlace.href, `#/hallazgos?hallazgo=${"a".repeat(64)}`);
+});
+
+test("el enlace del aviso NO apunta a la fuente de origen", async () => {
+  // `raw_ref` es un sitio de extorsión o un foro de volcados: se muestra para
+  // leer, nunca para navegar por accidente.
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/fuentes",
+    respuestas: {
+      ...RESPUESTAS_BASE,
+      "/api/alerts": {
+        enabled: false, channels: [], min_severity: "high",
+        max_age_days: 30, pending: 1, sent_total: 0,
+      },
+      "/api/alerts/feed": {
+        items: [{ ...ALERTA_PENDIENTE, raw_ref: "http://sitio-de-extorsion.onion/post/1" }],
+        total: 1, limit: 15, offset: 0,
+      },
+    },
+  });
+
+  for (const a of buscar(el("alerts-pendientes"), (n) => n.tag === "a")) {
+    assert.ok(a.href.startsWith("#/"), `enlace hacia afuera: ${a.href}`);
+  }
+});
+
+test("sin avisos pendientes el widget no ocupa lugar", async () => {
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/fuentes",
+    respuestas: {
+      ...RESPUESTAS_BASE,
+      "/api/alerts": {
+        enabled: true, channels: [], min_severity: "high",
+        max_age_days: 30, pending: 0, sent_total: 4,
+      },
+    },
+  });
+
+  assert.equal(textoDe(el("alerts-pendientes")).trim(), "");
+});
+
+test("entrar por la URL de un hallazgo lo pide a la API y lo muestra fijado", async () => {
+  const hash = "b".repeat(64);
+  const { el, pedidos } = await cargarApp({
+    html: HTML,
+    hash: `#/hallazgos?hallazgo=${hash}`,
+    respuestas: RESPUESTAS_BASE,
+  });
+
+  const pedido = pedidos.find((p) => p.includes("/api/findings"));
+  assert.ok(pedido.includes(`dedup_hash=${hash}`), `no pidió el hallazgo: ${pedido}`);
+  assert.match(textoDe(el("active-filters")), /hallazgo:/, "tiene que verse que está fijado");
+});
+
 test("un hueco de cobertura se muestra aunque la corrida haya andado", async () => {
   // El caso que esto existe para evitar: la fuente responde OK, no trae nada
   // nuevo, y la pérdida se lee igual que "no hubo novedades".

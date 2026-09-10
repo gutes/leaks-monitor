@@ -17,6 +17,10 @@ class FindingOut(BaseModel):
     """Un hallazgo argentino tal como lo ve el frontend."""
 
     id: int
+    #: Clave estable del hallazgo. Es lo que le da URL propia
+    #: (`#/hallazgos?hallazgo=…`) y lo que enlaza el widget de avisos
+    #: pendientes. Ya viaja en `/api/alerts/feed`, así que no expone nada nuevo.
+    dedup_hash: str
     source: str
     leak_type: str
     victim_name: str
