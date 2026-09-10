@@ -1,11 +1,19 @@
 """Fixtures compartidas.
 
-Regla del proyecto: **ningún test toca la red**. Los adapters se ejercitan
-contra fixtures JSON/XML capturadas en `tests/fixtures/`.
+Dos reglas del proyecto se sostienen acá:
+
+* **Ningún test toca la red.** Los adapters se ejercitan contra fixtures
+  JSON/XML capturadas en `tests/fixtures/`.
+* **Ningún test lee el `.env` de la máquina.** `Settings` lo carga por defecto,
+  así que sin aislarlo la suite da resultados distintos según qué tenga
+  configurado cada uno. Pasó de verdad: alguien configuró el dominio de
+  BreachForums en su `.env` y un test que afirmaba "viene apagado" empezó a
+  fallar sin que nadie tocara el código.
 """
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,7 +23,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from leaks.adapters.egress import EgressInfo
-from leaks.config import PROJECT_ROOT, Settings
+from leaks.config import PROJECT_ROOT, Settings, get_settings
 from leaks.domain.models import (
     ArMatchReason,
     Finding,
@@ -31,6 +39,21 @@ from leaks.storage.repository import SqlAlchemyFindingRepository
 from leaks.storage.session import create_db_engine, create_session_factory
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+
+@pytest.fixture(autouse=True)
+def _entorno_aislado(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Aísla la config del entorno real: ni `.env` ni variables `LEAKS_*`.
+
+    Autouse a propósito: que un test tenga que acordarse de pedirlo es
+    exactamente cómo se cuela la dependencia que esto evita.
+    """
+    for clave in [k for k in os.environ if k.startswith("LEAKS_")]:
+        monkeypatch.delenv(clave, raising=False)
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest.fixture

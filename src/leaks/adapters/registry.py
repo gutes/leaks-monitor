@@ -93,6 +93,13 @@ class FeedSpec:
     poll_interval_minutes: int | None = None
     #: Motivo por el que el feed viene apagado, para mostrarlo en la UI.
     disabled_reason: str = ""
+    #: Atributo de `Settings` que, con valor, alcanza para encender un feed que
+    #: viene apagado. Es para los que están apagados **por falta de un dato**,
+    #: no por política: un foro sin dominio operativo se enciende solo cuando se
+    #: le configura uno, sin tener que además nombrarlo en `LEAKS_ENABLED_FEEDS`.
+    #: Sin esto, el `disabled_reason` de BreachForums pedía configurar la URL y
+    #: configurarla no servía de nada.
+    enables_with_setting: str = ""
     tags: tuple[str, ...] = field(default_factory=tuple)
 
 
@@ -188,13 +195,17 @@ FEED_REGISTRY: tuple[FeedSpec, ...] = (
         factory=_breachforums,
         license_note="Foro público (MyBB) con sindicación Atom abierta.",
         docs_url="",
+        # Apagado por falta de dato, no por política: al 2026-08-14 no había
+        # dominio operativo. Con `LEAKS_BREACHFORUMS_BASE_URLS` configurado se
+        # enciende solo — que es lo que el `disabled_reason` promete.
         enabled_by_default=False,
+        enables_with_setting="breachforums_base_urls",
         requires_pii=True,
         high_pii_surface=True,
         bounded_window=True,
         disabled_reason=(
             "sin dominio operativo: los conocidos están incautados (verificado 2026-08-14). "
-            "Configurar LEAKS_BREACHFORUMS_BASE_URLS cuando reaparezca."
+            "Configurar LEAKS_BREACHFORUMS_BASE_URLS cuando reaparezca y se enciende solo."
         ),
         tags=("foro", "pii", "metadata", "sin-dominio"),
     ),
@@ -231,6 +242,17 @@ FEED_REGISTRY: tuple[FeedSpec, ...] = (
 )
 
 
+def _configurado(spec: FeedSpec, settings: Settings) -> bool:
+    """¿Le dieron el dato que le faltaba para poder correr?
+
+    Solo aplica a los feeds que declaran `enables_with_setting`. Un feed
+    apagado por política —no por falta de dato— no se enciende por esta vía.
+    """
+    if not spec.enables_with_setting:
+        return False
+    return bool(getattr(settings, spec.enables_with_setting, None))
+
+
 def get_spec(name: str) -> FeedSpec | None:
     """Busca un feed por nombre."""
     return next((s for s in FEED_REGISTRY if s.name == name), None)
@@ -253,7 +275,7 @@ def resolve_enabled(
             if spec.name not in seleccion:
                 continue
             motivo = None
-        elif not spec.enabled_by_default:
+        elif not spec.enabled_by_default and not _configurado(spec, settings):
             motivo = spec.disabled_reason or "deshabilitado por defecto"
             resueltos.append((spec, motivo))
             continue

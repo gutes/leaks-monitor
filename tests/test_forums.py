@@ -314,7 +314,7 @@ class TestToggleDeFuentesConPii:
         }
         assert motivos["darkforums"] is None, "el toggle tiene que habilitarlo"
 
-    def test_breachforums_sigue_apagado_por_falta_de_dominio(self) -> None:
+    def test_breachforums_apagado_mientras_no_tenga_dominio(self) -> None:
         """Tiene un motivo independiente del PII: no hay dominio operativo."""
         from leaks.adapters.registry import resolve_enabled
 
@@ -323,6 +323,42 @@ class TestToggleDeFuentesConPii:
         }
         assert motivos["breachforums"] is not None
         assert "dominio" in motivos["breachforums"]
+
+    def test_configurarle_un_dominio_lo_enciende_solo(self) -> None:
+        """El `disabled_reason` promete que configurar la URL alcanza.
+
+        Antes no alcanzaba: había que además nombrarlo en `LEAKS_ENABLED_FEEDS`,
+        y el mensaje que imprimía el sistema mandaba a hacer algo que no servía.
+        """
+        from leaks.adapters.registry import resolve_enabled
+
+        config = Settings(store_pii=False, breachforums_base_urls="https://ejemplo.test")
+        motivos = {spec.name: motivo for spec, motivo in resolve_enabled(config, True)}
+
+        assert motivos["breachforums"] is None
+
+    def test_el_dominio_no_saltea_el_gate_de_pii(self) -> None:
+        """Encender por configuración no puede saltear la otra puerta."""
+        from leaks.adapters.registry import resolve_enabled
+
+        config = Settings(store_pii=False, breachforums_base_urls="https://ejemplo.test")
+        motivos = {spec.name: motivo for spec, motivo in resolve_enabled(config, False)}
+
+        assert "PII" in (motivos["breachforums"] or "")
+
+    def test_un_feed_apagado_por_politica_no_se_enciende_asi(self) -> None:
+        """La vía solo aplica a los apagados por falta de dato.
+
+        `enables_with_setting` vacío = ningún ajuste lo enciende; para eso está
+        `LEAKS_ENABLED_FEEDS`, que es una decisión explícita.
+        """
+        from leaks.adapters.registry import FEED_REGISTRY, _configurado
+
+        config = Settings(store_pii=False, breachforums_base_urls="https://ejemplo.test")
+        otros = [s for s in FEED_REGISTRY if not s.enables_with_setting]
+
+        assert otros, "el test pierde sentido si todos declaran la vía"
+        assert not any(_configurado(spec, config) for spec in otros)
 
 
 class TestRelevanciaSobreElFeed:

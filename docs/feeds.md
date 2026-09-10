@@ -193,10 +193,16 @@ adapter** parametrizado por dominio.
 * Recordatorio: incorporar un dominio nuevo es un **acto manual**, después de
   verificarlo por fuera. El adapter detecta la caída pero nunca se muda solo
   (ver `sitios-que-cambian-de-dominio.md`).
-* **BreachForums no tiene dominio operativo.** `breachforums.hn`, `.is` y `.cx`
-  devuelven el cartel de incautación de las fuerzas del orden; el resto no
-  resuelve. Queda registrado y deshabilitado, con la lista de dominios vacía;
-  cuando reaparezca alcanza con setear `LEAKS_BREACHFORUMS_BASE_URLS`.
+* **BreachForums no tenía dominio operativo al 2026-08-14.** `breachforums.hn`,
+  `.is` y `.cx` devuelven el cartel de incautación; el resto no resolvía. Queda
+  registrado y apagado **por falta de dato, no por política**: setear
+  `LEAKS_BREACHFORUMS_BASE_URLS` alcanza para encenderlo, sin tener que además
+  nombrarlo en `LEAKS_ENABLED_FEEDS`.
+
+  Eso lo hace `FeedSpec.enables_with_setting`, y existe porque antes no era así:
+  el `disabled_reason` mandaba a configurar la URL y configurarla no servía de
+  nada. Encenderlo por esta vía **no saltea el gate de PII** — sigue haciendo
+  falta habilitar las fuentes con PII.
 
 **Qué se consume:** solo el índice público de threads —título, autor, fecha,
 URL—. No se entra a los threads, no se descargan adjuntos y no se persiste el
