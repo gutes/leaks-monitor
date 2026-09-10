@@ -74,9 +74,9 @@ class Settings(BaseSettings):
         "https://darkforums.as",
         "https://darkforums.ru",
     )
-    #: Vacío a propósito: al 2026-08-14 no hay dominio operativo de
-    #: BreachForums (los conocidos están incautados). Ver docs/feeds.md.
-    breachforums_base_urls: CsvTuple = ()
+    #: Verificado el 2026-09-10: `bf.st` sirve el Atom (50 threads). Los
+    #: dominios anteriores siguen incautados. Ver docs/feeds.md.
+    breachforums_base_urls: CsvTuple = ("https://bf.st",)
 
     # Subforos a consultar además del índice global. Cada uno trae SUS últimos
     # 50 threads, así que suman ventana: medido el 2026-09-01, el índice global

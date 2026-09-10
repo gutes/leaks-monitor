@@ -159,6 +159,51 @@ class TestSubforos:
         assert len(respx.calls) == 1
 
 
+class TestAtomConBasura:
+    """Despliegues reales que sirven Atom bueno con algo colado adelante."""
+
+    @respx.mock
+    def test_un_espacio_antes_del_xml_no_pierde_la_fuente(self, client: FeedHttpClient) -> None:
+        """El caso de bf.st: Atom válido detrás de un espacio y un salto.
+
+        La declaración `<?xml…?>` tiene que ser el primer byte, así que el
+        parser lo rechazaba entero. Perder una fuente por un byte de más no.
+        """
+        atom = " \n" + read_fixture("darkforums_atom.xml")
+        respx.get(FEED_URL).mock(return_value=httpx.Response(200, text=atom))
+        adapter = MyBBForumAdapter(client, "breachforums", (BASE,))
+
+        assert len(list(adapter.fetch(None))) == 6
+
+    @respx.mock
+    def test_un_bom_tampoco(self, client: FeedHttpClient) -> None:
+        atom = "\ufeff" + read_fixture("darkforums_atom.xml")
+        respx.get(FEED_URL).mock(return_value=httpx.Response(200, text=atom))
+        adapter = MyBBForumAdapter(client, "breachforums", (BASE,))
+
+        assert len(list(adapter.fetch(None))) == 6
+
+    @respx.mock
+    def test_algo_ilegible_sigue_fallando(self, client: FeedHttpClient) -> None:
+        """Tolerar el arranque no es tragar cualquier cosa."""
+        # La página de desafío típica: HTML sin cerrar, no parsea.
+        respx.get(FEED_URL).mock(
+            return_value=httpx.Response(200, text="<html><meta charset='utf-8'>Checking...")
+        )
+        adapter = MyBBForumAdapter(client, "breachforums", (BASE,))
+
+        with pytest.raises(RuntimeError, match="Atom ilegible"):
+            list(adapter.fetch(None))
+
+    @respx.mock
+    def test_xml_bien_formado_sin_entradas_no_inventa_nada(self, client: FeedHttpClient) -> None:
+        """Un XML válido que no es Atom no rompe: simplemente no trae threads."""
+        respx.get(FEED_URL).mock(return_value=httpx.Response(200, text="<html>hola</html>"))
+        adapter = MyBBForumAdapter(client, "breachforums", (BASE,))
+
+        assert list(adapter.fetch(None)) == []
+
+
 class TestDominiosRotativos:
     """Estos foros cambian de dominio: hay que sobrevivirlo."""
 
@@ -315,12 +360,16 @@ class TestToggleDeFuentesConPii:
         assert motivos["darkforums"] is None, "el toggle tiene que habilitarlo"
 
     def test_breachforums_apagado_mientras_no_tenga_dominio(self) -> None:
-        """Tiene un motivo independiente del PII: no hay dominio operativo."""
+        """Tiene un motivo independiente del PII: no hay dominio operativo.
+
+        Se pasa la lista vacía a mano: el default del repo trae el dominio
+        verificado, y este test es sobre el estado "todavía no reapareció".
+        """
         from leaks.adapters.registry import resolve_enabled
 
-        motivos = {
-            spec.name: motivo for spec, motivo in resolve_enabled(Settings(store_pii=False), True)
-        }
+        config = Settings(store_pii=False, breachforums_base_urls=())
+        motivos = {spec.name: motivo for spec, motivo in resolve_enabled(config, True)}
+
         assert motivos["breachforums"] is not None
         assert "dominio" in motivos["breachforums"]
 

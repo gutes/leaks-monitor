@@ -64,9 +64,16 @@ def _texto(elemento: Any) -> str:
 
 
 def parse_atom(xml: str, *, source: str) -> Iterable[RawItem]:
-    """Parsea el Atom. XML de fuente hostil: se usa defusedxml."""
+    """Parsea el Atom. XML de fuente hostil: se usa defusedxml.
+
+    Se recorta el arranque antes de parsear: la declaración `<?xml…?>` tiene que
+    ser el primer byte, y un despliegue de MyBB que deje un espacio o un salto
+    de línea colados antes —o un BOM— produce XML inválido. Le pasa a BreachForums
+    en bf.st, que sirve un Atom perfectamente bueno detrás de un espacio.
+    Rechazarlo por eso sería perder la fuente entera por un byte de más.
+    """
     try:
-        raiz = DefusedET.fromstring(xml)
+        raiz = DefusedET.fromstring(xml.lstrip("\ufeff \t\r\n"))
     except Exception as exc:
         raise RuntimeError(f"{source} devolvió un Atom ilegible") from exc
 

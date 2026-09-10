@@ -85,16 +85,53 @@ Sherlock, Dictadores y La Pampa Leaks no figuran; de 1.025 filas solo 4 son de
 la región. Por eso el alta manual es el mecanismo principal y esto una
 conveniencia. Los importados entran **deshabilitados**.
 
-## Resumen
+## Los feeds que vienen por defecto
+
+Esto es lo que corre en una instalación limpia, sin tocar `LEAKS_ENABLED_FEEDS`.
+El registro (`src/leaks/adapters/registry.py`) es la fuente de verdad; esta
+tabla es su lectura para humanos.
+
+| Feed | Tipo | Auth | Formato | ¿Corre por defecto? | Cadencia |
+|---|---|---|---|---|---|
+| ransomware.live | ransomware | no | JSON | ✅ sí | corrida diaria |
+| ransomlook | ransomware | no | JSON | ✅ sí | corrida diaria |
+| dls-monitor | ransomware | no | JSON | ✅ sí | corrida diaria |
+| darkforums | foro | no | Atom | ⚠️ solo con fuentes PII habilitadas | **cada 120 min** |
+| breachforums | foro | no | Atom | ⚠️ con dominio configurado + PII | corrida diaria |
+| telegram | foro | no | HTML público | ⚠️ con PII **y** canales dados de alta | corrida diaria |
+| hudsonrock | infostealer | no | JSON | ⚠️ con PII **y** dominios listados | corrida diaria |
+
+**Las tres de ransomware corren solas.** Las otras cuatro tienen puertas
+explícitas, y son deliberadamente más de una:
+
+* **Fuentes con PII** (`requires_pii`): foros, Telegram y Hudson Rock no corren
+  hasta que se habiliten las fuentes con PII —el toggle de la UI o
+  `LEAKS_STORE_PII=true`—. Es fail-closed: por defecto, apagadas.
+* **Y además su propio insumo.** Telegram no consulta nada sin canales dados de
+  alta; Hudson Rock, sin dominios en `LEAKS_HUDSONROCK_DOMAINS`; BreachForums,
+  sin un dominio en `LEAKS_BREACHFORUMS_BASE_URLS`. Habilitar PII no dispara
+  por sí solo cientos de consultas que nadie pidió.
+
+Para forzar un subconjunto está `LEAKS_ENABLED_FEEDS`. **Ojo: esa lista
+reemplaza el set por defecto**, así que hay que nombrar todos los que quieras
+corriendo, no solo el que agregás.
+
+Ver qué corre y por qué, en cualquier momento:
+
+```
+docker exec leaks-api-1 leaks feeds
+```
+
+## Resumen de verificación
 
 | Feed | Auth | Formato | Verificado | Estado |
 |---|---|---|---|---|
 | ransomware.live | no | JSON | 2026-08-14 | ✅ 200 OK |
 | RansomLook | no | JSON | 2026-08-14 | ✅ 200 OK |
 | dls-monitor | no | JSON | 2026-08-14 | ✅ 200 OK |
-| Hudson Rock | no | JSON | 2026-08-14 | ⚠️ timeout 60 s |
-| DarkForums | no | Atom | 2026-08-14 | ✅ 200 OK (fuente con PII) |
-| BreachForums | no | Atom | 2026-08-14 | ❌ dominios incautados |
+| Hudson Rock | no | JSON | 2026-08-18 | ✅ 200 OK |
+| DarkForums | no | Atom | 2026-09-03 | ⚠️ `darkforums.as` con ReadTimeout |
+| BreachForums | no | Atom | 2026-09-10 | ✅ 200 OK en `bf.st` (50 threads) |
 | ecrime.ch | — | HTML | 2026-08-14 | ❌ sin API |
 | WhiteIntel | cuenta | — | 2026-08-14 | ❌ sin API pública |
 
@@ -193,7 +230,8 @@ adapter** parametrizado por dominio.
 * Recordatorio: incorporar un dominio nuevo es un **acto manual**, después de
   verificarlo por fuera. El adapter detecta la caída pero nunca se muda solo
   (ver `sitios-que-cambian-de-dominio.md`).
-* **BreachForums no tenía dominio operativo al 2026-08-14.** `breachforums.hn`,
+* **BreachForums volvió: `bf.st`, verificado el 2026-09-10** — Atom abierto, 50
+  threads. Antes no tenía dominio operativo: `breachforums.hn`,
   `.is` y `.cx` devuelven el cartel de incautación; el resto no resolvía. Queda
   registrado y apagado **por falta de dato, no por política**: setear
   `LEAKS_BREACHFORUMS_BASE_URLS` alcanza para encenderlo, sin tener que además
@@ -298,6 +336,124 @@ las reglas del proyecto.
   varios de estos feeds no publican sus límites, así que nos los imponemos.
 - **Nada de Tor.** Se consumen feeds públicos; los `.onion` que aparecen en los
   hallazgos se guardan como referencia y el frontend los muestra sin enlazar.
+
+## Cuando un foro se cae: incorporar el dominio nuevo
+
+Estos foros se mudan seguido —bloqueos, incautaciones, peleas internas— y el
+sistema está hecho para sobrevivirlo **sin perseguirlos solo**. El
+procedimiento completo:
+
+### 1. Enterarte
+
+No hace falta que lo mires: la corrida siguiente lo dice sola.
+
+* En la pantalla **Fuentes**, la tarjeta del foro pasa a `failed` con el motivo
+  **por dominio**: `ReadTimeout`, `Connection refused` o `403`. Esa distinción
+  importa — un rechazo o un timeout es *se mudó*; un 403 es *nos bloquearon*, y
+  el dominio sigue siendo el bueno.
+* El **watchdog** avisa si la fuente se queda sin corridas exitosas
+  (`LEAKS_WATCHDOG_MAX_SILENCE_HOURS`, 26 h).
+* En la consola de actividad queda la línea, con fecha.
+
+### 2. Conseguir el dominio nuevo, y verificarlo por fuera
+
+**Esto no se automatiza, a propósito.** De las reconstrucciones de BreachForums
+no hay una "oficial", y algunos dominios resucitados pueden ser honeypots o
+infraestructura controlada. Un adapter que se mude solo terminaría
+identificándose contra un servidor hostil desde la IP del investigador. El
+detalle está en [sitios-que-cambian-de-dominio.md](sitios-que-cambian-de-dominio.md).
+
+Chequeo barato antes de tocar nada: que resuelva y que sirva Atom.
+
+```
+dig +short foro-nuevo.tld A
+curl -s "https://foro-nuevo.tld/syndication.php?type=atom1.0&limit=50" | head -c 200
+```
+
+Si eso devuelve `<?xml … <feed xmlns="http://www.w3.org/2005/Atom">`, sirve.
+Si devuelve HTML, un 403 o *"Checking your browser…"*, ese dominio no se puede
+consumir: el HTML está detrás de un desafío JS y **no lo pasamos** — sería
+evadir un control de acceso.
+
+### 3. Configurarlo
+
+En el `.env`, lista separada por comas. Se prueban **en orden** y gana el
+primero que responda:
+
+```dotenv
+LEAKS_DARKFORUMS_BASE_URLS=https://dominio-nuevo.tld,https://darkforums.as
+LEAKS_BREACHFORUMS_BASE_URLS=https://bf.st
+```
+
+Tres detalles que hacen fallar esto:
+
+* Va **solo el origen** (`https://host`), sin path: el adapter le agrega
+  `/syndication.php?type=atom1.0&limit=50`.
+* **Dejá los viejos de respaldo.** No cuestan nada —solo se consultan si el
+  primero no responde— y estos foros suelen volver a dominios anteriores.
+* La config se lee **al arrancar**: hay que recrear los contenedores.
+
+```
+docker compose up -d
+```
+
+### 4. Confirmar
+
+```
+docker exec leaks-api-1 leaks feeds     # ¿corre? y si no, por qué
+```
+
+En la corrida siguiente, la tarjeta de la fuente muestra los threads traídos y
+la **ventana medida**. Si el foro es nuevo para el sistema, esa primera corrida
+es la importación inicial: entra su histórico marcado como `backfill`, que no
+dispara alertas.
+
+### 5. Opcional: sumar subforos
+
+Cada subforo publica **sus** últimos 50 threads, así que suman ventana. Los ids
+se descubren por la sindicación abierta, sin tocar el HTML:
+
+```
+docker exec leaks-api-1 leaks discover-fids --feed darkforums --from 1 --to 60
+```
+
+o el botón **"Buscar subforos"** en la tarjeta del foro. Devuelve la línea
+`LEAKS_*_FIDS=…` para pegar. Elegí solo los temáticamente relevantes: cada fid
+es un request más por sondeo.
+
+### Si el foro no vuelve
+
+Dejá la lista con los candidatos muertos y esperá: el adapter los prueba, falla
+rápido y **no tumba la corrida** —el resto de las fuentes sigue—. Cuando
+aparezca uno nuevo, es editar una línea.
+
+Para BreachForums hay además una ayuda: viene apagado por falta de dominio, y
+**configurarle uno alcanza para encenderlo** (`FeedSpec.enables_with_setting`),
+sin tener que tocar `LEAKS_ENABLED_FEEDS`.
+
+### Foros relevados el 2026-09-10 (ninguno integrable salvo BreachForums)
+
+Se probó `syndication.php` en los sucesores que menciona el reporte de KELA
+sobre la sucesión de BreachForums:
+
+| Dominio | Resultado |
+|---|---|
+| `bf.st` (BreachForums) | ✅ **Atom, 50 threads** — integrado |
+| `breached.st` | 403 |
+| `pwnforums.st` | 403 |
+| `doxbyte.com` | 403 |
+| `damagelib.com` | 200 pero HTML, sin sindicación |
+| `leakbase.la` | 200 pero HTML, sin sindicación |
+| `cracked.sh` | 404 — no tiene `syndication.php` |
+
+Conclusión: **los que dan 403 o HTML quedan afuera**, no por falta de ganas
+sino porque consumirlos exigiría pasar su control de acceso. Si alguno abre su
+sindicación más adelante, sumarlo es una entrada en el registro.
+
+**Detalle del arranque del XML.** `bf.st` sirve un Atom perfectamente válido
+detrás de un espacio y un salto de línea, y la declaración `<?xml…?>` tiene que
+ser el primer byte. El parser lo rechazaba entero. Ahora se recorta el arranque
+(espacios y BOM) antes de parsear: perder una fuente por un byte de más, no.
 
 ## Sumar un feed
 
