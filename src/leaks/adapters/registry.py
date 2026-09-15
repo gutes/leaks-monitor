@@ -80,6 +80,11 @@ class FeedSpec:
     high_pii_surface: bool = False
     #: Atributo de `Settings` con el User-Agent a usar para este feed.
     user_agent_setting: str = "http_user_agent"
+    #: El adapter lleva su propio cursor, más fino que una fecha —Telegram usa
+    #: el id del último post por canal—. En esos casos el filtro incremental por
+    #: fecha del runner sobra **y estorba**: descarta mensajes viejos que el
+    #: adapter trajo a propósito al ponerse al día con un canal nuevo.
+    own_cursor: bool = False
     #: El feed expone una ventana de tamaño fijo (los últimos N ítems) y no su
     #: histórico. Habilita la detección de huecos: si lo más viejo que trajo
     #: esta corrida es posterior al cursor, algo pasó por el medio sin que lo
@@ -122,10 +127,15 @@ def _hudson_rock(settings: Settings, client: FeedHttpClient, deps: FeedDeps) -> 
     return hudson_rock.HudsonRockAdapter(client, dominios)
 
 
-def _telegram(_settings: Settings, client: FeedHttpClient, deps: FeedDeps) -> FeedAdapter:
+def _telegram(settings: Settings, client: FeedHttpClient, deps: FeedDeps) -> FeedAdapter:
     # Sin canales habilitados no sale un solo pedido: importar un catálogo no
     # puede convertirse en cientos de consultas que nadie pidió.
-    return telegram.TelegramChannelAdapter(client, deps.channels_enabled(), cursors=deps.cursors())
+    return telegram.TelegramChannelAdapter(
+        client,
+        deps.channels_enabled(),
+        cursors=deps.cursors(),
+        catchup=settings.telegram_catchup_messages,
+    )
 
 
 def _darkforums(settings: Settings, client: FeedHttpClient, _deps: FeedDeps) -> FeedAdapter:
@@ -222,6 +232,10 @@ FEED_REGISTRY: tuple[FeedSpec, ...] = (
         enabled_by_default=True,
         requires_pii=True,
         high_pii_surface=True,
+        # El adapter corta por id de post, por canal. Filtrar además por fecha
+        # rompía la puesta al día: los mensajes viejos que se traían a propósito
+        # se descartaban antes de evaluarlos.
+        own_cursor=True,
         tags=("telegram", "hacktivismo", "pii", "metadata"),
     ),
     FeedSpec(

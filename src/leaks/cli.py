@@ -55,6 +55,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Asigna la taxonomía del CERT.ar a los hallazgos que no la tengan.",
     )
 
+    tg_reset = sub.add_parser(
+        "telegram-recatchup",
+        help="Borra la marca de un canal para releer su historial en la próxima corrida.",
+    )
+    tg_reset.add_argument("canal", help="Handle del canal. Acepta @x, t.me/x o la URL.")
+
     rebobinar = sub.add_parser(
         "rewind-cursor",
         help="Retrocede la marca incremental de una fuente para reprocesar su historia.",
@@ -323,6 +329,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         # run fue un fracaso aunque no haya excepción, y el cron tiene que
         # enterarse.
         return 0 if reporte.ok else 1
+
+    if args.command == "telegram-recatchup":
+        app.create_schema()
+        if app.telegram_repo.reset_cursor(args.canal):
+            print(
+                f"Marca de {args.canal} borrada. La próxima corrida relee sus últimos "
+                f"{settings.telegram_catchup_messages} mensajes."
+            )
+            return 0
+        print(f"{args.canal} no está dado de alta. Verlos con: leaks feeds / la pantalla Telegram.")
+        return 1
 
     if args.command == "classify-taxonomy":
         app.create_schema()

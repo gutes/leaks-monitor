@@ -685,7 +685,10 @@ class PipelineRunner:
                     mas_nuevo = item.discovered_at
 
                 # Incremental: el feed no filtra por fecha, filtramos acá.
-                if desde is not None and item.discovered_at <= desde:
+                # Salvo que el adapter lleve su propio cursor —Telegram corta
+                # por id de post, por canal—: ahí el recorte ya está hecho y
+                # volver a filtrar por fecha descarta lo que trajo a propósito.
+                if not spec.own_cursor and desde is not None and item.discovered_at <= desde:
                     continue
 
                 if cursor_nuevo is None or item.discovered_at > cursor_nuevo:

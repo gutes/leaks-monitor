@@ -395,3 +395,121 @@ class TestOrdenEstable:
         tg_repo.add("canal_activo", enabled=True)
         tg_repo.add("canal_apagado", enabled=False)
         assert [c.handle for c in tg_repo.list_channels(enabled=True)] == ["canal_activo"]
+
+
+def pagina_html(canal: str, ids: list[int]) -> str:
+    """Página de la vista previa, del mensaje más VIEJO al más nuevo.
+
+    Es el orden real de `t.me/s/<canal>`, verificado contra la fixture: el
+    primer bloque del HTML es el más antiguo de la página. De eso depende que
+    el cursor avance y que `?before=` pida la página correcta.
+    """
+    bloques = []
+    for n in sorted(ids):
+        bloques.append(
+            f'<div class="tgme_widget_message" data-post="{canal}/{n}">'
+            f'<time datetime="2026-09-15T10:00:00+00:00"></time>'
+            f'<div class="tgme_widget_message_text">mensaje {n}</div></div>'
+        )
+    return "<html><body>" + "".join(bloques) + "</body></html>"
+
+
+class ClientePaginado:
+    """Cliente de mentira que respeta `?before=`, como la vista previa real."""
+
+    def __init__(self, canal: str, ultimo: int, por_pagina: int = 20) -> None:
+        self.canal = canal
+        self.ultimo = ultimo
+        self.por_pagina = por_pagina
+        self.pedidos: list[str] = []
+
+    def get_text(self, url: str, params: Any = None) -> str:
+        self.pedidos.append(url)
+        tope = self.ultimo
+        if "?before=" in url:
+            tope = int(url.split("?before=")[1]) - 1
+        ids = [n for n in range(tope, max(0, tope - self.por_pagina), -1) if n > 0]
+        return pagina_html(self.canal, ids)
+
+    def close(self) -> None:  # pragma: no cover
+        pass
+
+
+class TestPuestaAlDia:
+    """Un canal recién dado de alta tiene que traer su historial reciente.
+
+    El caso real: se dio de alta un canal y la primera lectura se llevó solo
+    los últimos 20 mensajes. Todo lo anterior quedaba afuera para siempre,
+    aunque siguiera publicado y visible.
+    """
+
+    def test_un_canal_sin_cursor_trae_el_catchup_completo(self) -> None:
+        cliente = ClientePaginado("Canal", ultimo=207)
+        adapter = TelegramChannelAdapter(cliente, ["Canal"], catchup=50)  # type: ignore[arg-type]
+
+        items = list(adapter.fetch(None))
+
+        assert len(items) == 50
+        assert len(cliente.pedidos) == 3, "20 por página: hacen falta tres pedidos"
+
+    def test_en_regimen_sigue_siendo_un_solo_pedido(self) -> None:
+        """Lo caro es la puesta al día, y pasa una sola vez por canal."""
+        cliente = ClientePaginado("Canal", ultimo=207)
+        adapter = TelegramChannelAdapter(
+            cliente,  # type: ignore[arg-type]
+            ["Canal"],
+            cursors={"Canal": "Canal/205"},
+            catchup=50,
+        )
+
+        items = list(adapter.fetch(None))
+
+        assert len(cliente.pedidos) == 1
+        assert [i.payload["post_id"] for i in items] == ["Canal/206", "Canal/207"]
+
+    def test_si_el_cursor_no_esta_en_la_primera_pagina_se_pagina(self) -> None:
+        """El canal publicó más de 20 desde la corrida anterior.
+
+        Sin paginar, esos mensajes quedaban en un agujero silencioso: el cursor
+        saltaba al último y lo del medio no se leía nunca.
+        """
+        cliente = ClientePaginado("Canal", ultimo=207)
+        adapter = TelegramChannelAdapter(
+            cliente,  # type: ignore[arg-type]
+            ["Canal"],
+            cursors={"Canal": "Canal/180"},
+            catchup=50,
+        )
+
+        items = list(adapter.fetch(None))
+
+        assert len(cliente.pedidos) > 1
+        assert items[0].payload["post_id"] == "Canal/181"
+
+    def test_el_cursor_avanza_al_mensaje_mas_nuevo(self) -> None:
+        """Paginando hacia atrás, la marca no puede quedar en una página vieja."""
+        cliente = ClientePaginado("Canal", ultimo=207)
+        adapter = TelegramChannelAdapter(cliente, ["Canal"], catchup=50)  # type: ignore[arg-type]
+
+        list(adapter.fetch(None))
+
+        assert adapter.nuevos_cursores["Canal"] == "Canal/207"
+
+    def test_los_mensajes_salen_en_orden_cronologico(self) -> None:
+        """El runner fecha y ordena, pero el cursor depende del orden correcto."""
+        cliente = ClientePaginado("Canal", ultimo=207)
+        adapter = TelegramChannelAdapter(cliente, ["Canal"], catchup=50)  # type: ignore[arg-type]
+
+        ids = [int(i.payload["post_id"].split("/")[1]) for i in adapter.fetch(None)]
+
+        assert ids == sorted(ids)
+
+    def test_un_canal_corto_no_pagina_de_mas(self) -> None:
+        """Si el canal tiene menos mensajes que el catchup, se corta solo."""
+        cliente = ClientePaginado("Canal", ultimo=12)
+        adapter = TelegramChannelAdapter(cliente, ["Canal"], catchup=50)  # type: ignore[arg-type]
+
+        items = list(adapter.fetch(None))
+
+        assert len(items) == 12
+        assert len(cliente.pedidos) <= 2

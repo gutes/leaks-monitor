@@ -254,6 +254,27 @@ class TelegramChannelRepository:
                 fila.last_error = None
                 fila.updated_at = ahora
 
+    def reset_cursor(self, handle: str) -> bool:
+        """Borra la marca de un canal para que la próxima corrida lo relea.
+
+        Sirve cuando el canal se dio de alta y su primera lectura se llevó solo
+        los últimos mensajes: sin cursor, el adapter hace la puesta al día
+        completa (`telegram_catchup_messages`) en vez de la lectura incremental.
+
+        Devuelve `False` si el handle no está dado de alta, para que quien lo
+        pida se entere en vez de creer que hizo algo.
+        """
+        with session_scope(self._session_factory) as session:
+            fila = session.scalar(
+                select(TelegramChannelRow).where(
+                    func.lower(TelegramChannelRow.handle) == handle.strip().lstrip("@").lower()
+                )
+            )
+            if fila is None:
+                return False
+            fila.last_post_id = None
+            return True
+
     def save_errors(self, errores: dict[str, str]) -> None:
         """Anota por qué un canal no aportó nada.
 

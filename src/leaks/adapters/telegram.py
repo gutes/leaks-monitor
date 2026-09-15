@@ -79,6 +79,17 @@ _NO_SON_CANALES = frozenset({"joinchat", "addstickers", "share", "proxy", "socks
 #: el tope está para que un canal que cambie de formato no dispare un bucle.
 MAX_MENSAJES = 40
 
+#: Cuántos mensajes se traen cuando un canal **no tiene cursor**: el alta de un
+#: canal nuevo o un canal al que se le reseteó la marca. Sin esto, dar de alta
+#: un canal solo traía sus últimos ~20 mensajes y todo lo anterior quedaba
+#: fuera para siempre — aunque siguiera publicado y visible.
+CATCHUP_MENSAJES = 50
+
+#: Tope de páginas por canal y corrida. `t.me/s/<canal>?before=<id>` pagina
+#: hacia atrás de a ~20; el tope acota el costo de una puesta al día y evita
+#: que un canal con formato raro haga girar el bucle.
+MAX_PAGINAS = 4
+
 #: Largo del título derivado que llega a `findings`.
 MAX_TITULO = 300
 
@@ -143,6 +154,7 @@ class TelegramChannelAdapter:
         channels: Sequence[str],
         base_url: str = BASE_URL,
         cursors: dict[str, str] | None = None,
+        catchup: int = CATCHUP_MENSAJES,
     ) -> None:
         # Se normaliza acá y no en la base: así un handle inválido no llega a
         # generar un pedido, venga de donde venga.
@@ -150,6 +162,8 @@ class TelegramChannelAdapter:
         self._client = client
         self._base_url = base_url.rstrip("/")
         self._cursors = dict(cursors or {})
+        #: Cuántos mensajes traer cuando el canal no tiene cursor.
+        self._catchup = max(1, catchup)
         #: Último post visto por canal en esta corrida, para que el repositorio
         #: guarde el cursor después.
         self.nuevos_cursores: dict[str, str] = {}
@@ -158,10 +172,24 @@ class TelegramChannelAdapter:
         self.errores: dict[str, str] = {}
 
     def fetch(self, since: datetime | None) -> Iterable[RawItem]:
-        """Un pedido por canal. Sin canales habilitados no sale ninguno."""
+        """Lee cada canal, paginando hacia atrás cuando hace falta.
+
+        En régimen es **un pedido por canal**: la primera página trae los ~20
+        últimos y ahí está el cursor, así que no hay nada más que buscar.
+
+        Se pagina en dos casos, los dos acotados por `MAX_PAGINAS`:
+
+        * **Canal sin cursor** — alta nueva o marca reseteada. Se traen hasta
+          `catchup` mensajes en vez de solo los últimos 20: dar de alta un canal
+          y perderse lo que publicó la semana pasada, estando visible, no tiene
+          sentido.
+        * **El cursor no aparece en la primera página** — el canal publicó más
+          de 20 mensajes desde la corrida anterior. Sin paginar, esos quedaban
+          en un agujero silencioso.
+        """
         for canal in self._channels:
             try:
-                html_crudo = self._client.get_text(f"{self._base_url}/{canal}")
+                mensajes, primera = self._leer_canal(canal)
             except EgressBlockedError:
                 # OPSEC corta la corrida entera, no un canal.
                 raise
@@ -174,26 +202,65 @@ class TelegramChannelAdapter:
                 self.errores[canal] = f"no respondió ({type(exc).__name__})"
                 continue
 
-            mensajes = self._parsear(html_crudo, canal)
             if not mensajes and canal not in self.nuevos_cursores:
                 # Ni un mensaje y nunca se vio uno: no es que no haya novedades,
                 # es que no se puede leer.
-                self.errores[canal] = NO_EXISTE if _ES_CONTACTO.search(html_crudo) else SIN_PREVIA
+                self.errores[canal] = NO_EXISTE if _ES_CONTACTO.search(primera) else SIN_PREVIA
                 logger.info("telegram: %s — %s", canal, self.errores[canal])
                 continue
 
             for mensaje in mensajes:
                 yield RawItem(source=self.name, payload=mensaje)
 
-    def _parsear(self, html_crudo: str, canal: str) -> list[dict[str, Any]]:
-        """Extrae los mensajes de la página, del más viejo al más nuevo.
+    def _leer_canal(self, canal: str) -> tuple[list[dict[str, Any]], str]:
+        """Devuelve los mensajes nuevos del canal y el HTML de la primera página.
 
-        Se corta en el cursor guardado: lo ya visto no se reprocesa, que es lo
-        que hace la corrida incremental de verdad.
+        El HTML de la primera página se devuelve porque es el que distingue un
+        canal inexistente de uno privado, y esa distinción se reporta.
+        """
+        visto = self._cursors.get(canal)
+        objetivo = MAX_MENSAJES if visto else self._catchup
+        acumulado: list[dict[str, Any]] = []
+        primera = ""
+        antes: str | None = None
+
+        for pagina in range(MAX_PAGINAS):
+            url = f"{self._base_url}/{canal}"
+            if antes is not None:
+                url += f"?before={antes}"
+            html_crudo = self._client.get_text(url)
+            if pagina == 0:
+                primera = html_crudo
+
+            nuevos, mas_viejo, alcanzo_cursor = self._parsear_pagina(html_crudo, canal, pagina == 0)
+            # Las páginas vienen de más nueva a más vieja; el orden final tiene
+            # que ser cronológico, así que lo viejo va adelante.
+            acumulado = nuevos + acumulado
+
+            if alcanzo_cursor or mas_viejo is None or len(acumulado) >= objetivo:
+                break
+            antes = mas_viejo.split("/")[-1]
+
+        return acumulado[-objetivo:], primera
+
+    def _parsear_pagina(
+        self, html_crudo: str, canal: str, es_primera: bool
+    ) -> tuple[list[dict[str, Any]], str | None, bool]:
+        """Extrae los mensajes de UNA página, del más viejo al más nuevo.
+
+        Devuelve `(mensajes, id_mas_viejo, alcanzo_cursor)`. El id más viejo es
+        con lo que se pide la página siguiente; `alcanzo_cursor` dice si se
+        llegó a lo ya procesado y no hace falta seguir.
+
+        El cursor del canal se actualiza **solo desde la primera página**: es la
+        que trae los mensajes más nuevos, y avanzar la marca con el id de una
+        página vieja la haría retroceder.
         """
         visto = self._cursors.get(canal)
         encontrados: list[dict[str, Any]] = []
         ultimo_visto: str | None = None
+        mas_viejo: str | None = None
+        alcanzo_cursor = False
 
         for bloque in _BLOQUE.finditer(html_crudo):
             attrs, cuerpo = bloque.group("attrs"), bloque.group("cuerpo")
@@ -201,6 +268,11 @@ class TelegramChannelAdapter:
             if not m_id:
                 continue
             post_id = m_id.group(1)
+
+            if mas_viejo is None:
+                mas_viejo = post_id
+            if post_id == visto:
+                alcanzo_cursor = True
 
             # El cursor avanza sobre TODO lo visto, no solo sobre lo que se
             # queda: si no, un mensaje sin texto al final del canal se
@@ -225,7 +297,7 @@ class TelegramChannelAdapter:
                 }
             )
 
-        if ultimo_visto is not None:
+        if es_primera and ultimo_visto is not None:
             self.nuevos_cursores[canal] = ultimo_visto
 
         if visto:
@@ -234,7 +306,7 @@ class TelegramChannelAdapter:
                 if m["post_id"] == visto:
                     encontrados = encontrados[i + 1 :]
                     break
-        return encontrados[:MAX_MENSAJES]
+        return encontrados, mas_viejo, alcanzo_cursor
 
     def normalize(self, item: RawItem) -> NormalizedItem | None:
         """Metadata para `findings`. El cuerpo NO se copia acá."""

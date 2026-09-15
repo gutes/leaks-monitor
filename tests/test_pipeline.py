@@ -416,6 +416,51 @@ class TestVentanaMedida:
         assert resultado.window_hours is None
 
 
+class TestFuentesConCursorPropio:
+    """Telegram corta por id de post; filtrar además por fecha rompe la puesta al día."""
+
+    def test_el_filtro_por_fecha_no_se_aplica(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+    ) -> None:
+        """El caso real: se dio de alta un canal y al releer su historial, los
+        mensajes viejos —ventas de shell a organismos `.gob.ar`— se descartaban
+        antes de evaluarlos, porque eran anteriores al cursor de la fuente.
+        """
+        repository.set_cursor("fake-feed", datetime(2026, 9, 15, tzinfo=UTC))
+        viejo = datetime(2026, 7, 29, tzinfo=UTC)
+        adapter = FakeAdapter([payload_ar(discovered=viejo)])
+        spec = replace(spec_for(adapter), own_cursor=True)
+
+        runner = PipelineRunner(repository=repository, watchlist=watchlist, settings=settings)
+        reporte = runner.run([(spec, None)])
+
+        assert reporte.results[0].items_matched == 1, "el mensaje viejo tiene que evaluarse"
+
+    def test_una_fuente_normal_sigue_filtrando(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+    ) -> None:
+        """No se afloja el incremental para el resto: sería reprocesar todo."""
+        repository.set_cursor("fake-feed", datetime(2026, 9, 15, tzinfo=UTC))
+        adapter = FakeAdapter([payload_ar(discovered=datetime(2026, 7, 29, tzinfo=UTC))])
+
+        runner = PipelineRunner(repository=repository, watchlist=watchlist, settings=settings)
+        reporte = runner.run([(spec_for(adapter), None)])
+
+        assert reporte.results[0].items_matched == 0
+
+    def test_telegram_lo_declara(self) -> None:
+        from leaks.adapters.registry import get_spec
+
+        spec = get_spec("telegram")
+        assert spec is not None and spec.own_cursor is True
+
+
 class TestIdempotencia:
     """Re-correr el pipeline no duplica hallazgos."""
 

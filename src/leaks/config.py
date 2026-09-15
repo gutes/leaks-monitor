@@ -100,6 +100,13 @@ class Settings(BaseSettings):
     #: dominio, 25 mantiene la corrida corta y cubre 173 dominios en una semana.
     hudsonrock_max_per_run: int = Field(default=25, ge=0)
 
+    #: Mensajes que se traen de un canal de Telegram que todavía no tiene
+    #: cursor: alta nueva o marca reseteada. La vista previa pagina de a ~20, así
+    #: que 50 son tres pedidos **una sola vez** por canal; en régimen sigue
+    #: siendo uno. Sin esto, dar de alta un canal traía solo sus últimos 20
+    #: mensajes y lo anterior quedaba afuera para siempre.
+    telegram_catchup_messages: int = Field(default=50, ge=1, le=200)
+
     # --- Alertas -------------------------------------------------------------
     #: Severidad mínima para avisar. Con `high` no molesta por cada .com.ar.
     alert_min_severity: str = "high"
