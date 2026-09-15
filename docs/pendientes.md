@@ -39,25 +39,30 @@ Arreglado y verificado:
    es un generador y fallaba al iterar), y un índice global ilegible impedía
    llegar a los subforos — justo donde está el contenido argentino.
 
-### El pendiente inmediato
+### Los tres pendientes, resueltos el 2026-09-15
 
-**Retomar acá.** Tres cosas quedaron abiertas:
+1. **Falsos positivos de `cuit_valid`.** Prefijo válido por mod-11 deja ~0,8%
+   de los números de once dígitos pasando por azar, y el cuerpo de un volcado
+   trae miles: entraron una universidad de Indonesia (26 "CUIT") y una pasarela
+   peruana (8). Ahora se exige **contexto**: formato canónico `NN-NNNNNNNN-N` o
+   la palabra CUIT/CUIL a menos de 24 caracteres. Reevaluados contra los datos
+   reales, los dos falsos positivos quedan descartados.
+2. **La corrida bloqueada avisa.** `_avisar_bloqueo()` manda un aviso al
+   **entrar** al estado, no en cada corrida: con el sondeo cada dos horas
+   repetirlo sería un aviso por hora, y un canal que repite enseña a ignorarlo.
+3. **`leaks rewind-cursor --feed X --to FECHA`.** Reemplaza el `UPDATE` a mano.
+   `set_cursor` sigue sin retroceder —eso protege la corrida normal—; esto es
+   la operación explícita. **Nunca pone el cursor en NULL**: eso contaría como
+   importación inicial y todo entraría como `backfill`, que no alerta.
 
-1. **Falsos positivos de `cuit_valid`.** En la corrida entraron
-   *"Database unissula university of Indonesia"* y *"[PERU] IZIPAY.PE"* como
-   `medium` por CUIT válido. Son números de 11 dígitos en el título que pasan
-   el módulo 11 por casualidad. El prefijo ya filtra, pero no alcanza: hay que
-   exigir contexto (formato con guiones, o la palabra CUIT/CUIL cerca).
-2. **Alertar la corrida bloqueada.** Cuando se cae la VPN el control de salida
-   bloquea —bien— pero **no avisa a nadie**. Es lo que dejó el hueco del 14 a la
-   noche. `dispatch_notice()` ya existe: es cablear.
-3. **Agregar fids exige retroceder el cursor a mano.** Los subforos traen
-   historia anterior a la última corrida y el filtro incremental la descarta:
-   la primera corrida con fids nuevos trajo 283 items y 0 matches. Se resolvió
-   con un `UPDATE source_state SET cursor=…` directo. Hace falta una costura
-   de verdad (`leaks rewind-cursor --feed X --to FECHA`). **No borrar el
-   cursor**: con `NULL` la corrida cuenta como importación inicial y todo entra
-   como `backfill`, que no alerta.
+### Lo que queda abierto
+
+* **Quedaron en la base los dos hallazgos falsos** de la corrida anterior
+  (Indonesia y Perú). El arreglo evita que entren nuevos pero no borra los
+  viejos; hace falta decidir si se purgan a mano o si se agrega un "descartar
+  hallazgo" a la UI — que es el ítem 1.5 de este mismo archivo.
+* **Sin canales de alerta configurados**, el aviso de bloqueo tampoco sale.
+  `LEAKS_ALERT_WEBHOOK_URL` o el bot de Telegram siguen vacíos.
 
 ---
 

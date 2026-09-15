@@ -51,6 +51,15 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("feeds", help="Lista los feeds registrados y si corren.")
     sub.add_parser("purge-pii", help="Borra los registros con PII vencidos.")
 
+    rebobinar = sub.add_parser(
+        "rewind-cursor",
+        help="Retrocede la marca incremental de una fuente para reprocesar su historia.",
+    )
+    rebobinar.add_argument("--feed", required=True, help="Nombre de la fuente.")
+    rebobinar.add_argument(
+        "--to", dest="hasta", required=True, help="Fecha ISO (2026-09-06 o 2026-09-06T00:00:00Z)."
+    )
+
     descubrir = sub.add_parser(
         "discover-fids",
         help="Busca subforos de un foro MyBB para sumar ventana de cobertura.",
@@ -310,6 +319,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         # run fue un fracaso aunque no haya excepción, y el cron tiene que
         # enterarse.
         return 0 if reporte.ok else 1
+
+    if args.command == "rewind-cursor":
+        try:
+            hasta_dt = datetime.fromisoformat(args.hasta.replace("Z", "+00:00"))
+        except ValueError:
+            print(f"Fecha inválida: {args.hasta!r}. Usá ISO, por ejemplo 2026-09-06.")
+            return 2
+        if hasta_dt.tzinfo is None:
+            hasta_dt = hasta_dt.replace(tzinfo=UTC)
+
+        app.create_schema()
+        anterior = app.repository.rewind_cursor(args.feed, hasta_dt)
+        previo = _sello(anterior) if anterior else "(sin cursor)"
+        print(f"Cursor de {args.feed}: {previo} -> {_sello(hasta_dt)}")
+        print(
+            "La próxima corrida reprocesa desde esa fecha. El dedup evita duplicados, "
+            "y los hallazgos entran como novedades (no como importación inicial)."
+        )
+        return 0
 
     if args.command == "discover-fids":
         coordinador = DiscoveryCoordinator(settings)

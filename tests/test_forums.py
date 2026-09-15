@@ -147,9 +147,7 @@ class TestSubforos:
         assert len(list(adapter.fetch(None))) == 6
 
     @respx.mock
-    def test_el_indice_global_roto_no_impide_los_subforos(
-        self, client: FeedHttpClient
-    ) -> None:
+    def test_el_indice_global_roto_no_impide_los_subforos(self, client: FeedHttpClient) -> None:
         """Pasó el 2026-09-15: el global devolvió basura y se perdió todo.
 
         Incluidos los subforos, que son donde aparece el contenido argentino

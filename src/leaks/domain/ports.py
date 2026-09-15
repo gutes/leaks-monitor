@@ -101,6 +101,14 @@ class FindingRepository(Protocol):
         """
         ...
 
+    def last_run_was_blocked(self) -> bool:
+        """¿La corrida anterior quedó bloqueada por el control de IP de salida?
+
+        Es lo que evita repetir el aviso en cada corrida mientras la VPN siga
+        caída: se avisa al entrar al estado, no mientras dura.
+        """
+        ...
+
     def get_cursor(self, source: str) -> datetime | None:
         """Marca incremental: hasta dónde llegó la última corrida de esa fuente."""
         ...

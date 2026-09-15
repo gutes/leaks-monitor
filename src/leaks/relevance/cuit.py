@@ -4,6 +4,16 @@ Encontrar "once dígitos" en un texto no significa nada: uno de cada once númer
 al azar pasa el dígito verificador por pura probabilidad. Por eso se valida
 **dígito verificador + prefijo**, que baja los falsos positivos a un orden de
 magnitud menos.
+
+**Y aun así no alcanza.** Prefijo válido (9 de 100) por mod-11 (1 de 11) deja
+~0,8% de los números de once dígitos pasando por azar, y el cuerpo de un volcado
+trae miles: el 2026-09-15 entraron como hallazgos argentinos una universidad de
+Indonesia y una pasarela de pagos peruana, con 26 y 8 "CUIT" cada una, todos
+falsos. Eran documentos y teléfonos de esos países.
+
+Por eso se exige además **contexto**: o el número viene con el formato canónico
+`NN-NNNNNNNN-N`, o está acompañado de la palabra CUIT/CUIL. Once dígitos pelados
+en medio de un dump son once dígitos, no un identificador fiscal argentino.
 """
 
 from __future__ import annotations
@@ -11,8 +21,20 @@ from __future__ import annotations
 import re
 
 #: Regex del bootstrap: dos dígitos, ocho dígitos y el verificador, con guiones
-#: opcionales.
+#: opcionales. Sigue siendo el detector de candidatos; lo que decide cuáles
+#: cuentan es `find_valid_cuits`.
 CUIT_PATTERN = re.compile(r"\b\d{2}-?\d{8}-?\d\b")
+
+#: Formato canónico. Que alguien lo haya escrito así ya es la señal: nadie
+#: puntúa un teléfono indonesio como `20-12345678-6`.
+_CUIT_CON_FORMATO = re.compile(r"\b\d{2}[-.]\d{8}[-.]\d\b")
+
+#: La palabra cerca del número. Cubre "CUIT: 20…", "CUIL 27…", "cuit/cuil".
+_ETIQUETA = re.compile(r"cui[tl]", re.IGNORECASE)
+
+#: Cuántos caracteres antes del número se miran buscando la etiqueta. Alcanza
+#: para "CUIT: ", "CUIL Nº " y similares sin cruzar a la columna de al lado.
+_VENTANA_ETIQUETA = 24
 
 #: Pesos del algoritmo mod-11 de Tributos Ejemplo, aplicados a los primeros 10 dígitos.
 _WEIGHTS = (5, 4, 3, 2, 7, 6, 5, 4, 3, 2)
@@ -45,17 +67,30 @@ def is_valid_cuit(value: str) -> bool:
     return int(digits[10]) == _check_digit(digits[:10])
 
 
-def find_valid_cuits(text: str | None) -> tuple[str, ...]:
-    """Devuelve los CUIT/CUIL **válidos** del texto, normalizados sin guiones.
+def _tiene_contexto(text: str, match: re.Match[str]) -> bool:
+    """¿El número viene presentado como CUIT, o solo son once dígitos?
 
-    Los candidatos que no validan se descartan, que es justamente lo que pide
-    la regla de relevancia.
+    Dos formas de contar: el formato canónico con separadores, o la palabra
+    CUIT/CUIL justo antes. Sin ninguna de las dos, se descarta.
+    """
+    if _CUIT_CON_FORMATO.fullmatch(match.group(0)):
+        return True
+    inicio = max(0, match.start() - _VENTANA_ETIQUETA)
+    return _ETIQUETA.search(text[inicio : match.start()]) is not None
+
+
+def find_valid_cuits(text: str | None) -> tuple[str, ...]:
+    """Devuelve los CUIT/CUIL **válidos y presentados como tales**.
+
+    Se descartan los candidatos que no validan y también los que validan por
+    azar sin nada que los presente como CUIT. Ver el encabezado del módulo: sin
+    esa segunda puerta, un volcado extranjero entra como hallazgo argentino.
     """
     if not text:
         return ()
     encontrados = {
-        m.group(0).replace("-", "")
+        m.group(0).replace("-", "").replace(".", "")
         for m in CUIT_PATTERN.finditer(text)
-        if is_valid_cuit(m.group(0))
+        if is_valid_cuit(m.group(0)) and _tiene_contexto(text, m)
     }
     return tuple(sorted(encontrados))

@@ -344,3 +344,34 @@ class TestSincronizacionDeLaWatchlist:
         )
         sigue = next(e for e in repo.list_entries() if e.value == "uno.gob.ar")  # type: ignore[attr-defined]
         assert sigue.enabled is False, "no puede rehabilitarse solo"
+
+
+class TestRebobinarCursor:
+    """Retroceder la marca es una operación legítima, pero acotada."""
+
+    def test_retrocede_y_devuelve_el_anterior(
+        self, repository: SqlAlchemyFindingRepository
+    ) -> None:
+        """`set_cursor` nunca retrocede; sumar subforos lo necesita."""
+        original = datetime(2026, 9, 15, 12, 0, tzinfo=UTC)
+        repository.set_cursor("darkforums", original)
+
+        anterior = repository.rewind_cursor("darkforums", datetime(2026, 9, 6, tzinfo=UTC))
+
+        assert anterior == original
+        assert repository.get_cursor("darkforums") == datetime(2026, 9, 6, tzinfo=UTC)
+
+    def test_set_cursor_sigue_sin_retroceder(self, repository: SqlAlchemyFindingRepository) -> None:
+        """La corrida normal no puede retroceder por accidente."""
+        repository.set_cursor("darkforums", datetime(2026, 9, 15, tzinfo=UTC))
+        repository.set_cursor("darkforums", datetime(2026, 9, 1, tzinfo=UTC))
+
+        assert repository.get_cursor("darkforums") == datetime(2026, 9, 15, tzinfo=UTC)
+
+    def test_sobre_una_fuente_sin_cursor_no_falla(
+        self, repository: SqlAlchemyFindingRepository
+    ) -> None:
+        anterior = repository.rewind_cursor("nueva", datetime(2026, 9, 6, tzinfo=UTC))
+
+        assert anterior is None
+        assert repository.get_cursor("nueva") == datetime(2026, 9, 6, tzinfo=UTC)

@@ -205,6 +205,10 @@ class PipelineRunner:
         decision = self._check_egress()
         if not decision.allowed:
             reporte.blocked_reason = decision.reason
+            # Se avisa ANTES de registrar las fuentes, para que la consulta de
+            # "¿la anterior ya estaba bloqueada?" mire la corrida previa y no
+            # las filas que estamos por escribir.
+            self._avisar_bloqueo(decision.reason)
             for spec, _motivo in seleccion:
                 resultado = self._blocked(spec, decision.reason)
                 reporte.results.append(resultado)
@@ -269,6 +273,34 @@ class PipelineRunner:
             duration_ms=int(duracion * 1000),
         )
         return reporte
+
+    # -- Bloqueo del control de salida -------------------------------------------
+
+    def _avisar_bloqueo(self, motivo: str | None) -> None:
+        """Avisa que la corrida no se hizo. Nunca lanza.
+
+        Es el aviso que faltaba: cuando se cae la VPN, el control de salida
+        bloquea —correctamente— pero nadie se entera, y el monitoreo queda
+        parado hasta que alguien lo nota de casualidad. Pasó el 2026-09-14 y
+        dejó un hueco de cobertura en un foro.
+
+        Se avisa **al entrar al estado**, no mientras dura: con el sondeo cada
+        dos horas, repetirlo sería un aviso por hora hasta que alguien levante
+        la VPN, y un canal que repite enseña a ignorarlo.
+        """
+        if self._alerts is None or not self._alerts.enabled:
+            return
+        try:
+            if self._repository.last_run_was_blocked():
+                return
+            self._alerts.dispatch_notice(
+                "⛔ Corrida bloqueada: no se consultó ninguna fuente.\n"
+                f"{motivo}\n\n"
+                "El monitoreo está parado hasta que se resuelva. "
+                "Revisar la VPN y la pantalla Fuentes."
+            )
+        except Exception as exc:  # pragma: no cover — defensivo
+            logger.warning("No se pudo avisar el bloqueo: %s", type(exc).__name__)
 
     # -- Vigilancia del propio monitoreo -----------------------------------------
 

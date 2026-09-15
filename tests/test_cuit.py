@@ -70,3 +70,43 @@ class TestExtraccionEnTexto:
     @pytest.mark.parametrize("vacio", [None, "", "   "])
     def test_tolera_texto_vacio(self, vacio: str | None) -> None:
         assert find_valid_cuits(vacio) == ()
+
+
+class TestContexto:
+    """Once dígitos sueltos no son un CUIT.
+
+    El 2026-09-15 entraron como hallazgos argentinos una universidad de
+    Indonesia (26 "CUIT") y una pasarela peruana (8), todos falsos: eran
+    documentos y teléfonos de esos países en el cuerpo del volcado. Con prefijo
+    válido y mod-11, ~0,8% de los números de once dígitos pasan por azar, y un
+    dump trae miles.
+    """
+
+    #: Válido de verdad (mod-11 y prefijo), para probar solo el contexto.
+    CRUDO = "20123456786"
+
+    def test_el_numero_pelado_no_cuenta(self) -> None:
+        assert is_valid_cuit(self.CRUDO), "el caso de prueba tiene que ser válido"
+        assert find_valid_cuits(f"telefono {self.CRUDO} registro") == ()
+
+    def test_con_formato_canonico_cuenta(self) -> None:
+        assert find_valid_cuits("20-12345678-6") == ("20123456786",)
+
+    def test_con_la_etiqueta_cerca_cuenta(self) -> None:
+        assert find_valid_cuits(f"CUIT {self.CRUDO}") == (self.CRUDO,)
+        assert find_valid_cuits(f"CUIL: {self.CRUDO}") == (self.CRUDO,)
+
+    def test_la_etiqueta_lejos_no_cuenta(self) -> None:
+        """Si no está pegada, puede ser de otra columna de la misma fila."""
+        lejos = "cuit " + "x" * 60 + f" {self.CRUDO}"
+        assert find_valid_cuits(lejos) == ()
+
+    def test_un_dump_extranjero_no_entra(self) -> None:
+        """El caso real, reducido: documentos que pasan el mod-11 de casualidad."""
+        cuerpo = "nik 20123456786 | phone 30123456782 | id 20123456786"
+        assert find_valid_cuits(cuerpo) == ()
+
+    def test_un_padron_argentino_sigue_entrando(self) -> None:
+        """No se rompe el caso bueno: un padrón real presenta el CUIT como tal."""
+        cuerpo = "razon social;CUIT;domicilio\nACME SA;33-69345023-9;Av. Falsa 123"
+        assert find_valid_cuits(cuerpo) == ("33693450239",)

@@ -281,12 +281,50 @@ class SqlAlchemyFindingRepository:
             vistos = {nombre: _as_utc(cuando) for nombre, cuando in filas if cuando}
             return {s: vistos.get(s) for s in sources}
 
+    def last_run_was_blocked(self) -> bool:
+        """¿La corrida anterior ya había quedado bloqueada?
+
+        Sirve para avisar una sola vez: con el sondeo cada dos horas, alertar
+        en cada corrida bloqueada sería un aviso por hora hasta que alguien
+        levante la VPN, y un canal que repite enseña a ignorarlo.
+        """
+        with session_scope(self._session_factory) as session:
+            ultimo = session.scalar(
+                select(SourceRunRow.status).order_by(SourceRunRow.started_at.desc()).limit(1)
+            )
+            return ultimo == str(SourceRunStatus.BLOCKED)
+
     # -- Cursor incremental --------------------------------------------------
 
     def get_cursor(self, source: str) -> datetime | None:
         with session_scope(self._session_factory) as session:
             row = session.get(SourceStateRow, source)
             return _as_utc(row.cursor) if row else None
+
+    def rewind_cursor(self, source: str, value: datetime) -> datetime | None:
+        """Retrocede la marca incremental a propósito. Devuelve la anterior.
+
+        `set_cursor` nunca retrocede —es lo correcto para una corrida—, pero
+        hay una operación legítima que sí lo necesita: **sumar subforos a un
+        foro**. Cada subforo trae su propia historia, toda anterior al cursor,
+        y el filtro incremental la descarta entera. La primera corrida con
+        subforos nuevos trajo 283 items y 0 hallazgos por esto.
+
+        Se retrocede y **no se borra**: con el cursor en `NULL` la corrida
+        cuenta como importación inicial, entra todo marcado `backfill` y eso no
+        alerta. Justo lo contrario de lo que se busca al ampliar la cobertura.
+        """
+        with session_scope(self._session_factory) as session:
+            row = session.get(SourceStateRow, source)
+            anterior = _as_utc(row.cursor) if row else None
+            if row is None:
+                session.add(
+                    SourceStateRow(source=source, cursor=value, updated_at=datetime.now(UTC))
+                )
+            else:
+                row.cursor = value
+                row.updated_at = datetime.now(UTC)
+            return anterior
 
     def set_cursor(self, source: str, value: datetime) -> None:
         now = datetime.now(UTC)

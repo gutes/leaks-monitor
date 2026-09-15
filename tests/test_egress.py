@@ -15,6 +15,7 @@ import respx
 
 from leaks.adapters.egress import EgressInfo, EgressResolver
 from leaks.adapters.http import FeedHttpClient
+from leaks.alerts.dispatcher import AlertDispatcher
 from leaks.config import Settings
 from leaks.domain.models import EventKind, SourceRunStatus
 from leaks.pipeline.egress_guard import EgressBlockedError, EgressGuard
@@ -102,6 +103,47 @@ class TestRunnerBloqueado:
             settings=settings,
             egress_guard=EgressGuard(ResolverFalso(info(pais) if pais else None)),  # type: ignore[arg-type]
         )
+
+    def test_el_bloqueo_avisa_una_sola_vez(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+    ) -> None:
+        """El aviso que faltaba: si se cae la VPN, nadie se enteraba.
+
+        Pasó el 2026-09-14 — el control bloqueó bien, pero el monitoreo quedó
+        parado y el hueco se descubrió de casualidad al día siguiente.
+
+        Se avisa al ENTRAR al estado, no mientras dura: con el sondeo cada dos
+        horas, repetirlo sería un aviso por hora hasta que alguien levante la
+        VPN, y un canal que repite enseña a ignorarlo.
+        """
+        avisos: list[str] = []
+
+        class CanalFalso:
+            name = "prueba"
+
+            def send(self, findings: object) -> None: ...
+
+            def send_notice(self, text: str) -> None:
+                avisos.append(text)
+
+        runner = PipelineRunner(
+            repository=repository,
+            watchlist=watchlist,
+            settings=settings,
+            egress_guard=EgressGuard(ResolverFalso(info("AR"))),  # type: ignore[arg-type]
+            alert_dispatcher=AlertDispatcher([CanalFalso()]),  # type: ignore[list-item]
+        )
+        spec = spec_for(FakeAdapter([payload_ar()]))
+
+        runner.run([(spec, None)])
+        runner.run([(spec, None)])
+
+        assert len(avisos) == 1, "la segunda corrida bloqueada no vuelve a avisar"
+        assert "bloqueada" in avisos[0].lower()
+        assert "AR" in avisos[0], "tiene que decir por dónde está saliendo"
 
     def test_no_se_consulta_ninguna_fuente(
         self,
