@@ -281,3 +281,72 @@ class TestHigiene:
     def test_la_tabla_de_sistemas_dice_que_mide_el_numero(self) -> None:
         texto = render_report([hallazgo(exposure_detail=TestDatos.EXPO)], generated_at=AHORA)
         assert "[ acceso ]   capturas  sistema" in texto
+
+
+class TestTaxonomiaEnElInforme:
+    """El tipo del CERT.ar viaja en el TXT, al lado de la severidad."""
+
+    def test_muestra_clasificacion_tipo_y_criticidad(self) -> None:
+        texto = render_report(
+            [
+                hallazgo(
+                    taxonomy_type="ransomware",
+                    taxonomy_label="Ransomware",
+                    taxonomy_class="Contenido Dañino",
+                    taxonomy_criticality="alto",
+                    taxonomy_basis="el grupo publicó a la víctima en su sitio de extorsión",
+                )
+            ],
+            generated_at=AHORA,
+        )
+
+        assert "Tipo CERT" in texto
+        assert "Contenido Dañino · Ransomware" in texto
+        assert "criticidad alto" in texto
+
+    def test_incluye_por_que_se_clasifico_asi(self) -> None:
+        """Mismo criterio que la relevancia AR: un informe que afirma sin decir
+        por qué no se puede revisar."""
+        texto = render_report(
+            [
+                hallazgo(
+                    taxonomy_label="Compromiso de cuenta",
+                    taxonomy_class="Intrusión",
+                    taxonomy_criticality="medio",
+                    taxonomy_basis=(
+                        "credenciales de la organización expuestas en logs de infostealer"
+                    ),
+                )
+            ],
+            generated_at=AHORA,
+        )
+
+        assert "credenciales de la organización" in plano(texto)
+
+    def test_los_dos_ejes_se_leen_juntos(self) -> None:
+        """Que uno diga MEDIUM y el otro `alto` no es contradicción.
+
+        La severidad mide relevancia argentina corroborada; la criticidad del
+        CERT, tipo de incidente. Quien recibe el informe tiene que ver ambas.
+        """
+        texto = render_report(
+            [
+                hallazgo(
+                    severity="medium",
+                    taxonomy_label="Ransomware",
+                    taxonomy_class="Contenido Dañino",
+                    taxonomy_criticality="alto",
+                )
+            ],
+            generated_at=AHORA,
+        )
+        lineas = [ln for ln in texto.splitlines() if "Severidad" in ln or "Tipo CERT" in ln]
+
+        assert len(lineas) == 2
+        assert "MEDIUM" in lineas[0] and "alto" in lineas[1]
+
+    def test_un_hallazgo_sin_clasificar_no_rompe(self) -> None:
+        """Las filas anteriores al backfill no tienen el campo."""
+        texto = render_report([hallazgo()], generated_at=AHORA)
+
+        assert "Tipo CERT      : —" in texto

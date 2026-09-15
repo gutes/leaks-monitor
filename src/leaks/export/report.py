@@ -166,6 +166,7 @@ def _identificacion(f: dict[str, Any], ahora: datetime, fresh_days: int) -> list
         campo("Fuente", fuente),
         campo("Severidad", str(f.get("severity") or "—").upper()),
     ]
+    lineas += _taxonomia(f)
 
     razones = list(f.get("ar_match_reason") or [])
     lineas.append(campo("Relevancia AR", ", ".join(razones) if razones else "—"))
@@ -178,6 +179,34 @@ def _identificacion(f: dict[str, Any], ahora: datetime, fresh_days: int) -> list
             )
 
     lineas.append(campo("Referencia", f.get("raw_ref")))
+    return lineas
+
+
+def _taxonomia(f: dict[str, Any]) -> list[str]:
+    """Tipo de incidente según la guía del CERT.ar.
+
+    Va pegado a la severidad porque son **los dos ejes** y conviene leerlos
+    juntos: la severidad mide relevancia argentina corroborada, la criticidad
+    del CERT mide tipo de incidente. Que un hallazgo sea `MEDIUM` para nosotros
+    y `alto` para el CERT no es una contradicción, y quien reciba el informe
+    tiene que poder verlo.
+
+    Se incluye el motivo de la clasificación: es el mismo criterio que con la
+    relevancia AR — un informe que afirma sin decir por qué no se puede revisar.
+    """
+    etiqueta = f.get("taxonomy_label")
+    if not etiqueta:
+        return [campo("Tipo CERT", "—")]
+
+    clasificacion = f.get("taxonomy_class")
+    criticidad = f.get("taxonomy_criticality")
+    encabezado = f"{clasificacion} · {etiqueta}" if clasificacion else str(etiqueta)
+    if criticidad:
+        encabezado += f"  (criticidad {criticidad})"
+
+    lineas = [campo("Tipo CERT", encabezado)]
+    if base := f.get("taxonomy_basis"):
+        lineas += parrafo(str(base), "                   ")
     return lineas
 
 
