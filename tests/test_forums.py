@@ -147,6 +147,56 @@ class TestSubforos:
         assert len(list(adapter.fetch(None))) == 6
 
     @respx.mock
+    def test_el_indice_global_roto_no_impide_los_subforos(
+        self, client: FeedHttpClient
+    ) -> None:
+        """Pasó el 2026-09-15: el global devolvió basura y se perdió todo.
+
+        Incluidos los subforos, que son donde aparece el contenido argentino
+        que el índice global ni siquiera lista — el volcado de SIPA vivía en
+        `fid=21` y nunca estuvo en el global.
+        """
+        respx.get(FEED_URL).mock(return_value=httpx.Response(200, text="<x>roto"))
+        respx.get(f"{FEED_URL}&fid=21").mock(
+            return_value=httpx.Response(200, text=read_fixture("darkforums_atom.xml"))
+        )
+
+        adapter = MyBBForumAdapter(client, "darkforums", (BASE,), fids=("21",))
+
+        assert len(list(adapter.fetch(None))) == 6
+
+    @respx.mock
+    def test_un_subforo_con_atom_roto_tampoco(self, client: FeedHttpClient) -> None:
+        """Pasó de verdad: un fid devolvía basura y se caía la fuente entera.
+
+        `_parse` es un generador, así que su error salía recién al iterar —
+        fuera del `try` que aislaba el request— y se llevaba puesto el feed
+        global, que había respondido perfecto.
+        """
+        atom = read_fixture("darkforums_atom.xml")
+        respx.get(FEED_URL).mock(return_value=httpx.Response(200, text=atom))
+        respx.get(f"{FEED_URL}&fid=7").mock(
+            return_value=httpx.Response(200, text="<html><meta charset='utf-8'>roto")
+        )
+
+        adapter = MyBBForumAdapter(client, "darkforums", (BASE,), fids=("7",))
+
+        assert len(list(adapter.fetch(None))) == 6
+
+    @respx.mock
+    def test_un_subforo_roto_no_impide_los_demas(self, client: FeedHttpClient) -> None:
+        """El que sigue tiene que aportar igual."""
+        atom = read_fixture("darkforums_atom.xml")
+        respx.get(FEED_URL).mock(return_value=httpx.Response(200, text=atom))
+        respx.get(f"{FEED_URL}&fid=7").mock(return_value=httpx.Response(200, text="<x>roto"))
+        respx.get(f"{FEED_URL}&fid=8").mock(return_value=httpx.Response(200, text=atom))
+
+        adapter = MyBBForumAdapter(client, "darkforums", (BASE,), fids=("7", "8"))
+
+        # Los 6 del global; el fid=8 trae los mismos y se deduplican.
+        assert len(list(adapter.fetch(None))) == 6
+
+    @respx.mock
     def test_sin_subforos_no_hace_pedidos_de_mas(self, client: FeedHttpClient) -> None:
         """El default es vacío: nadie paga requests que no pidió."""
         ruta = respx.get(FEED_URL).mock(

@@ -20,6 +20,18 @@ from leaks.relevance.watchlist import Watchlist, WatchlistSector, normalize_text
 #: Valores de país que consideramos Argentina.
 _AR_COUNTRIES = frozenset({"ar", "arg", "argentina"})
 
+#: País declarado **en el texto**, para las fuentes que no traen el campo.
+#:
+#: Los foros nunca mandan `country`, pero etiquetan el país en el título con la
+#: convención `[ARGENTINA] …` o lo nombran derecho. Sin esto, un thread que
+#: dice "Argentina: SIPA 38M [Government]" quedaba sin corroboración de país y
+#: caía a severidad `low` — que es exactamente lo que pasó con ese volcado.
+#:
+#: Se acepta la palabra entera y la forma entre corchetes. **Nunca `ar` suelto**:
+#: como sufijo o palabra de dos letras aparece en cualquier lado y convertiría
+#: la regla en ruido.
+_AR_EN_TEXTO = re.compile(r"\bargentina\b|\[\s*(?:ar|arg|argentina)\s*\]", re.IGNORECASE)
+
 #: Tokens con pinta de dominio dentro de texto libre. Hace falta para las
 #: fuentes que no traen un campo `domain` estructurado (títulos de threads de
 #: foro, descripciones de RansomLook).
@@ -119,14 +131,18 @@ def evaluate(
         reasons.append(ArMatchReason.TLD_AR)
         detail["tld_ar"] = ar_tld
 
-    # Regla 3 — el feed declara el país.
-    if (
-        ArMatchReason.COUNTRY_AR in activas
-        and item.country
-        and normalize_text(item.country).strip() in _AR_COUNTRIES
-    ):
-        reasons.append(ArMatchReason.COUNTRY_AR)
-        detail["country_ar"] = [item.country]
+    # Regla 3 — el país, declarado en el campo o dicho en el texto.
+    if ArMatchReason.COUNTRY_AR in activas:
+        evidencia: str | None = None
+        if item.country and normalize_text(item.country).strip() in _AR_COUNTRIES:
+            evidencia = item.country
+        else:
+            mencion = _AR_EN_TEXTO.search(normalize_text(texto))
+            evidencia = mencion.group(0) if mencion is not None else None
+        if evidencia is not None:
+            # La evidencia dice de dónde salió: el campo del feed o el texto.
+            reasons.append(ArMatchReason.COUNTRY_AR)
+            detail["country_ar"] = [evidencia]
 
     # Regla 4 — CUIT/CUIL con dígito verificador válido.
     cuits = find_valid_cuits(texto) if ArMatchReason.CUIT_VALID in activas else ()

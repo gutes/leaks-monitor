@@ -9,7 +9,59 @@ frontend, imagen Docker corriendo, migración `0015` aplicada.
 
 ---
 
-## 0. Lo último que se hizo (sesión del 2026-09-01)
+## 0. Lo último que se hizo (sesión del 2026-09-15)
+
+**El caso SIPA.** Apareció en DarkForums un volcado del sistema previsional
+argentino (38M registros) y no lo trajimos. La investigación descartó tres
+hipótesis y encontró la causa real:
+
+* **No fue por falta de usuario en el foro.** El thread es público: responde 200
+  sin cuenta.
+* **No fue el bajón de VPN** del 14 a la noche (ese hueco existe y está bien
+  declarado, pero el post es de las 06:57).
+* **No fue la relevancia**: matcheaba `keyword: SIPA`.
+* **Causa real: vive en el subforo `fid=21`, y el índice global no lo lista.**
+  Como `LEAKS_DARKFORUMS_FIDS` estaba vacío, solo leíamos el global. Nunca
+  estuvo a nuestro alcance.
+
+Arreglado y verificado:
+
+1. **`LEAKS_DARKFORUMS_FIDS=21,45,25,13,10`**, elegidos por un barrido de los 60
+   subforos buscando contenido argentino. El 21 tiene ventana de 9 días; el 45,
+   de 28,8.
+2. **La regla de país ahora lee el texto**, no solo el campo `country` que los
+   foros nunca mandan. `[ARGENTINA] …` y "Argentina: …" cuentan como
+   corroboración. Sin esto el SIPA puntuaba `low` y, con el umbral en `high`,
+   no habría alertado ni capturado. Ahora da **critical**. `ar` suelto NO
+   dispara, y el falso positivo histórico (Distribuidora Ejemplo Dominicana) sigue cubierto.
+3. **Dos bugs de aislamiento en el adapter de foros**: un subforo con Atom roto
+   tumbaba la fuente entera (el `try` cubría el request pero no el parseo, que
+   es un generador y fallaba al iterar), y un índice global ilegible impedía
+   llegar a los subforos — justo donde está el contenido argentino.
+
+### El pendiente inmediato
+
+**Retomar acá.** Tres cosas quedaron abiertas:
+
+1. **Falsos positivos de `cuit_valid`.** En la corrida entraron
+   *"Database unissula university of Indonesia"* y *"[PERU] IZIPAY.PE"* como
+   `medium` por CUIT válido. Son números de 11 dígitos en el título que pasan
+   el módulo 11 por casualidad. El prefijo ya filtra, pero no alcanza: hay que
+   exigir contexto (formato con guiones, o la palabra CUIT/CUIL cerca).
+2. **Alertar la corrida bloqueada.** Cuando se cae la VPN el control de salida
+   bloquea —bien— pero **no avisa a nadie**. Es lo que dejó el hueco del 14 a la
+   noche. `dispatch_notice()` ya existe: es cablear.
+3. **Agregar fids exige retroceder el cursor a mano.** Los subforos traen
+   historia anterior a la última corrida y el filtro incremental la descarta:
+   la primera corrida con fids nuevos trajo 283 items y 0 matches. Se resolvió
+   con un `UPDATE source_state SET cursor=…` directo. Hace falta una costura
+   de verdad (`leaks rewind-cursor --feed X --to FECHA`). **No borrar el
+   cursor**: con `NULL` la corrida cuenta como importación inicial y todo entra
+   como `backfill`, que no alerta.
+
+---
+
+## Lo anterior (sesión del 2026-09-01)
 
 El disparador: un thread argentino del **28-ago** que el pipeline nunca trajo.
 La investigación encontró tres causas encadenadas, y se atacaron las tres.

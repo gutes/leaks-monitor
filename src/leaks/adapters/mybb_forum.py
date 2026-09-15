@@ -155,15 +155,42 @@ class MyBBForumAdapter:
             # telemetría diga cuántos threads distintos vimos, no cuántas
             # veces los vimos.
             vistos: set[str] = set()
-            for item in self._parse(xml):
+
+            # El índice global falla solo, sin llevarse los subforos puestos.
+            # Este foro devuelve basura en lugar de Atom cada tanto, y cuando le
+            # tocaba al global se perdía TODO — incluidos los subforos, que son
+            # justamente donde aparece el contenido argentino que el índice
+            # global ni siquiera lista.
+            indice_ok = True
+            try:
+                globales = list(self._parse(xml))
+            except Exception as exc:
+                indice_ok = False
+                globales = []
+                logger.warning("El índice global de %s no se pudo leer: %s", self.name, exc)
+                # El mensaje de `_parse` ya es el legible; la causa raíz sería
+                # el error del parser de XML, que no le dice nada a nadie.
+                fallas.append(f"{base} (índice global) → {exc}")
+                ultimo_error = exc
+
+            for item in globales:
                 clave = self._clave(item)
                 if clave in vistos:
                     continue
                 vistos.add(clave)
                 yield item
 
-            yield from self._fetch_subforos(base, vistos)
-            return
+            hubo_subforo = False
+            for item in self._fetch_subforos(base, vistos):
+                hubo_subforo = True
+                yield item
+
+            # Un índice que parsea pero viene vacío es una respuesta válida: el
+            # foro no tuvo threads nuevos. Lo que hace probar el candidato
+            # siguiente es que NADA se haya podido leer.
+            if indice_ok or hubo_subforo:
+                return
+            continue
 
         # Se detalla candidato por candidato: "no respondió ninguno" no alcanza
         # para decidir si el foro se mudó (rechazo/DNS) o si nos bloquearon
@@ -193,13 +220,18 @@ class MyBBForumAdapter:
             url = f"{base}{self._path}&fid={fid}"
             try:
                 xml = self._client.get_text(url)
+                # El parseo va DENTRO del try, y se materializa acá: `_parse`
+                # es un generador, así que su RuntimeError salía recién al
+                # iterar —fuera del aislamiento— y un subforo que devolvía
+                # basura tumbaba la fuente entera.
+                leidos = list(self._parse(xml))
             except Exception as exc:
                 logger.warning(
-                    "El subforo %s de %s no respondió: %s", fid, self.name, describe_cause(exc)
+                    "El subforo %s de %s no aportó: %s", fid, self.name, describe_cause(exc)
                 )
                 continue
 
-            for item in self._parse(xml):
+            for item in leidos:
                 clave = self._clave(item)
                 if clave in vistos:
                     continue

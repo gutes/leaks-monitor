@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from leaks.domain.models import ArMatchReason, LeakType, Severity
+from leaks.domain.models import SEVERITY_RANK, ArMatchReason, LeakType, Severity
 from leaks.relevance.rules import evaluate, extract_domains
 from leaks.relevance.severity import derive_severity
 from leaks.relevance.watchlist import Watchlist, load_watchlist
@@ -251,3 +251,68 @@ class TestSeveridad:
         )
         veredicto = evaluate(item, watchlist)
         assert derive_severity(veredicto, LeakType.RANSOMWARE) is Severity.CRITICAL
+
+
+class TestPaisDichoEnElTexto:
+    """Los foros no mandan `country`: lo etiquetan en el título.
+
+    El caso que motivó la regla: "Argentina: SIPA 38M [Government] [Jubilados]",
+    un volcado de 38 millones de registros previsionales del Estado, quedaba en
+    severidad `low` porque nada corroboraba que la víctima fuera argentina — y
+    con el umbral de alertas en `high`, no avisaba.
+    """
+
+    def test_el_pais_nombrado_en_el_titulo_cuenta(self, watchlist: Watchlist) -> None:
+        item = make_normalized(
+            victim_name="Argentina: SIPA 38M [Databases] [Government] [Jubilados]",
+            victim_domain=None,
+        )
+        veredicto = evaluate(item, watchlist)
+
+        assert ArMatchReason.COUNTRY_AR in veredicto.reasons
+        assert "argentina" in str(veredicto.detail["country_ar"]).lower()
+
+    def test_la_forma_entre_corchetes_tambien(self, watchlist: Watchlist) -> None:
+        """`[ARGENTINA] …` es la convención del foro para etiquetar país."""
+        item = make_normalized(victim_name="[ARGENTINA] University Data", victim_domain=None)
+
+        assert ArMatchReason.COUNTRY_AR in evaluate(item, watchlist).reasons
+
+    def test_ar_suelto_no_dispara(self, watchlist: Watchlist) -> None:
+        """Dos letras sueltas aparecen en cualquier lado: sería puro ruido."""
+        item = make_normalized(victim_name="Solar panels ar company dump", victim_domain=None)
+
+        assert ArMatchReason.COUNTRY_AR not in evaluate(item, watchlist).reasons
+
+    def test_el_campo_del_feed_sigue_mandando(self, watchlist: Watchlist) -> None:
+        """Si el feed declara el país, la evidencia es ese campo y no el texto."""
+        item = make_normalized(victim_name="Acme", victim_domain=None, country="Argentina")
+        veredicto = evaluate(item, watchlist)
+
+        assert veredicto.detail["country_ar"] == ["Argentina"]
+
+    def test_otro_pais_en_el_titulo_no_matchea(self, watchlist: Watchlist) -> None:
+        item = make_normalized(
+            victim_name="MEXICO - SINALOA HEALTH SECTOR EMPLOYEES - 600k", victim_domain=None
+        )
+
+        assert not evaluate(item, watchlist).is_match
+
+    def test_el_falso_positivo_historico_sigue_cubierto(self, watchlist: Watchlist) -> None:
+        """Distribuidora Ejemplo Dominicana no dice "Argentina": sigue sin corroboración."""
+        item = make_normalized(
+            victim_name="Distribuidora Ejemplo Dominicana - full database", victim_domain=None
+        )
+        veredicto = evaluate(item, watchlist)
+
+        assert ArMatchReason.COUNTRY_AR not in veredicto.reasons
+
+    def test_con_pais_dicho_la_keyword_deja_de_ser_low(self, watchlist: Watchlist) -> None:
+        """Es el arreglo: el país dicho es la corroboración que faltaba."""
+        sin_pais = make_normalized(victim_name="Volcado de ANSES", victim_domain=None)
+        con_pais = make_normalized(victim_name="Argentina: volcado de ANSES", victim_domain=None)
+
+        sev_sin = derive_severity(evaluate(sin_pais, watchlist), LeakType.FORUM_POST)
+        sev_con = derive_severity(evaluate(con_pais, watchlist), LeakType.FORUM_POST)
+
+        assert SEVERITY_RANK[sev_con] > SEVERITY_RANK[sev_sin]
