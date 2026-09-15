@@ -144,6 +144,11 @@ class Finding(NormalizedItem):
     #: El hallazgo entró en la importación inicial de su fuente: es histórico
     #: que recién conocemos, no una novedad. No dispara alertas.
     backfill: bool = False
+    #: Tipo de la taxonomía del CERT.ar (slug estable) y por qué se asignó.
+    #: La clasificación y el nivel de criticidad NO se guardan: se derivan del
+    #: catálogo, así que una corrección de la guía no deja datos viejos atrás.
+    taxonomy_type: str | None = None
+    taxonomy_basis: str | None = None
 
 
 class EventLevel(StrEnum):

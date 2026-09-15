@@ -50,6 +50,10 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("schedule", help="Corre el pipeline todos los días a la hora configurada.")
     sub.add_parser("feeds", help="Lista los feeds registrados y si corren.")
     sub.add_parser("purge-pii", help="Borra los registros con PII vencidos.")
+    sub.add_parser(
+        "classify-taxonomy",
+        help="Asigna la taxonomía del CERT.ar a los hallazgos que no la tengan.",
+    )
 
     rebobinar = sub.add_parser(
         "rewind-cursor",
@@ -319,6 +323,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         # run fue un fracaso aunque no haya excepción, y el cron tiene que
         # enterarse.
         return 0 if reporte.ok else 1
+
+    if args.command == "classify-taxonomy":
+        app.create_schema()
+        n = app.repository.classify_missing()
+        print(f"Taxonomía asignada a {n} hallazgos." if n else "Todos ya estaban clasificados.")
+        return 0
 
     if args.command == "rewind-cursor":
         try:

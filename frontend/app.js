@@ -647,6 +647,32 @@ async function loadFilterOptions() {
     for (const v of valores || []) select.append(el("option", v));
     select.value = actual;
   }
+
+  await loadTaxonomyOptions();
+}
+
+/**
+ * Puebla el filtro de tipo del CERT.ar desde el catálogo de la API.
+ *
+ * No se hardcodea la lista acá: el catálogo es la transcripción de la guía y
+ * vive en un solo lugar. Si el CERT publica otra versión, la UI la refleja sin
+ * que nadie toque el frontend.
+ */
+async function loadTaxonomyOptions() {
+  const select = $("f-taxonomy");
+  if (!select || select.options.length > 1) return;  // ya poblado
+
+  const tipos = await api("/api/taxonomy");
+  if (!Array.isArray(tipos)) return;
+
+  const actual = select.value;
+  for (const t of tipos) {
+    const op = el("option", `${t.clasificacion} · ${t.tipo}`);
+    op.value = t.slug;
+    op.title = t.descripcion;
+    select.append(op);
+  }
+  select.value = actual;
 }
 
 /* ----------------------------------------------------------- Tabla de hallazgos */
@@ -715,6 +741,25 @@ function renderRow(f) {
   const sev = el("td");
   sev.append(el("span", f.severity, `pill pill-${f.severity}`));
   tr.append(sev);
+
+  // Taxonomía del CERT.ar. Es OTRO eje que la severidad: esta mide tipo de
+  // incidente según la guía, la nuestra mide relevancia argentina corroborada.
+  // Por eso conviven en columnas separadas en vez de pisarse.
+  const cert = el("td");
+  if (f.taxonomy_label) {
+    const chip = el("span", f.taxonomy_label, "chip");
+    chip.title = [
+      f.taxonomy_class,
+      f.taxonomy_criticality ? `criticidad ${f.taxonomy_criticality}` : null,
+      f.taxonomy_basis,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    cert.append(chip);
+  } else {
+    cert.append(el("span", "—"));
+  }
+  tr.append(cert);
 
   // Cuándo entró a la base. No es lo mismo que "Ocurrió" —esa es la fecha del
   // evento— y confundirlas fue el problema que originó toda la cascada de
@@ -2381,6 +2426,7 @@ function readFilters() {
     source: $("f-source").value,
     sector: $("f-sector").value,
     severity: $("f-severity").value,
+    taxonomy_type: $("f-taxonomy").value,
     freshness: $("f-freshness").value,
     // La API espera datetime ISO; el input date da solo la fecha.
     since: since ? `${since}T00:00:00Z` : "",

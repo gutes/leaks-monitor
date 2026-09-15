@@ -59,6 +59,7 @@ from leaks.api.schemas import (
     SourceOut,
     SourceRunOut,
     StatsOut,
+    TaxonomyTypeOut,
     TelegramBulkIn,
     TelegramBulkOut,
     TelegramChannelIn,
@@ -93,6 +94,7 @@ from leaks.storage.watchlist_repository import (
     WatchlistRepository,
     WatchlistValidationError,
 )
+from leaks.taxonomy.cert_ar import TAXONOMIA
 from leaks.telegram.catalog import fetch_catalog
 from leaks.telegram.importer import parsear as parsear_canales
 
@@ -302,6 +304,7 @@ def create_app(
         q: Annotated[str | None, Query(max_length=200)] = None,
         #: Un hallazgo puntual, por su clave estable. Es lo que le da URL propia.
         dedup_hash: Annotated[str | None, Query(min_length=64, max_length=64)] = None,
+        taxonomy_type: Annotated[str | None, Query(max_length=48)] = None,
         freshness: Annotated[str | None, Query(pattern="^(reciente|historico|sin_fecha)$")] = None,
         limit: Annotated[int, Query(ge=1)] = 50,
         offset: Annotated[int, Query(ge=0)] = 0,
@@ -323,6 +326,7 @@ def create_app(
                 until=until,
                 q=q,
                 dedup_hash=dedup_hash,
+                taxonomy_type=taxonomy_type,
                 freshness=freshness,
                 fresh_days=config.freshness_days,
             ),
@@ -874,6 +878,24 @@ def create_app(
         """Estado de la corrida manual: si está corriendo y cómo terminó."""
         coordinador: RunCoordinator = request.app.state.runs
         return RunStateOut.model_validate(coordinador.state.as_dict())
+
+    @app.get("/api/taxonomy", response_model=list[TaxonomyTypeOut], tags=["findings"])
+    def taxonomy() -> list[TaxonomyTypeOut]:
+        """Taxonomía del CERT.ar, tal como la publica la guía.
+
+        Se expone para que la UI arme el filtro y para que un integrador sepa
+        qué significa cada `taxonomy_type` sin tener que leer el PDF.
+        """
+        return [
+            TaxonomyTypeOut(
+                slug=t.slug,
+                clasificacion=t.clasificacion,
+                tipo=t.tipo,
+                criticidad=str(t.criticidad),
+                descripcion=t.descripcion,
+            )
+            for t in TAXONOMIA
+        ]
 
     # -- Descubrimiento de subforos -------------------------------------------
 

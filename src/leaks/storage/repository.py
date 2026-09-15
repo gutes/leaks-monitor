@@ -131,6 +131,8 @@ class SqlAlchemyFindingRepository:
             exposure_detail=finding.exposure.as_dict() if finding.exposure else None,
             occurred_at_basis=str(finding.occurred_at_basis),
             backfill=finding.backfill,
+            taxonomy_type=finding.taxonomy_type,
+            taxonomy_basis=finding.taxonomy_basis,
             download_links=[{"url": link.url, "kind": link.kind} for link in finding.download_links]
             or None,
             first_seen_at=now,
@@ -154,6 +156,30 @@ class SqlAlchemyFindingRepository:
                 )
             )
             return _as_utc(valor) if valor else None
+
+    def classify_missing(self) -> int:
+        """Asigna la taxonomía a los hallazgos que todavía no la tienen.
+
+        Es para los que entraron antes de que existiera la clasificación. Se
+        recorre solo lo que falta, así que volver a correrlo no hace nada: es
+        idempotente como el resto del pipeline.
+        """
+        from leaks.taxonomy.classifier import classify
+
+        actualizados = 0
+        with session_scope(self._session_factory) as session:
+            filas = session.scalars(
+                select(FindingRow).where(FindingRow.taxonomy_type.is_(None))
+            ).all()
+            for fila in filas:
+                # Se clasifica sobre el modelo de dominio, no sobre la fila:
+                # así el backfill usa exactamente las mismas reglas que una
+                # corrida nueva y no se puede desincronizar.
+                slug, base = classify(self._to_finding(fila))
+                fila.taxonomy_type = slug
+                fila.taxonomy_basis = base
+                actualizados += 1
+        return actualizados
 
     # -- Alertas -------------------------------------------------------------
 
@@ -232,6 +258,8 @@ class SqlAlchemyFindingRepository:
             ),
             occurred_at_basis=DateBasis(row.occurred_at_basis or "sin_dato"),
             backfill=bool(row.backfill),
+            taxonomy_type=row.taxonomy_type,
+            taxonomy_basis=row.taxonomy_basis,
             download_links=tuple(
                 DownloadLink(url=d["url"], kind=d.get("kind", "unknown"))  # type: ignore[arg-type]
                 for d in (row.download_links or [])

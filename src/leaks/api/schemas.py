@@ -21,6 +21,15 @@ class FindingOut(BaseModel):
     #: (`#/hallazgos?hallazgo=…`) y lo que enlaza el widget de avisos
     #: pendientes. Ya viaja en `/api/alerts/feed`, así que no expone nada nuevo.
     dedup_hash: str
+    #: Taxonomía del CERT.ar. `taxonomy_type` es el slug persistido; el resto se
+    #: deriva del catálogo, así que siempre refleja la guía vigente.
+    taxonomy_type: str | None = None
+    taxonomy_basis: str | None = None
+    taxonomy_label: str | None = None
+    taxonomy_class: str | None = None
+    #: Nivel de criticidad **de la guía**, distinto de nuestra `severity`: uno
+    #: mide tipo de incidente, el otro relevancia argentina corroborada.
+    taxonomy_criticality: str | None = None
     source: str
     leak_type: str
     victim_name: str
@@ -120,6 +129,16 @@ class SourceOut(BaseModel):
     #: pipeline entero" de "se sondeó un foro".
     poll_interval_minutes: int | None = None
     last_run: SourceRunOut | None = None
+
+
+class TaxonomyTypeOut(BaseModel):
+    """Una fila de la taxonomía del CERT.ar."""
+
+    slug: str
+    clasificacion: str
+    tipo: str
+    criticidad: str
+    descripcion: str
 
 
 class FilterOptions(BaseModel):

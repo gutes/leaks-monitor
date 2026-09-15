@@ -22,6 +22,7 @@ from leaks.adapters.registry import FEED_REGISTRY
 from leaks.domain.models import SEVERITY_RANK
 from leaks.storage.models import FindingRow, RunEventRow, SourceRunRow
 from leaks.storage.session import session_scope
+from leaks.taxonomy.cert_ar import get_tipo
 
 
 def _as_utc(value: datetime | None) -> datetime | None:
@@ -29,6 +30,22 @@ def _as_utc(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
+def _taxonomia(slug: str | None, basis: str | None) -> dict[str, Any]:
+    """Proyecta el tipo del CERT.ar con lo que se deriva del catálogo.
+
+    Clasificación y nivel NO están en la base a propósito: si el CERT corrige
+    la guía, alcanza con cambiar el catálogo y todas las filas quedan al día.
+    """
+    tipo = get_tipo(slug)
+    return {
+        "taxonomy_type": slug,
+        "taxonomy_basis": basis,
+        "taxonomy_label": tipo.tipo if tipo else None,
+        "taxonomy_class": tipo.clasificacion if tipo else None,
+        "taxonomy_criticality": str(tipo.criticidad) if tipo else None,
+    }
 
 
 @dataclass(frozen=True)
@@ -47,6 +64,8 @@ class FindingFilters:
     #: Un hallazgo puntual. Es lo que hace que un hallazgo tenga URL propia:
     #: el widget de avisos pendientes enlaza acá.
     dedup_hash: str | None = None
+    #: Tipo de la taxonomía del CERT.ar.
+    taxonomy_type: str | None = None
     #: `reciente`, `historico` o `sin_fecha`. Se calcula sobre `occurred_at`.
     freshness: str | None = None
     #: Umbral en días para decidir qué es reciente.
@@ -152,6 +171,8 @@ class FindingQueryService:
             return stmt.where(FindingRow.dedup_hash == filters.dedup_hash)
         if filters.source:
             stmt = stmt.where(FindingRow.source == filters.source)
+        if filters.taxonomy_type:
+            stmt = stmt.where(FindingRow.taxonomy_type == filters.taxonomy_type)
         if filters.sector:
             stmt = stmt.where(FindingRow.sector == filters.sector)
         if filters.severity:
@@ -197,6 +218,7 @@ class FindingQueryService:
             "id": row.id,
             # Clave estable: es lo que le da URL propia a un hallazgo.
             "dedup_hash": row.dedup_hash,
+            **_taxonomia(row.taxonomy_type, row.taxonomy_basis),
             "source": row.source,
             "leak_type": row.leak_type,
             "victim_name": row.victim_name,

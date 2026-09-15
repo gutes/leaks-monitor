@@ -473,6 +473,44 @@ class TestHallazgoDireccionable:
         assert datos["items"] == []
 
 
+class TestTaxonomiaEnLaApi:
+    """La taxonomía viaja con el hallazgo y el catálogo se expone entero."""
+
+    def test_el_catalogo_esta_disponible(self, client: TestClient) -> None:
+        """La UI arma el filtro desde acá, no con una lista hardcodeada."""
+        tipos = client.get("/api/taxonomy").json()
+
+        assert len(tipos) == 31
+        ransomware = next(t for t in tipos if t["slug"] == "ransomware")
+        assert ransomware["clasificacion"] == "Contenido Dañino"
+        assert ransomware["criticidad"] == "alto"
+
+    def test_el_hallazgo_trae_la_clasificacion_derivada(self, client: TestClient) -> None:
+        """Clasificación y nivel NO están en la base: salen del catálogo.
+
+        Así una corrección de la guía no deja filas viejas contradiciéndola.
+        """
+        items = client.get("/api/findings").json()["items"]
+        assert all("taxonomy_type" in i for i in items)
+
+    def test_se_puede_filtrar_por_tipo(self, client: TestClient) -> None:
+        datos = client.get("/api/findings", params={"taxonomy_type": "no_existe"}).json()
+        assert datos["total"] == 0
+
+    def test_los_dos_ejes_conviven(self, client: TestClient) -> None:
+        """`severity` y `taxonomy_criticality` miden cosas distintas.
+
+        La nuestra, relevancia argentina corroborada; la del CERT, tipo de
+        incidente. Pisar una con la otra perdería información.
+        """
+        campos = set(
+            client.get("/api/openapi.json").json()["components"]["schemas"]["FindingOut"][
+                "properties"
+            ]
+        )
+        assert {"severity", "taxonomy_criticality"} <= campos
+
+
 class TestSoloLectura:
     @pytest.mark.parametrize("metodo", ["post", "put", "patch", "delete"])
     def test_no_hay_endpoints_de_escritura(self, client: TestClient, metodo: str) -> None:

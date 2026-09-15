@@ -47,6 +47,7 @@ from leaks.storage.adjacency_repository import AdjacencyRepository
 from leaks.storage.dedup import compute_dedup_hash
 from leaks.storage.event_sink import NullEventSink
 from leaks.storage.pii_vault import PiiVault
+from leaks.taxonomy.classifier import classify
 
 logger = logging.getLogger(__name__)
 
@@ -897,6 +898,7 @@ class PipelineRunner:
             corroborated=corroborada,
         )
 
+        tipo_cert, base_cert = classify(item)
         return Finding(
             **item.model_dump(
                 exclude={"description", "victim_name", "download_links", "occurred_at"}
@@ -910,6 +912,8 @@ class PipelineRunner:
             ar_match_reason=veredicto.reasons,
             ar_match_detail=veredicto.detail,
             severity=derive_severity(veredicto, item.leak_type),
+            taxonomy_type=tipo_cert,
+            taxonomy_basis=base_cert,
             dedup_hash=compute_dedup_hash(
                 source=item.source,
                 victim_name=item.victim_name,

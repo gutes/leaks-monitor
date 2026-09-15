@@ -87,6 +87,14 @@ class FindingRow(Base):
     #: conocemos. No dispara alertas.
     backfill: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    #: Tipo de la taxonomía del CERT.ar. Se guarda el slug, que es la clave
+    #: estable; la clasificación y el nivel se derivan del catálogo para que
+    #: una corrección de la guía no deje filas viejas contradiciéndola.
+    taxonomy_type: Mapped[str | None] = mapped_column(String(48))
+    #: Por qué se le asignó ese tipo. Sin esto, revisar una clasificación
+    #: dudosa obliga a reproducir la corrida.
+    taxonomy_basis: Mapped[str | None] = mapped_column(String(160))
+
     #: Cuándo se avisó de este hallazgo. `NULL` = pendiente de alertar.
     #: Es lo que hace que no se alerte dos veces lo mismo, y que una alerta que
     #: falló se reintente en la corrida siguiente en vez de perderse.
@@ -94,6 +102,7 @@ class FindingRow(Base):
 
     __table_args__ = (
         UniqueConstraint("dedup_hash", name="uq_findings_dedup_hash"),
+        Index("ix_findings_taxonomy_type", "taxonomy_type"),
         Index("ix_findings_discovered_at", "discovered_at"),
         Index("ix_findings_source", "source"),
         Index("ix_findings_sector", "sector"),
