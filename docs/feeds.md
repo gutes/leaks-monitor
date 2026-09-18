@@ -30,6 +30,40 @@ avisó en su canal con un mes de anticipación.
   canales públicos no hace falta.
 - **Bot API**: un bot solo lee canales de los que es miembro. No sirve.
 
+#### Canales privados y pagos: por qué un bot de BotFather no los abre
+
+Revisado el 2026-09-18 a pedido del líder técnico, que quería usar un bot para
+entrar a canales de pago. La respuesta es que no se puede, y hay tres límites
+independientes: con que valga uno, alcanza.
+
+1. **Un bot no entra solo.** No resuelve links de invitación (`t.me/+…`). La
+   única vía es que **un admin del canal lo agregue**, y el admin es el
+   vendedor.
+2. **Aun adentro, no hay historial.** La Bot API no tiene ningún
+   `getChatHistory`: el bot recibe `channel_post` de lo que se publique
+   *después* de entrar, y nada de antes. Cero backfill — lo contrario de la
+   puesta al día por canal que sí hace el adapter público.
+3. **La suscripción es de una persona.** Sea por Stars o por pago fuera de
+   Telegram, la membresía queda atada a una cuenta de usuario. Un bot no paga
+   ni hereda.
+
+Donde BotFather **sí** sirve es en la dirección contraria: recibir. Es lo que
+ya hace como canal de alertas (`LEAKS_ALERT_TELEGRAM_TOKEN`).
+
+Las dos rutas que quedan, si algún día se decide pagar por un canal:
+
+- **Buzón de reenvío.** El investigador entra al canal con su cuenta y reenvía
+  los posts a un canal privado propio donde el bot es admin; el bot los lee con
+  `forward_origin` (canal de origen, id del post, fecha original). Sin cuenta
+  que quemar y sin atribución nueva, a cambio de un humano en el circuito.
+- **MTProto con cuenta de usuario.** Es lo único que lee un canal privado de
+  punta a punta con historial, y el costo es el del primer punto de esta lista
+  multiplicado: número quemable, archivo de sesión equivalente a la cuenta
+  entera, y **da vuelta la postura de OPSEC** — hoy se lee `t.me/s/` sin dejar
+  rastro; con MTProto la cuenta figura en la lista de miembros del vendedor.
+
+Al 2026-09-18 **no se implementó ninguna**: decisión del líder técnico.
+
 ### Qué se persiste
 
 - A `findings`, **metadata**: canal, fecha, URL del post y la **primera línea**
@@ -454,6 +488,27 @@ sindicación más adelante, sumarlo es una entrada en el registro.
 detrás de un espacio y un salto de línea, y la declaración `<?xml…?>` tiene que
 ser el primer byte. El parser lo rechazaba entero. Ahora se recorta el arranque
 (espacios y BOM) antes de parsear: perder una fuente por un byte de más, no.
+
+## Qué feeds alimentan la adyacencia regional
+
+Un feed que declara `feeds_adjacency=True` en el registro le ofrece al lado
+regional lo que descarta por no ser argentino, en vez de tirarlo. Al 2026-09-18
+son tres: `darkforums`, `breachforums` y `telegram`.
+
+Los de ransomware (`ransomware.live`, `ransomlook`, `dls-monitor`) **no** la
+declaran a propósito: la adyacencia ya consume ransomware.live por su propia
+vía, y dejarlos entrar por las dos puertas duplicaría las mismas víctimas con
+otra fuente.
+
+Antes de encender la bandera en un feed nuevo, medirlo sin persistir:
+
+```bash
+docker compose run --rm --no-deps api leaks regional-probe --feed <feed>
+```
+
+Imprime cuántos items quedarían atribuidos a cada país, por qué señal, qué
+actores nuevos entrarían, y una muestra para juzgar a ojo. No escribe una sola
+fila. Ver `docs/adyacencia.md`.
 
 ## Sumar un feed
 

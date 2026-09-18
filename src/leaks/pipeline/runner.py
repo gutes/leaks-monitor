@@ -21,6 +21,9 @@ from typing import Any
 
 from leaks.adapters.registry import FeedDeps, FeedSpec, build_adapter, resolve_enabled
 from leaks.adjacency.collector import AdjacencyCollector
+from leaks.adjacency.country_detect import detect as detectar_pais
+from leaks.adjacency.regional_watchlist import RegionalWatchlists
+from leaks.adjacency.registries import RegionalVictim
 from leaks.alerts.dispatcher import AlertDispatcher
 from leaks.config import Settings
 from leaks.domain.models import (
@@ -39,7 +42,7 @@ from leaks.extraction.downloads import extract_download_links
 from leaks.pipeline.egress_guard import EgressBlockedError, EgressDecision, EgressGuard
 from leaks.pipeline.watchdog import build_notice, stale_sources
 from leaks.privacy.scrub import redact_pii, scrub_free_text
-from leaks.relevance.rules import evaluate
+from leaks.relevance.rules import RelevanceVerdict, evaluate
 from leaks.relevance.severity import derive_severity
 from leaks.relevance.watchlist import Watchlist
 from leaks.sites.collector import SiteCatalogCollector
@@ -119,6 +122,7 @@ class PipelineRunner:
         site_collector: SiteCatalogCollector | None = None,
         adjacency_collector: AdjacencyCollector | None = None,
         adjacency_repo: AdjacencyRepository | None = None,
+        regional_watchlists: RegionalWatchlists | None = None,
         cursor_sink: Callable[[dict[str, str]], None] | None = None,
         channel_error_sink: Callable[[dict[str, str]], None] | None = None,
         feed_deps: FeedDeps | None = None,
@@ -158,6 +162,10 @@ class PipelineRunner:
         # Colaboradores que el registro no puede construir solo (por ejemplo,
         # qué dominios le toca consultar a Hudson Rock en esta corrida).
         self._feed_deps = feed_deps or FeedDeps()
+        # Watchlists por país: le dan al detector de país una segunda señal
+        # fuerte además del ccTLD, y son las que marcan la víctima como
+        # infraestructura crítica de su país.
+        self._regional_watchlists = regional_watchlists
 
     def run(
         self,
@@ -669,6 +677,9 @@ class PipelineRunner:
             # Se guarda el crudo junto al hallazgo solo para las fuentes que
             # declaran PII, y solo para mandarlo cifrado al vault más abajo.
             crudos_pii: list[tuple[str, dict[str, Any]]] = []
+            # Lo que este feed descarta por no ser argentino, si resulta ser de
+            # la región. Ver `_a_victima_regional`.
+            regionales: list[RegionalVictim] = []
 
             for crudo in adapter.fetch(desde):
                 fetched += 1
@@ -684,6 +695,21 @@ class PipelineRunner:
                 if mas_nuevo is None or item.discovered_at > mas_nuevo:
                     mas_nuevo = item.discovered_at
 
+                veredicto = evaluate(item, self._watchlist, self._enabled_rules)
+
+                # El lado regional mira la ventana ENTERA, antes del filtro
+                # incremental. No es un descuido: la adyacencia es el histórico
+                # del actor, no la novedad del día, y el colector de
+                # ransomware.live ya se comporta así —rebaja el país completo en
+                # cada corrida y deduplica—. Filtrar acá por cursor dejaría la
+                # sección viendo sólo lo publicado desde hoy y nunca lo que el
+                # foro ya tiene a la vista. `upsert_victims` es idempotente por
+                # clave natural, así que repasar la ventana no duplica nada.
+                if not veredicto.is_match:
+                    victima = self._a_victima_regional(item, spec)
+                    if victima is not None:
+                        regionales.append(victima)
+
                 # Incremental: el feed no filtra por fecha, filtramos acá.
                 # Salvo que el adapter lleve su propio cursor —Telegram corta
                 # por id de post, por canal—: ahí el recorte ya está hecho y
@@ -694,7 +720,10 @@ class PipelineRunner:
                 if cursor_nuevo is None or item.discovered_at > cursor_nuevo:
                     cursor_nuevo = item.discovered_at
 
-                hallazgo = self._to_finding(item, spec, backfill=es_importacion_inicial)
+                if not veredicto.is_match:
+                    continue
+
+                hallazgo = self._to_finding(item, spec, veredicto, backfill=es_importacion_inicial)
                 if hallazgo is None:
                     continue
 
@@ -705,6 +734,7 @@ class PipelineRunner:
 
             persisted = self._repository.upsert_many(hallazgos)
             pii_guardados = self._store_pii(spec, crudos_pii)
+            self._guardar_regionales(spec, regionales)
 
             if cursor_nuevo is not None:
                 self._repository.set_cursor(spec.name, cursor_nuevo)
@@ -852,16 +882,83 @@ class PipelineRunner:
             self._pii_vault.store(dedup_hash=h, source=spec.name, payload=p) for h, p in crudos
         )
 
+    # -- Lado regional -------------------------------------------------------
+
+    def _a_victima_regional(self, item: NormalizedItem, spec: FeedSpec) -> RegionalVictim | None:
+        """Un item que no es argentino, ¿es de la región y de quién?
+
+        Devuelve `None` la enorme mayoría de las veces, y está bien: el sondeo
+        del 2026-09-18 midió 27 víctimas regionales en 5.877 items. El criterio
+        vive en `country_detect` y es deliberadamente estricto — acá sólo se
+        aplican las dos condiciones que dependen del pipeline.
+        """
+        if not spec.feeds_adjacency or self._adjacency_repo is None:
+            return None
+
+        # Sin actor no hay perfil que construir, y el perfil es el producto de
+        # la sección. Una víctima huérfana engordaría la tabla sin decir quién.
+        actor = (item.actor or "").strip()
+        if not actor:
+            return None
+
+        match = detectar_pais(item, watchlists=self._regional_watchlists)
+        if match is None:
+            return None
+
+        # La víctima ES el dominio, no el título del post. Dos razones, y las
+        # dos importan:
+        #
+        # 1. La clave natural de `regional_victims` es (actor, país, nombre,
+        #    fecha). En estas fuentes el título es genérico —"FREE WEB SHELL",
+        #    "HOST : smtp.office365.com"— así que dos víctimas distintas del
+        #    mismo canal y la misma fecha colapsarían en una sola fila.
+        # 2. Un dominio no tiene PII; el título de un thread puede traer una
+        #    muestra de los datos robados.
+        #
+        # Un match siempre trae dominio: sin él no hay señal fuerte. El
+        # respaldo redactado es por contrato del tipo, no un caso esperado.
+        nombre = match.domain or redact_pii(item.victim_name) or item.victim_name
+
+        return RegionalVictim(
+            actor=actor,
+            country=match.code,
+            victim_name=nombre,
+            victim_domain=match.domain,
+            sector=item.sector,
+            # Cuándo lo publicaron, no cuándo lo vimos. Sin fecha creíble se
+            # deja en None: el score sabe no contar lo que no está fechado.
+            occurred_at=item.occurred_at or item.published_at,
+            source=spec.name,
+        )
+
+    def _guardar_regionales(self, spec: FeedSpec, victimas: list[RegionalVictim]) -> None:
+        """Persiste las víctimas regionales de esta fuente, si hay."""
+        if not victimas or self._adjacency_repo is None:
+            return
+        resultado = self._adjacency_repo.upsert_victims(victimas)
+        logger.info(
+            "feed %s: %d víctimas regionales (%d nuevas)",
+            spec.name,
+            len(victimas),
+            resultado.nuevas,
+        )
+
     # -- Relevancia + privacidad --------------------------------------------
 
     def _to_finding(
-        self, item: NormalizedItem, spec: FeedSpec, *, backfill: bool = False
+        self,
+        item: NormalizedItem,
+        spec: FeedSpec,
+        veredicto: RelevanceVerdict,
+        *,
+        backfill: bool = False,
     ) -> Finding | None:
-        """Aplica relevancia AR, privacidad y fechado. `None` = no es argentino."""
-        veredicto = evaluate(item, self._watchlist, self._enabled_rules)
-        if not veredicto.is_match:
-            return None
+        """Aplica privacidad y fechado a un item YA declarado argentino.
 
+        El veredicto entra como parámetro en vez de calcularse acá: el llamador
+        ya lo necesitó para decidir si el item va al lado regional, y evaluarlo
+        dos veces por ítem sobre una ventana de miles no aporta nada.
+        """
         # El texto libre solo sobrevive si pasa el scrubber. En las fuentes de
         # superficie riesgosa (foros) no se persiste texto libre en absoluto.
         descripcion = None if spec.high_pii_surface else scrub_free_text(item.description)

@@ -1057,3 +1057,41 @@ body.is-blocked { overflow: hidden; }
 
 /* Las acciones por canal en una fila, sin que la tabla se estire. */
 .tg-acciones { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Carriles de la adyacencia: dos universos que no comparten vara. */
+.adj-carriles {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin: 0.8rem 0 0.2rem;
+}
+
+.chip-filter {
+  background: color-mix(in srgb, var(--muted) 10%, transparent);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.chip-filter:hover {
+  color: var(--text);
+}
+
+.chip-filter.is-on {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pill-kind-dls {
+  background: color-mix(in srgb, var(--high) 14%, transparent);
+  color: var(--high);
+}
+
+.pill-kind-foro {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}

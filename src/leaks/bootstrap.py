@@ -211,6 +211,7 @@ def build_application(settings: Settings | None = None) -> Application:
         site_collector=site_collector,
         adjacency_collector=adjacency_collector,
         adjacency_repo=adjacency_repo,
+        regional_watchlists=regional_wl,
         cursor_sink=telegram_repo.save_cursors,
         channel_error_sink=telegram_repo.save_errors,
         feed_deps=feed_deps,

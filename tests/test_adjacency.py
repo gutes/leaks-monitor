@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from leaks.adjacency.collector import AdjacencyCollector
 from leaks.adjacency.countries import COUNTRY_CODES, get_country, proximidad
+from leaks.adjacency.kinds import KIND_DLS, KIND_FORO, kind_for
 from leaks.adjacency.registries import RegionalVictim, fetch_ransomware_live
 from leaks.adjacency.scoring import (
     VictimaRegional,
@@ -220,6 +221,7 @@ class TestRepositorio:
             "babuk2",
             victims_total=3,
             countries=["BR"],
+            kind=KIND_DLS,
             first_seen=None,
             last_seen=None,
             hit_ar=False,
@@ -233,6 +235,7 @@ class TestRepositorio:
             "babuk2",
             victims_total=9,
             countries=["BR", "CL"],
+            kind=KIND_DLS,
             first_seen=None,
             last_seen=None,
             hit_ar=False,
@@ -250,6 +253,7 @@ class TestRepositorio:
                 "x",
                 victims_total=total,
                 countries=["BR"],
+                kind=KIND_DLS,
                 first_seen=None,
                 last_seen=None,
                 hit_ar=False,
@@ -261,6 +265,7 @@ class TestRepositorio:
             "x",
             victims_total=4,
             countries=["BR"],
+            kind=KIND_DLS,
             first_seen=None,
             last_seen=None,
             hit_ar=False,
@@ -409,6 +414,7 @@ class TestAvisoPorSalto:
             actor,
             victims_total=victimas,
             countries=["BR", "CL"],
+            kind=KIND_DLS,
             first_seen=None,
             last_seen=None,
             hit_ar=hit_ar,
@@ -503,6 +509,7 @@ class TestCableado:
                 "babuk2",
                 victims_total=cuantas,
                 countries=["BR", "CL"],
+                kind=KIND_DLS,
                 first_seen=None,
                 last_seen=None,
                 hit_ar=False,
@@ -548,6 +555,7 @@ class TestCableado:
                 "babuk2",
                 victims_total=cuantas,
                 countries=["BR"],
+                kind=KIND_DLS,
                 first_seen=None,
                 last_seen=None,
                 hit_ar=False,
@@ -661,3 +669,59 @@ class TestVictimasCriticas:
         # Y se puede volver atrás.
         assert adj_repo.reclasificar(lambda cc, dom: (False, None)) == 1
         assert adj_repo.count_critical() == 0
+
+
+class TestCarriles:
+    """Los dos universos de la sección, separados.
+
+    El score está calibrado sobre la cadencia de un DLS. Un broker de acceso
+    publica de otra forma, así que va por su propio carril y no compite en el
+    mismo ranking.
+    """
+
+    def test_el_carril_sale_de_la_fuente_de_las_victimas(
+        self, adj_repo: AdjacencyRepository
+    ) -> None:
+        adj_repo.upsert_victims(
+            [
+                RegionalVictim(
+                    actor="lockbit3",
+                    country="BR",
+                    victim_name="Empresa Ejemplo",
+                    victim_domain="ejemplo.com.br",
+                    sector=None,
+                    occurred_at=datetime(2026, 9, 1, tzinfo=UTC),
+                    source="ransomware.live",
+                ),
+                RegionalVictim(
+                    actor="rabbitt1337",
+                    country="BR",
+                    victim_name="prefeitura",
+                    victim_domain="prefeitura.gov.br",
+                    sector=None,
+                    occurred_at=datetime(2026, 9, 1, tzinfo=UTC),
+                    source="telegram",
+                ),
+            ]
+        )
+
+        fuentes = adj_repo.sources_by_actor()
+        assert fuentes == {"lockbit3": {"ransomware.live"}, "rabbitt1337": {"telegram"}}
+        assert kind_for(fuentes["lockbit3"]) == KIND_DLS
+        assert kind_for(fuentes["rabbitt1337"]) == KIND_FORO
+
+    def test_el_carril_se_persiste_y_se_lee(self, adj_repo: AdjacencyRepository) -> None:
+        adj_repo.save_actor(
+            "rabbitt1337",
+            victims_total=2,
+            countries=["BR"],
+            kind=KIND_FORO,
+            first_seen=None,
+            last_seen=None,
+            hit_ar=False,
+            ar_victims=0,
+            score=None,
+        )
+        (perfil,) = adj_repo.list_actors()
+        assert perfil.kind == KIND_FORO
+        assert perfil.as_dict()["kind"] == KIND_FORO

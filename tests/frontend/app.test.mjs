@@ -1005,3 +1005,48 @@ test("la dirección .onion se acota pero no se oculta", async () => {
   assert.match(CSS, /\.onion-ref\s*\{[^}]*text-overflow:\s*ellipsis/);
   assert.match(APP, /code\.title\s*=/, "la dirección completa va en el title");
 });
+
+test("la adyacencia separa los dos carriles de actor", async () => {
+  // Dos universos en una tabla se leen como uno solo: el score está calibrado
+  // sobre la cadencia de una banda con sitio de extorsión, no sobre la de un
+  // broker que vende accesos. La UI tiene que poder mirarlos por separado.
+  const actor = (nombre, kind) => ({
+    actor: nombre,
+    victims_total: 3,
+    countries: ["BR"],
+    kind,
+    hit_ar: false,
+    ar_victims: 0,
+    score: 50,
+    score_breakdown: {},
+    score_prev: null,
+    variacion: null,
+  });
+
+  const { el } = await cargarApp({
+    html: HTML,
+    hash: "#/adyacentes",
+    respuestas: {
+      ...RESPUESTAS_BASE,
+      "/api/adjacency": {
+        confirmados: [],
+        candidatos: [actor("lockbit3", "dls"), actor("rabbitt1337", "foro")],
+        total_candidatos: 2,
+        criticas: [],
+        paises: ["BR"],
+      },
+    },
+  });
+
+  const tabla = () => textoDe(el("adj-cand-body"));
+  assert.match(tabla(), /lockbit3/);
+  assert.match(tabla(), /rabbitt1337/);
+  assert.match(tabla(), /Foro \/ Telegram/, "cada fila dice de qué carril es");
+
+  const [boton] = buscar(el("adj-carriles"), (n) => n.dataset?.kind === "foro");
+  assert.ok(boton, "hay un filtro por carril");
+  await disparar(boton, "click");
+
+  assert.doesNotMatch(tabla(), /lockbit3/, "la banda de ransomware queda fuera del carril de foro");
+  assert.match(tabla(), /rabbitt1337/);
+});

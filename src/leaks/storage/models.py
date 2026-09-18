@@ -366,6 +366,11 @@ class AdjacentActorRow(Base):
     countries: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     first_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: De qué universo viene: `dls` (banda con sitio de extorsión) o `foro`
+    #: (broker de acceso, vendedor, hacktivista). El score está calibrado sobre
+    #: el primero, así que los dos carriles no se comparan entre sí.
+    #: Ver `leaks.adjacency.kinds`.
+    kind: Mapped[str] = mapped_column(String(16), default="dls", nullable=False)
     #: Ya golpeó Argentina. Se deriva de `findings`, que es donde vive eso.
     hit_ar: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     ar_victims: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

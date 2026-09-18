@@ -80,6 +80,98 @@ Anticipación entre la primera víctima regional y la primera argentina:
 | ≥90 días | 21/35 (60%) |
 | mínimo | 4 |
 
+## De dónde salen las víctimas regionales
+
+Hasta el 2026-09-18 la respuesta era **una sola fuente**: ransomware.live. Eso
+significaba que la sección prometía *"actores que operan en la región"* y en los
+hechos entregaba *"bandas de ransomware que publican en un data leak site"*.
+
+Lo que quedaba afuera se midió contra la base, no se supuso: de los actores que
+ya vimos golpear Argentina, **32 no estaban en `adjacent_actors` y no podían
+estar** — 15 vendedores de DarkForums, 14 de dls-monitor, 4 canales de Telegram
+y 1 de BreachForums, todos con **cero** víctimas regionales, porque ninguna
+fuente regional los miraba. Entre ellos `rabbitt1337`, que vendía acceso de
+shell a `gde.gob.ar` y `educacion.gob.ar`.
+
+Esto es **distinto del punto ciego del 46%**, y confundirlos lleva a arreglar lo
+que no es:
+
+| | Punto ciego del score | Hueco de fuente |
+|---|---|---|
+| Qué pasa | Eligieron AR como primera víctima LatAm | Ninguna fuente regional los mira |
+| Ejemplo | `thegentlemen` | `rabbitt1337` |
+| Se arregla | No: es ciego el enfoque | Sí: sumando una fuente |
+
+### Los foros y Telegram también alimentan la sección
+
+Desde el 2026-09-18, lo que el pipeline argentino descarta por no ser argentino
+se le ofrece al lado regional antes de tirarlo (`runner._a_victima_regional`).
+Sólo lo hacen los feeds que declaran `feeds_adjacency` —foros y Telegram—: los
+de ransomware ya entran por su propia vía y dejarlos entrar por las dos puertas
+duplicaría las mismas víctimas.
+
+El criterio de atribución de país vive en `adjacency/country_detect.py` y es
+**más estricto que el argentino** a propósito: allá un falso positivo cuesta un
+hallazgo que se descarta en diez segundos, acá se convierte en un actor con
+score. **El dominio manda** — ccTLD del país o watchlist regional—, el nombre
+del país en el texto corrobora pero nunca dispara solo, y la ambigüedad se
+devuelve como nada.
+
+Medido con `leaks regional-probe` el 2026-09-18, sin persistir nada:
+
+| | items mirados | argentinos | regionales | actores nuevos |
+|---|---:|---:|---:|---:|
+| foros | 340 | 15 | 4 | 3 |
+| telegram | 5.537 | 20 | 23 | 14 |
+| **total** | **5.877** | **35** | **27** | **17** |
+
+Rendimiento del **0,46%**, con una precisión de 26/27 revisando las muestras a
+mano. El riesgo que justificaba medir antes de persistir —inundar la tabla de
+handles de foro— no se materializó: 17 actores nuevos sobre 162.
+
+El único falso positivo fue de una clase que no estaba prevista: el canal
+`breachstars` anunciando **su propio dominio nuevo**, `breachstars.hn`. Un
+vendedor no se ataca a sí mismo, así que se descartan los dominios cuya etiqueta
+coincide con el handle del actor.
+
+Quedó uno sin resolver y se dice: `elobservador.com.uy` es el enlace a una nota
+periodística *sobre* un hackeo, no una víctima. Con un solo caso no alcanza para
+escribir una regla.
+
+### Se mira la ventana entera, no sólo lo nuevo
+
+El lado regional se evalúa **antes** del filtro incremental del runner, y es a
+propósito. La adyacencia es el histórico del actor, no la novedad del día: el
+colector de ransomware.live ya rebaja el país completo en cada corrida y
+deduplica. Si acá se filtrara por cursor, la sección vería sólo lo publicado
+desde el día que se encendió la bandera y nunca lo que el foro ya tiene a la
+vista — con un item viejo por corrida, tardaría meses en poblarse.
+
+`upsert_victims` es idempotente por clave natural, así que repasar la ventana en
+cada corrida no duplica nada.
+
+### La víctima es el dominio, no el título
+
+En estas fuentes el título del post es genérico —`FREE WEB SHELL`,
+`HOST : smtp.office365.com`, o directamente un emoji— y la clave natural de
+`regional_victims` es `(actor, país, nombre, fecha)`. Con el título como nombre,
+dos víctimas distintas del mismo canal en la misma fecha se guardarían como una.
+
+Se persiste el dominio, que además no tiene PII: el título de un thread puede
+traer una muestra de los datos robados, un dominio no.
+
+## Los dos carriles
+
+Las víctimas de foro y Telegram traen actores de otra naturaleza —brokers de
+acceso, vendedores, hacktivistas— y el score **no está calibrado sobre ellos**:
+`volumen` y `tendencia` suponen el goteo de un DLS, y un post que vende acceso a
+cinco sistemas es *un post*, no cinco víctimas.
+
+Por eso `adjacent_actors.kind` los separa en dos carriles (`dls` y `foro`, ver
+`adjacency/kinds.py`) y la UI los filtra aparte. Un actor con al menos una
+víctima publicada en un DLS cuenta como `dls` aunque también venda en un foro:
+ahí el score sí está medido y es la lectura más informativa.
+
 ## El score
 
 0–100, sin ML, recalculado en cada corrida. Cada componente se persiste en
@@ -190,6 +282,8 @@ nuestras.
 | API + vista de actores | ✅ sección propia, con el desglose del score |
 | Watchlist regional por país | ✅ 9 países, 177 dominios, 67 víctimas críticas |
 | Alerta por salto de score | ✅ por movimiento, no por umbral |
+| Foros y Telegram como fuente regional | ✅ 2026-09-18, medido antes con `regional-probe` |
+| Carriles separados (`dls` / `foro`) | ✅ el score no se compara entre universos |
 
 La sección está marcada **beta** en el menú: su punto ciego del 46% es
 estructural y hay que saberlo antes de entrar, no después de leer la lista.

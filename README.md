@@ -427,6 +427,7 @@ código de estado y conteos — **nunca PII ni contenido de los feeds**.
 | `leaks feeds` | Lista los feeds, si corren y con qué licencia. |
 | `leaks init-db` | Crea el schema. |
 | `leaks purge-pii` | Aplica la retención de la bóveda cifrada y de la bitácora. |
+| `leaks regional-probe` | Mide qué víctimas regionales aportarían los foros y Telegram. No escribe nada. |
 
 `leaks run` devuelve **1** si ninguna fuente respondió, para que el cron se
 entere. Si una sola fuente falla, devuelve 0 y sigue: eso es diseño, no

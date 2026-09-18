@@ -312,6 +312,10 @@ class AdjacentActorOut(BaseModel):
     actor: str
     victims_total: int
     countries: list[str] = Field(default_factory=list)
+    #: `dls` (banda con sitio de extorsión) o `foro` (broker de acceso,
+    #: vendedor, hacktivista). El score está calibrado sobre el primero, así
+    #: que los dos carriles se leen con distinta vara y la UI los separa.
+    kind: str = "dls"
     first_seen: datetime | None = None
     last_seen: datetime | None = None
     #: Ya golpeó Argentina. Parte la lista en dos poblaciones que no se comparan.

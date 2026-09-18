@@ -30,6 +30,7 @@ from leaks.domain.models import (
 )
 from leaks.pipeline.runner import PipelineRunner
 from leaks.relevance.watchlist import Watchlist
+from leaks.storage.adjacency_repository import AdjacencyRepository
 from leaks.storage.crypto import PiiCipher
 from leaks.storage.pii_vault import PiiVault
 from leaks.storage.queries import FindingQueryService
@@ -66,6 +67,7 @@ class FakeAdapter:
             country=p.get("country"),  # type: ignore[arg-type]
             actor=str(p.get("group", "TestGroup")),
             discovered_at=p["discovered"],  # type: ignore[arg-type]
+            published_at=p.get("published"),  # type: ignore[arg-type]
             description=p.get("description"),  # type: ignore[arg-type]
         )
 
@@ -837,3 +839,237 @@ class TestImportacionInicialYFechado:
         assert fila.occurred_at is not None
         assert fila.occurred_at.year == 2023, "la fecha del evento, no la de importación"
         assert fila.occurred_at_basis == "feed"
+
+
+class TestLadoRegional:
+    """Lo que el pipeline argentino descarta, ¿llega a la adyacencia?
+
+    Es la única vía por la que un broker de acceso o un grupo hacktivista entra
+    a `adjacent_actors`: no publican en un DLS, así que el colector regional
+    —que sólo lee ransomware.live— nunca los ve.
+    """
+
+    @staticmethod
+    def _spec_regional(adapter: FakeAdapter) -> FeedSpec:
+        return replace(spec_for(adapter), feeds_adjacency=True, high_pii_surface=True)
+
+    @staticmethod
+    def _payload(victim: str, *, group: str = "vendedor1") -> dict[str, object]:
+        return {
+            "victim": victim,
+            "domain": None,
+            "country": None,
+            "group": group,
+            "discovered": datetime(2026, 9, 18, 12, 0, tzinfo=UTC),
+            # Los foros y Telegram fechan el post; es la fecha que usa el score.
+            "published": datetime(2026, 9, 18, 12, 0, tzinfo=UTC),
+        }
+
+    def test_un_item_regional_se_guarda_como_victima_regional(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+        session_factory: sessionmaker[Session],
+    ) -> None:
+        adjacency = AdjacencyRepository(session_factory)
+        adapter = FakeAdapter([self._payload("acceso a prefeitura.gov.br")])
+
+        runner = PipelineRunner(
+            repository=repository,
+            watchlist=watchlist,
+            settings=settings,
+            adjacency_repo=adjacency,
+        )
+        reporte = runner.run([(self._spec_regional(adapter), None)])
+
+        # No es argentino: no hay hallazgo.
+        assert reporte.total_new == 0
+        # Pero sí es regional.
+        victimas = adjacency.victims_by_actor()
+        assert list(victimas) == ["vendedor1"]
+        (victima,) = victimas["vendedor1"]
+        assert victima.country == "BR"
+
+    def test_un_feed_que_no_declara_la_bandera_no_aporta(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+        session_factory: sessionmaker[Session],
+    ) -> None:
+        """Los feeds de ransomware ya entran por su propia vía: no por acá."""
+        adjacency = AdjacencyRepository(session_factory)
+        adapter = FakeAdapter([self._payload("acceso a prefeitura.gov.br")])
+
+        runner = PipelineRunner(
+            repository=repository,
+            watchlist=watchlist,
+            settings=settings,
+            adjacency_repo=adjacency,
+        )
+        runner.run([(spec_for(adapter), None)])
+
+        assert adjacency.victims_by_actor() == {}
+
+    def test_un_hallazgo_argentino_no_se_duplica_en_la_region(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+        session_factory: sessionmaker[Session],
+    ) -> None:
+        """Argentina es el sujeto, no la región: no puede contarse dos veces."""
+        adjacency = AdjacencyRepository(session_factory)
+        adapter = FakeAdapter([self._payload("dump de anses.gob.ar")])
+
+        runner = PipelineRunner(
+            repository=repository,
+            watchlist=watchlist,
+            settings=settings,
+            adjacency_repo=adjacency,
+        )
+        reporte = runner.run([(self._spec_regional(adapter), None)])
+
+        assert reporte.total_new == 1
+        assert adjacency.victims_by_actor() == {}
+
+    def test_sin_actor_no_se_guarda(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+        session_factory: sessionmaker[Session],
+    ) -> None:
+        """El producto de la sección es el perfil del actor; sin actor no hay."""
+        adjacency = AdjacencyRepository(session_factory)
+        adapter = FakeAdapter([self._payload("acceso a prefeitura.gov.br", group="")])
+
+        runner = PipelineRunner(
+            repository=repository,
+            watchlist=watchlist,
+            settings=settings,
+            adjacency_repo=adjacency,
+        )
+        runner.run([(self._spec_regional(adapter), None)])
+
+        assert adjacency.victims_by_actor() == {}
+
+    def test_una_victima_sin_fecha_se_guarda_pero_no_puntua(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+        session_factory: sessionmaker[Session],
+    ) -> None:
+        """Misma regla que el resto del pipeline: no se inventa una fecha.
+
+        La fila queda para el registro, pero afuera del score: sin fecha no
+        puede sostener recencia ni tendencia, y contarla para volumen inflaría
+        al actor peor fechado.
+        """
+        adjacency = AdjacencyRepository(session_factory)
+        payload = self._payload("acceso a prefeitura.gov.br")
+        del payload["published"]
+        adapter = FakeAdapter([payload])
+
+        runner = PipelineRunner(
+            repository=repository,
+            watchlist=watchlist,
+            settings=settings,
+            adjacency_repo=adjacency,
+        )
+        runner.run([(self._spec_regional(adapter), None)])
+
+        assert adjacency.count_victims() == 1
+        assert adjacency.victims_by_actor() == {}
+
+    def test_dos_victimas_con_el_mismo_titulo_no_colapsan(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+        session_factory: sessionmaker[Session],
+    ) -> None:
+        """La clave natural es (actor, país, nombre, fecha).
+
+        En estos canales el título se repite —"FREE WEB SHELL", "HOST : …"— así
+        que si el nombre fuera el título, dos víctimas del mismo canal y la
+        misma fecha se guardarían como una. La víctima es el dominio.
+        """
+        adjacency = AdjacencyRepository(session_factory)
+        adapter = FakeAdapter(
+            [
+                self._payload("HOST : smtp.office365.com jaliscoedu.mx"),
+                self._payload("HOST : smtp.office365.com udelasalle.edu.mx"),
+            ]
+        )
+
+        runner = PipelineRunner(
+            repository=repository,
+            watchlist=watchlist,
+            settings=settings,
+            adjacency_repo=adjacency,
+        )
+        runner.run([(self._spec_regional(adapter), None)])
+
+        assert adjacency.count_victims() == 2
+        nombres = {v.victim_domain for v in adjacency.victims_by_actor()["vendedor1"]}
+        assert nombres == {"jaliscoedu.mx", "udelasalle.edu.mx"}
+
+    def test_la_ventana_entera_alimenta_la_region_no_solo_lo_nuevo(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+        session_factory: sessionmaker[Session],
+    ) -> None:
+        """La adyacencia es el histórico del actor, no la novedad del día.
+
+        Un foro muestra siempre sus últimos N threads. Si el lado regional
+        mirara sólo lo posterior al cursor, la sección no vería nunca lo que el
+        foro ya tiene publicado, y con un item viejo por corrida tardaría meses
+        en poblarse. El colector de ransomware.live ya rebaja el país entero en
+        cada corrida y deduplica; esto hace lo mismo.
+        """
+        adjacency = AdjacencyRepository(session_factory)
+        viejo = self._payload("acceso a prefeitura.gov.br")
+        viejo["discovered"] = datetime(2026, 1, 1, tzinfo=UTC)
+        viejo["published"] = datetime(2026, 1, 1, tzinfo=UTC)
+        spec = self._spec_regional(FakeAdapter([viejo]))
+
+        # Cursor muy posterior al item: en el lado argentino queda descartado.
+        repository.set_cursor(spec.name, datetime(2026, 9, 1, tzinfo=UTC))
+
+        runner = PipelineRunner(
+            repository=repository,
+            watchlist=watchlist,
+            settings=settings,
+            adjacency_repo=adjacency,
+        )
+        runner.run([(spec, None)])
+
+        assert adjacency.count_victims() == 1
+
+    def test_repasar_la_ventana_no_duplica(
+        self,
+        repository: SqlAlchemyFindingRepository,
+        watchlist: Watchlist,
+        settings: Settings,
+        session_factory: sessionmaker[Session],
+    ) -> None:
+        """Corolario del anterior: se repasa en cada corrida, así que la clave
+        natural tiene que sostener la idempotencia."""
+        adjacency = AdjacencyRepository(session_factory)
+        spec = self._spec_regional(FakeAdapter([self._payload("acceso a prefeitura.gov.br")]))
+
+        runner = PipelineRunner(
+            repository=repository,
+            watchlist=watchlist,
+            settings=settings,
+            adjacency_repo=adjacency,
+        )
+        runner.run([(spec, None)])
+        runner.run([(spec, None)])
+
+        assert adjacency.count_victims() == 1

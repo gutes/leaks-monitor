@@ -11,6 +11,7 @@ Comandos:
     leaks feeds       lista el registro de feeds y su política
     leaks purge-pii   aplica la retención de la bóveda cifrada
     leaks sync-watchlist  importa las entradas nuevas del YAML semilla
+    leaks regional-probe  mide qué aportarían los foros y Telegram a la adyacencia
 """
 
 from __future__ import annotations
@@ -19,23 +20,37 @@ import argparse
 import logging
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
 from leaks.adapters.fid_discovery import DEFAULT_FIRST_FID, DEFAULT_LAST_FID
-from leaks.adapters.registry import FEED_REGISTRY, resolve_enabled
+from leaks.adapters.registry import (
+    FEED_REGISTRY,
+    FeedDeps,
+    build_adapter,
+    get_spec,
+    resolve_enabled,
+)
+from leaks.adjacency.probe import ProbeReport, probe
+from leaks.adjacency.regional_watchlist import load_regional_watchlists
 from leaks.bootstrap import build_application, configure_logging
 from leaks.bundle import BundleError
 from leaks.bundle import exportar as exportar_bundle
 from leaks.bundle import importar as importar_bundle
 from leaks.config import get_settings
+from leaks.domain.models import NormalizedItem
 from leaks.pipeline.discovery_coordinator import DiscoveryCoordinator
 from leaks.pipeline.runner import RunReport
 from leaks.pipeline.scheduler import run_forever
 from leaks.telegram.importer import parsear as parsear_canales
 
 logger = logging.getLogger("leaks.cli")
+
+#: Feeds que el sondeo regional mira por defecto: los que hoy sólo se leen con
+#: la lente argentina y descartan todo lo demás. Los de ransomware ya alimentan
+#: la adyacencia por su propia vía, así que sondearlos no diría nada nuevo.
+FEEDS_SONDEO: tuple[str, ...] = ("darkforums", "breachforums", "telegram")
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -80,6 +95,20 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "sync-watchlist",
         help="Importa a la base las entradas nuevas del YAML semilla (no borra ni pisa).",
+    )
+
+    sondeo = sub.add_parser(
+        "regional-probe",
+        help="Mide qué víctimas regionales aportarían los foros y Telegram. NO escribe nada.",
+    )
+    sondeo.add_argument(
+        "--feed",
+        action="append",
+        dest="feeds",
+        help=f"Feed a sondear; repetible. Por defecto: {', '.join(FEEDS_SONDEO)}.",
+    )
+    sondeo.add_argument(
+        "--samples", type=int, default=20, help="Cuántas muestras imprimir (default 20)."
     )
 
     canales = sub.add_parser(
@@ -130,6 +159,37 @@ _FORMATO_FECHA = "%Y-%m-%d %H:%M:%S %Z"
 def _sello(momento: datetime) -> str:
     """Marca temporal en hora local: el investigador razona en su horario."""
     return momento.astimezone().strftime(_FORMATO_FECHA)
+
+
+def _print_probe(reporte: ProbeReport) -> None:
+    """Imprime el sondeo regional. Conteos primero, muestras después."""
+    print()
+    print(
+        f"Items mirados: {reporte.vistos} | argentinos: {reporte.argentinos} | "
+        f"regionales: {reporte.detectados} | sin atribuir: {reporte.descartados}"
+    )
+    if not reporte.detectados:
+        print("Ninguno quedó con país atribuible. El detector no aporta con esta ventana.")
+        return
+
+    print(f"Por país  : {_conteos(reporte.por_pais)}")
+    print(f"Por señal : {_conteos(reporte.por_senal)}")
+    print(f"Por fuente: {_conteos(reporte.por_fuente)}")
+    print(f"Actores que hoy no están en adjacent_actors: {len(reporte.actores_nuevos)}")
+    if reporte.actores_nuevos:
+        print(f"  {', '.join(reporte.actores_nuevos[:20])}")
+
+    print()
+    print("Muestras (para juzgar a ojo si el criterio acierta):")
+    for m in reporte.muestras:
+        senales = "+".join(m.signals)
+        print(f"  [{m.code}] {m.source:12s} {senales:18s} {m.domain or '-':28s} {m.titulo}")
+    print()
+    print("No se escribió ninguna fila.")
+
+
+def _conteos(datos: dict[str, int]) -> str:
+    return ", ".join(f"{k}={v}" for k, v in datos.items()) or "—"
 
 
 def _print_report(report: RunReport) -> None:
@@ -340,6 +400,53 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         print(f"{args.canal} no está dado de alta. Verlos con: leaks feeds / la pantalla Telegram.")
         return 1
+
+    if args.command == "regional-probe":
+        app.create_schema()
+        nombres = tuple(args.feeds) if args.feeds else FEEDS_SONDEO
+
+        # Misma barrera que el pipeline: este sondeo trae feeds reales, así que
+        # no hay motivo para que salga por una IP que a la corrida le está
+        # vedada.
+        decision = app.egress_guard.evaluate()
+        if not decision.allowed:
+            print(f"Bloqueado por el control de IP de salida: {decision.reason}")
+            return 1
+
+        # Sin cursores: se quiere la ventana entera de cada fuente, que es lo
+        # que hace comparable la medición. No se persiste ninguno —el que los
+        # guarda es el runner, no el adapter—, así que esto no mueve el estado.
+        deps = FeedDeps(channels=app.telegram_repo.enabled_handles)
+        conocidos = frozenset(perfil.actor.lower() for perfil in app.adjacency_repo.list_actors())
+        regionales = load_regional_watchlists(settings.regional_watchlist_vigente)
+
+        def _items() -> Iterator[tuple[str, NormalizedItem]]:
+            for nombre in nombres:
+                spec = get_spec(nombre)
+                if spec is None:
+                    print(f"Feed desconocido: {nombre}")
+                    continue
+                print(f"Trayendo {nombre}…")
+                adapter, _cliente = build_adapter(spec, settings, deps=deps)
+                try:
+                    crudos = list(adapter.fetch(None))
+                except Exception as exc:  # un feed caído no corta el sondeo
+                    print(f"  {nombre} no respondió: {type(exc).__name__}: {exc}")
+                    continue
+                for crudo in crudos:
+                    item = adapter.normalize(crudo)
+                    if item is not None:
+                        yield nombre, item
+
+        sondeo_regional = probe(
+            _items(),
+            watchlist=app.watchlist,
+            watchlists=regionales,
+            actores_conocidos=conocidos,
+            max_muestras=args.samples,
+        )
+        _print_probe(sondeo_regional)
+        return 0
 
     if args.command == "classify-taxonomy":
         app.create_schema()

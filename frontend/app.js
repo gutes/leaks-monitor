@@ -1565,8 +1565,76 @@ const ADJ_COMPONENTES = {
 /** Guarda los perfiles de la última carga, para abrir el desglose sin refetch. */
 const adjCache = new Map();
 
+/** Etiqueta del carril. Dos universos en una tabla se leen como uno solo. */
+const ADJ_CARRILES = {
+  dls: "Banda con sitio de extorsión",
+  foro: "Foro / Telegram",
+};
+
+/** Última respuesta, para filtrar por carril sin volver a pedir. */
+let adjDatos = null;
+/** Carril elegido: "" = todos. */
+let adjCarril = "";
+
+/**
+ * Filtra por carril.
+ *
+ * Los actores de foro y Telegram no comparten vara con las bandas de
+ * ransomware: su score sale de otra cadencia de publicación. Mezclarlos en un
+ * ranking único hace que un vendedor ruidoso le gane a LockBit.
+ */
+function porCarril(lista) {
+  if (!adjCarril) return lista;
+  return lista.filter((a) => (a.kind || "dls") === adjCarril);
+}
+
+/** Chip con el carril del actor, al lado del nombre. */
+function chipCarril(kind) {
+  const valor = kind || "dls";
+  const chip = el("span", ADJ_CARRILES[valor] || valor, `pill pill-kind-${valor}`);
+  chip.title =
+    valor === "foro"
+      ? "Broker de acceso, vendedor o hacktivista: el score no está calibrado sobre esta cadencia."
+      : "Banda con data leak site: el universo donde el score está medido.";
+  return chip;
+}
+
+/**
+ * Pinta el filtro de carriles y lo engancha.
+ *
+ * Los botones se arman acá y no en el marcado para que salgan del catálogo
+ * `ADJ_CARRILES`: sumar un carril es una entrada, no dos lugares que se
+ * desincronizan. Se hace una vez; cambiar de carril re-renderiza con los datos
+ * ya cargados, sin volver a pedir.
+ */
+function initCarriles() {
+  const caja = $("adj-carriles");
+  if (!caja || caja.dataset.listo) return;
+  caja.dataset.listo = "1";
+
+  const opciones = [["", "Todos"], ...Object.entries(ADJ_CARRILES)];
+  const botones = opciones.map(([kind, texto]) => {
+    const boton = el("button", texto, kind === adjCarril ? "chip-filter is-on" : "chip-filter");
+    boton.type = "button";
+    boton.dataset.kind = kind;
+    boton.addEventListener("click", () => {
+      adjCarril = kind;
+      for (const b of botones) b.classList.toggle("is-on", b === boton);
+      if (adjDatos) renderAdjacency(adjDatos);
+    });
+    return boton;
+  });
+  caja.replaceChildren(...botones);
+}
+
 async function loadAdjacency() {
+  initCarriles();
   const datos = await api("/api/adjacency", { limit: 100 });
+  if (!datos) return;
+  renderAdjacency(datos);
+}
+
+function renderAdjacency(datos) {
   const cand = $("adj-cand-body");
   const conf = $("adj-conf-body");
   cand.replaceChildren();
@@ -1584,9 +1652,12 @@ async function loadAdjacency() {
 
   renderCobertura(datos.cobertura || {});
 
-  const candidatos = Array.isArray(datos.candidatos) ? datos.candidatos : [];
+  adjDatos = datos;
+  const candidatos = porCarril(Array.isArray(datos.candidatos) ? datos.candidatos : []);
   if (!candidatos.length) {
-    cand.append(filaVacia(7, "Sin candidatos: ¿corrió la adyacencia?"));
+    cand.append(
+      filaVacia(7, adjCarril ? "Ningún candidato en este carril." : "Sin candidatos: ¿corrió la adyacencia?"),
+    );
   } else {
     for (const a of candidatos) {
       adjCache.set(a.actor, a);
@@ -1596,9 +1667,16 @@ async function loadAdjacency() {
 
   renderCriticas(Array.isArray(datos.criticas) ? datos.criticas : []);
 
-  const confirmados = Array.isArray(datos.confirmados) ? datos.confirmados : [];
+  const confirmados = porCarril(Array.isArray(datos.confirmados) ? datos.confirmados : []);
   if (!confirmados.length) {
-    conf.append(filaVacia(5, "Ningún actor de la región golpeó Argentina todavía."));
+    conf.append(
+      filaVacia(
+        5,
+        adjCarril
+          ? "Ningún confirmado en este carril."
+          : "Ningún actor de la región golpeó Argentina todavía.",
+      ),
+    );
   } else {
     for (const a of confirmados) conf.append(filaConfirmado(a));
   }
@@ -1707,7 +1785,7 @@ function filaCandidato(a) {
   boton.type = "button";
   boton.title = `Ver de dónde sale el score de ${a.actor}`;
   boton.addEventListener("click", () => openAdjacency(a.actor));
-  actor.append(boton);
+  actor.append(boton, chipCarril(a.kind));
   tr.append(actor);
 
   // Barra + número: el número solo no da idea de la escala.
@@ -1763,7 +1841,7 @@ function filaConfirmado(a) {
   boton.type = "button";
   boton.title = `Ver los hallazgos argentinos de ${a.actor}`;
   boton.addEventListener("click", () => filtrarPorActor(a.actor));
-  actor.append(boton);
+  actor.append(boton, chipCarril(a.kind));
   tr.append(actor);
 
   const ar = el("td");

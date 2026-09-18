@@ -96,6 +96,12 @@ class FeedSpec:
     #: publicación es más corta que un día: si el feed solo expone los últimos
     #: N ítems y el foro los rota en horas, una corrida diaria ve una fracción.
     poll_interval_minutes: int | None = None
+    #: Lo que este feed descarta por no ser argentino se le ofrece al lado
+    #: regional de la adyacencia. Sólo tiene sentido en las fuentes que miran
+    #: el mundo con la lente argentina y tiran el resto —foros y Telegram—: los
+    #: feeds de ransomware ya alimentan la adyacencia por su propia vía, y
+    #: dejarlos entrar por las dos puertas duplicaría las mismas víctimas.
+    feeds_adjacency: bool = False
     #: Motivo por el que el feed viene apagado, para mostrarlo en la UI.
     disabled_reason: str = ""
     #: Atributo de `Settings` que, con valor, alcanza para encender un feed que
@@ -197,6 +203,7 @@ FEED_REGISTRY: tuple[FeedSpec, ...] = (
         # una sola corrida diaria se pierde la enorme mayoría de lo publicado.
         # Es un GET por sondeo, así que cerrar el agujero sale casi gratis.
         poll_interval_minutes=120,
+        feeds_adjacency=True,
         tags=("foro", "pii", "metadata"),
     ),
     FeedSpec(
@@ -217,6 +224,7 @@ FEED_REGISTRY: tuple[FeedSpec, ...] = (
             "sin dominio operativo: los conocidos están incautados (verificado 2026-08-14). "
             "Configurar LEAKS_BREACHFORUMS_BASE_URLS cuando reaparezca y se enciende solo."
         ),
+        feeds_adjacency=True,
         tags=("foro", "pii", "metadata", "sin-dominio"),
     ),
     FeedSpec(
@@ -236,6 +244,7 @@ FEED_REGISTRY: tuple[FeedSpec, ...] = (
         # rompía la puesta al día: los mensajes viejos que se traían a propósito
         # se descartaban antes de evaluarlos.
         own_cursor=True,
+        feeds_adjacency=True,
         tags=("telegram", "hacktivismo", "pii", "metadata"),
     ),
     FeedSpec(

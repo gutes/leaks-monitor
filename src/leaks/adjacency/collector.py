@@ -22,6 +22,7 @@ from typing import Protocol
 
 from leaks.adapters.http import FeedHttpClient
 from leaks.adjacency.countries import COUNTRY_CODES
+from leaks.adjacency.kinds import kind_for
 from leaks.adjacency.regional_watchlist import RegionalWatchlists
 from leaks.adjacency.registries import REGIONAL_SOURCES, RegionalVictim, RegistryFetcher
 from leaks.adjacency.scoring import VictimaRegional, calcular, sectores_frecuentes
@@ -152,6 +153,9 @@ class AdjacencyCollector:
     ) -> tuple[int, int, int]:
         """Recalcula todos los perfiles. Devuelve (total, confirmados, candidatos)."""
         por_actor = self._repository.victims_by_actor()
+        # De qué universo viene cada uno. Los dos carriles no se comparan entre
+        # sí: ver `adjacency/kinds.py`.
+        fuentes = self._repository.sources_by_actor()
         # Qué sectores son sensibles acá lo dice el histórico argentino, no una
         # lista escrita a mano.
         sectores_ar = sectores_frecuentes(ar_sectors)
@@ -172,6 +176,7 @@ class AdjacencyCollector:
                 actor,
                 victims_total=len(victimas),
                 countries=paises,
+                kind=kind_for(fuentes.get(actor, set())),
                 first_seen=_a_datetime(fechas[0]) if fechas else None,
                 last_seen=_a_datetime(fechas[-1]) if fechas else None,
                 hit_ar=hit_ar,

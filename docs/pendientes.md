@@ -1,7 +1,7 @@
 # Pendientes y decisiones abiertas
 
-Estado verificado contra el código el **2026-09-01**: 716 tests backend + 43
-frontend, imagen Docker corriendo, migración `0015` aplicada.
+Estado verificado contra el código el **2026-09-18**: 842 tests backend + 50
+frontend, imagen Docker corriendo, migración `0017` aplicada.
 
 > Este archivo se desactualizó una vez y decía cosas falsas («Alertas — no
 > existe nada» cuando ya existían). Cada ítem de acá se cruzó contra el código,
@@ -9,7 +9,51 @@ frontend, imagen Docker corriendo, migración `0015` aplicada.
 
 ---
 
-## 0. Lo último que se hizo (sesión del 2026-09-15)
+## 0. Lo último que se hizo (sesión del 2026-09-18)
+
+### Telegram: canales privados y pagos — evaluado, no implementado
+
+El líder técnico preguntó si un bot de BotFather sirve para entrar a canales de
+pago. **No sirve**, por tres límites independientes de la Bot API (no puede
+entrar solo, no lee historial, la suscripción es de una cuenta de usuario). El
+veredicto y las dos rutas que sí existen —buzón de reenvío y MTProto— quedaron
+en `docs/feeds.md`. **Decisión: ninguna por ahora.**
+
+### La adyacencia ya no ve sólo ransomware
+
+La pregunta era si la sección se actualizaba con los actores que van
+apareciendo. Se actualiza todos los días, pero **dentro de un solo universo**:
+`REGIONAL_SOURCES` tenía una sola entrada, ransomware.live. Medido contra la
+base: 32 actores que ya golpearon Argentina no estaban en `adjacent_actors` y no
+podían estar, `rabbitt1337` entre ellos.
+
+Hecho, en tres etapas:
+
+1. **`leaks regional-probe`** — mide qué aportarían los foros y Telegram **sin
+   escribir una fila**, porque los items no argentinos nunca se guardaron y no
+   había forma de backtestear. Resultado: 27 víctimas regionales en 5.877 items
+   (0,46%), 17 actores nuevos, precisión 26/27.
+2. **Los foros y Telegram alimentan la adyacencia** (`FeedSpec.feeds_adjacency`
+   + `runner._a_victima_regional`). El criterio de país vive en
+   `adjacency/country_detect.py` y es más estricto que el argentino: el dominio
+   manda, el nombre del país sólo corrobora.
+3. **Dos carriles** (`adjacent_actors.kind`, migración `0017`): el score está
+   calibrado sobre la cadencia de un DLS y no se le aplica a un broker de
+   acceso. La UI los filtra aparte.
+
+### Lo que queda abierto de esta sesión
+
+* **`elobservador.com.uy`** entra como víctima uruguaya y es el enlace a una
+  nota periodística *sobre* un hackeo. Con un solo caso no alcanza para escribir
+  una regla; si aparecen más, hay que distinguir "medio que informa" de
+  "víctima".
+* **El sondeo de Telegram tarda** ~10 min (228 canales con puesta al día). No
+  es un problema del sondeo sino de que los extractores son secuenciales — ver
+  la nota sobre paralelizar, que el líder técnico dejó explícitamente en pausa.
+
+---
+
+## Lo anterior (sesión del 2026-09-15)
 
 **El caso SIPA.** Apareció en DarkForums un volcado del sistema previsional
 argentino (38M registros) y no lo trajimos. La investigación descartó tres

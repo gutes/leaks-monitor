@@ -52,6 +52,8 @@ class PerfilActor:
     actor: str
     victims_total: int
     countries: tuple[str, ...]
+    #: `dls` o `foro`. Ver `leaks.adjacency.kinds`.
+    kind: str
     first_seen: datetime | None
     last_seen: datetime | None
     hit_ar: bool
@@ -73,6 +75,7 @@ class PerfilActor:
             "actor": self.actor,
             "victims_total": self.victims_total,
             "countries": list(self.countries),
+            "kind": self.kind,
             "first_seen": self.first_seen,
             "last_seen": self.last_seen,
             "hit_ar": self.hit_ar,
@@ -172,6 +175,17 @@ class AdjacencyRepository:
             )
         return salida
 
+    def sources_by_actor(self) -> dict[str, set[str]]:
+        """De qué fuentes vino cada actor. Decide su carril; ver `kinds`."""
+        salida: dict[str, set[str]] = {}
+        with session_scope(self._session_factory) as session:
+            filas = session.execute(
+                select(RegionalVictimRow.actor, RegionalVictimRow.source).distinct()
+            ).all()
+        for actor, source in filas:
+            salida.setdefault(actor, set()).add(source)
+        return salida
+
     def reclasificar(self, es_critica: Callable[[str, str | None], tuple[bool, str | None]]) -> int:
         """Recalcula la criticidad de TODAS las víctimas. Devuelve cuántas cambiaron.
 
@@ -252,6 +266,7 @@ class AdjacencyRepository:
         *,
         victims_total: int,
         countries: Sequence[str],
+        kind: str,
         first_seen: datetime | None,
         last_seen: datetime | None,
         hit_ar: bool,
@@ -275,6 +290,7 @@ class AdjacencyRepository:
                         actor=actor,
                         victims_total=victims_total,
                         countries=list(countries),
+                        kind=kind,
                         first_seen=_as_utc(first_seen),
                         last_seen=_as_utc(last_seen),
                         hit_ar=hit_ar,
@@ -291,6 +307,7 @@ class AdjacencyRepository:
 
             fila.victims_total = victims_total
             fila.countries = list(countries)
+            fila.kind = kind
             fila.first_seen = _as_utc(first_seen)
             fila.last_seen = _as_utc(last_seen)
             fila.hit_ar = hit_ar
@@ -384,6 +401,7 @@ def _to_perfil(fila: AdjacentActorRow) -> PerfilActor:
         actor=fila.actor,
         victims_total=fila.victims_total,
         countries=tuple(fila.countries or []),
+        kind=fila.kind,
         first_seen=_as_utc(fila.first_seen),
         last_seen=_as_utc(fila.last_seen),
         hit_ar=bool(fila.hit_ar),
