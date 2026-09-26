@@ -474,7 +474,7 @@ sobre la sucesión de BreachForums:
 |---|---|
 | `bf.st` (BreachForums) | ✅ **Atom, 50 threads** — integrado |
 | `breached.st` | 403 |
-| `pwnforums.st` | 403 |
+| `pwnforums.st` | 403 — **desafío de Cloudflare sobre todo el sitio**, ver abajo |
 | `doxbyte.com` | 403 |
 | `damagelib.com` | 200 pero HTML, sin sindicación |
 | `leakbase.la` | 200 pero HTML, sin sindicación |
@@ -483,6 +483,49 @@ sobre la sucesión de BreachForums:
 Conclusión: **los que dan 403 o HTML quedan afuera**, no por falta de ganas
 sino porque consumirlos exigiría pasar su control de acceso. Si alguno abre su
 sindicación más adelante, sumarlo es una entrada en el registro.
+
+#### PwnForums, re-chequeado el 2026-09-24
+
+El líder técnico pidió sumarlo, así que se volvió a probar dos semanas después.
+Sigue cerrado, y ahora se sabe por qué: no es que la sindicación esté apagada,
+es que **Cloudflare desafía el sitio entero**. Todas las rutas devuelven 403 con
+`cf-mitigated: challenge` y el cuerpo `Just a moment... | PwnForums.st`:
+
+```
+/robots.txt   /sitemap.xml   /syndication.php?type=atom1.0
+/syndication.php?type=rss2.0   /misc.php?action=syndication
+/forumdisplay.php?fid=1
+```
+
+No hay espejo: de siete variantes probadas (`.net`, `.com`, `.is`, `.to`,
+`.cc`, `.org` y `www.`) **ninguna tiene registro A**. El único dominio vivo es
+`pwnforums.st`, en `104.26.1.107`.
+
+Queda afuera por la *Política de recolección* de este mismo archivo: pasar ese
+control es evadir un control de acceso, no leer una fuente abierta. Y acá no
+hay, como en DarkForums, un endpoint abierto al que caer — ahí el HTML está
+desafiado pero `syndication.php` no; acá no responde nada.
+
+Tampoco se verificó que sea MyBB: nunca se obtuvo un 200, así que la suposición
+no está confirmada.
+
+Estos foros prenden y apagan el modo desafío, así que conviene re-sondearlo cada
+tanto. Desde el contenedor, que es el que sale por la VPN:
+
+```bash
+docker compose run --rm --no-deps api python -c "
+import httpx
+from leaks.config import get_settings
+h = {'User-Agent': get_settings().http_user_agent}
+r = httpx.get('https://pwnforums.st/syndication.php?type=atom1.0&limit=50',
+              headers=h, timeout=20, follow_redirects=True)
+print(r.status_code, r.headers.get('cf-mitigated'), r.headers.get('content-type'))
+"
+```
+
+Si alguna vez devuelve `200` con `application/atom+xml`, sumarlo es una entrada
+en el registro y una variable de entorno: el adapter de MyBB ya está
+parametrizado por dominio.
 
 **Detalle del arranque del XML.** `bf.st` sirve un Atom perfectamente válido
 detrás de un espacio y un salto de línea, y la declaración `<?xml…?>` tiene que
