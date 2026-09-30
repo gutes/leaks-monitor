@@ -328,7 +328,7 @@ directorio del proyecto:
 git clone git@github-leaks-deploy:gutes/leaks-monitor.git
 cd leaks-monitor
 cp ~/traspaso/traspaso-AAAA-MM-DD.env .env
-# + pegar la propia LEAKS_PII_ENCRYPTION_KEY, ver parte 2 paso 3
+# + pegar la propia LEAKS_PII_ENCRYPTION_KEY (openssl, ver parte 2 paso 3)
 
 docker compose run --rm -v "$HOME/traspaso:/entrada:ro" api \
     leaks import-bundle /entrada/leaks-traspaso-AAAA-MM-DD.tar.gz
@@ -374,10 +374,33 @@ paquete: el paquete lleva datos, el `.env` lleva configuración.
 ### 3. Generar tu propia clave del vault
 
 ```bash
-python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+openssl rand -base64 32 | tr '+/' '-_'
 ```
 
-Pegala en `.env` como `LEAKS_PII_ENCRYPTION_KEY=…`. Sin esto, con
+Pegala en `.env` como `LEAKS_PII_ENCRYPTION_KEY=…`.
+
+Una clave de Fernet son 32 bytes al azar en base64 **urlsafe**, que es
+exactamente lo que produce ese comando: el `tr` cambia `+/` por `-_`, que es la
+única diferencia entre las dos variantes de base64. Verificado el 2026-09-30
+haciendo ida y vuelta con una clave generada así.
+
+`openssl` viene en cualquier macOS o Linux, y por eso es el camino recomendado
+acá: no necesita el proyecto instalado. **El comando con
+`from cryptography.fernet import Fernet` solo funciona con el entorno de Python
+del proyecto armado** (`./scripts/dev.sh setup`); en el Python del sistema falla
+con `ModuleNotFoundError: No module named 'cryptography'`, porque es una
+dependencia del proyecto y no de la máquina.
+
+Si preferís usar la biblioteca, hacelo dentro del contenedor —que ya la trae—,
+pero entonces este paso va **después** de que la imagen esté construida:
+
+```bash
+docker compose build api
+docker compose run --rm --no-deps api python -c \
+    "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Sin esto, con
 `LEAKS_STORE_PII=true` el proceso **se niega a arrancar** — es a propósito:
 fail-closed. Si preferís no persistir PII, poné `LEAKS_STORE_PII=false` y no
 hace falta clave.

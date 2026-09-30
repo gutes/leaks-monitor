@@ -81,6 +81,10 @@ deliberado: la alternativa —arrancar y guardar en claro— es exactamente el
 accidente que hay que evitar.
 
 ```bash
+# Sin el proyecto instalado (openssl viene en cualquier macOS o Linux):
+openssl rand -base64 32 | tr '+/' '-_'
+
+# Con el entorno del proyecto armado, también sirve:
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
