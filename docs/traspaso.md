@@ -22,13 +22,47 @@ el paquete— está en [`instalacion.md`](instalacion.md) y no se repite acá.
 **Nunca se entrega `LEAKS_PII_ENCRYPTION_KEY`.** No hace falta: el vault de PII
 no viaja en el paquete, así que la clave vieja no abre nada del lado de quien
 recibe. Compartirla sería regalar acceso a datos de personas sin ningún
-beneficio. Quien recibe genera la suya en el paso 3.
+beneficio. Quien recibe genera la suya en el paso 3 de la parte 2.
 
 ---
 
-## Parte 1 — Quien entrega (tres comandos)
+## Parte 1 — Quien entrega (cuatro comandos)
 
-### 1. Generar el paquete
+### 1. Sincronizar el YAML de la watchlist con la base
+
+**Este paso es primero y es fácil de saltear.** Apenas se edita la watchlist
+desde la UI, el YAML deja de ser la fuente de verdad: lo que vale es la tabla.
+El paquete lleva las dos cosas, así que un YAML viejo viaja junto a una base
+correcta.
+
+Medido en la instalación real el 2026-09-30, antes de sincronizar: **319
+entradas en la base contra 289 en el archivo** — 35 agregadas desde la UI que no
+estaban en el YAML, y 5 dadas de baja que seguían ahí. Al importar manda la
+base, así que quien recibe ve las 319 bien; pero se queda con un archivo que
+miente, y el día que alguien re-siembre desde él pierde 35 y revive 5.
+
+```bash
+cp -p data/watchlist.yaml data/watchlist.yaml.bak-$(date +%F)
+docker compose run --rm --no-deps api \
+    leaks export-watchlist --out /app/data/watchlist.yaml
+```
+
+Comprobar que quedaron iguales:
+
+```bash
+docker compose exec -T api python -c "
+import yaml, sqlite3
+d = yaml.safe_load(open('/app/data/watchlist.yaml'))
+en_yaml = {str(v).strip().lower() for s in d['sectors']
+           for v in s.get('domains', []) + s.get('keywords', [])}
+c = sqlite3.connect('/data/leaks.db')
+en_db = {r[0].strip().lower() for r in c.execute('select value from watchlist_entries')}
+print('solo en la base:', len(en_db - en_yaml), '| solo en el YAML:', len(en_yaml - en_db))"
+```
+
+Los dos tienen que dar **0**.
+
+### 2. Generar el paquete
 
 ```bash
 docker compose run --rm --no-deps api \
@@ -37,13 +71,13 @@ docker compose run --rm --no-deps api \
 
 Aparece en `./data/` de tu máquina, porque ese directorio está montado en el
 contenedor. Imprime los conteos de lo que metió: **guardalos**, son los que
-quien recibe usa para verificar en el paso 5.
+quien recibe usa para verificar en el paso 5 de la parte 2.
 
 `VACUUM INTO` toma la instantánea, así que incluye lo que todavía está en el WAL
 y no hace falta parar nada. Copiar `leaks.db` a mano **no** sirve: ver
 `instalacion.md`.
 
-### 2. Sacar la configuración operativa, sin la clave
+### 3. Sacar la configuración operativa, sin la clave
 
 ```bash
 grep -v '^LEAKS_PII_ENCRYPTION_KEY=' .env > data/traspaso-$(date +%F).env
@@ -55,7 +89,7 @@ grep -E '^LEAKS_\w*(KEY|TOKEN|SECRET|PASSWORD)\w*=.+' data/traspaso-*.env \
 El segundo comando no es adorno: es la verificación de que no se está mandando
 una credencial por descuido.
 
-### 3. Cifrar antes de mandarlo
+### 4. Cifrar antes de mandarlo
 
 El paquete dice qué organismos se vigilan. No viaja en claro por un canal que no
 controlás:

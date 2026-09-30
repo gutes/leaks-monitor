@@ -1,0 +1,365 @@
+# Watchlist de relevancia argentina.
+#
+# ATENCIÓN — esta lista es un punto de partida SEED, NO es autoritativa ni
+# exhaustiva. Antes de cualquier uso real hay que validarla y completarla
+# contra el inventario de activos / la designación de infraestructura crítica
+# del CNC.
+#
+# Son todos dominios públicos. Este archivo NO contiene secretos y se versiona.
+#
+# Estructura de cada sector:
+#   name      identificador estable; se persiste en `findings.sector`
+#   label     nombre legible para el frontend
+#   critical  infraestructura crítica -> eleva la severidad del hallazgo
+#   domains   dominios propios; el match cubre también sus subdominios
+#   keywords  organismos/empresas por nombre, para cuando no hay dominio
+#             (p. ej. el título de un thread de foro). Mínimo 4 caracteres:
+#             las siglas cortas generan demasiados falsos positivos.
+
+version: 1
+
+sectors:
+- name: gobierno_nacional
+  label: Gobierno nacional
+  critical: true
+  domains:
+  - afip.gob.ar
+  - agricultura.gob.ar
+  - ambiente.gob.ar
+  - anmat.gob.ar
+  - anses.gob.ar
+  - arca.gob.ar
+  - argentina.gob.ar
+  - boletinoficial.gob.ar
+  - cancilleria.gob.ar
+  - casarosada.gob.ar
+  - ciencia.gob.ar
+  - cultura.gob.ar
+  - defensa.gob.ar
+  - desarrollosocial.gob.ar
+  - educacion.gob.ar
+  - enacom.gob.ar
+  - indec.gob.ar
+  - interior.gob.ar
+  - jefatura.gob.ar
+  - justicia.gob.ar
+  - mecon.gob.ar
+  - migraciones.gob.ar
+  - obraspublicas.gob.ar
+  - onc.gob.ar
+  - pami.org.ar
+  - produccion.gob.ar
+  - renaper.gob.ar
+  - salud.gob.ar
+  - sedronar.gob.ar
+  - seguridad.gob.ar
+  - senasa.gob.ar
+  - sgp.gob.ar
+  - sssalud.gob.ar
+  - trabajo.gob.ar
+  - transporte.gob.ar
+  - turismo.gob.ar
+  - vialidad.gob.ar
+  keywords:
+  - AFIP
+  - ANMAT
+  - ANSES
+  - ARCA
+  - Boletin Oficial
+  - Cancilleria Argentina
+  - Casa Rosada
+  - Direccion Nacional de Migraciones
+  - ENACOM
+  - INDEC
+  - Jefatura de Gabinete
+  - Ministerio de Defensa
+  - Ministerio de Desarrollo Social
+  - Ministerio de Economia
+  - Ministerio de Justicia
+  - Ministerio de Salud
+  - Ministerio de Seguridad
+  - Ministerio de Trabajo
+  - Ministerio de Transporte
+  - Ministerio del Interior
+  - PAMI
+  - RENAPER
+  - Sedronar
+  - SENASA
+  - Superintendencia de Servicios de Salud
+  - Vialidad Nacional
+- name: provincial_caba
+  label: Provincial y CABA
+  critical: false
+  domains:
+  - agip.gob.ar
+  - arba.gov.ar
+  - atp.chaco.gob.ar
+  - atpformosa.gob.ar
+  - buenosaires.gob.ar
+  - catamarca.gob.ar
+  - chaco.gob.ar
+  - chubut.gov.ar
+  - cordoba.gob.ar
+  - corrientes.gob.ar
+  - entrerios.gov.ar
+  - formosa.gob.ar
+  - gba.gob.ar
+  - jujuy.gob.ar
+  - lapampa.gob.ar
+  - larioja.gob.ar
+  - mendoza.gov.ar
+  - mendoza.edu.ar
+  - misiones.gob.ar
+  - neuquen.gov.ar
+  - saludneuquen.gob.ar
+  - rentascordoba.gob.ar
+  - rionegro.gov.ar
+  - salta.gob.ar
+  - sanjuan.gob.ar
+  - sanluis.gov.ar
+  - santacruz.gob.ar
+  - santafe.gob.ar
+  - santiagodelestero.gob.ar
+  - tierradelfuego.gob.ar
+  - tucuman.gov.ar
+  keywords:
+  - Administracion Provincial del Impuesto
+  - Agencia de Recaudacion
+  - Gobierno de Chubut
+  - Gobierno de Cordoba
+  - Gobierno de Corrientes
+  - Gobierno de Entre Rios
+  - Gobierno de la Ciudad de Buenos Aires
+  - Gobierno de Mendoza
+  - Gobierno de Misiones
+  - Gobierno de Neuquen
+  - Gobierno de Rio Negro
+  - Gobierno de Salta
+  - Gobierno de Santa Cruz
+  - Gobierno de Santa Fe
+  - Gobierno de Tierra del Fuego
+  - Gobierno de Tucuman
+  - Gobierno del Chaco
+  - Provincia de Buenos Aires
+- name: municipios
+  label: Municipios
+  critical: false
+  domains:
+  - bahiablanca.gov.ar
+  - concordia.gob.ar
+  - cordoba.gov.ar
+  - lanus.gob.ar
+  - laplata.gov.ar
+  - mardelplata.gob.ar
+  - moron.gob.ar
+  - neuquencapital.gov.ar
+  - quilmes.gob.ar
+  - rosario.gob.ar
+  - sanisidro.gob.ar
+  - sanmartin.gov.ar
+  - santarosa.gob.ar
+  - tigre.gob.ar
+  - vicentelopez.gov.ar
+  keywords:
+  - Municipalidad de Bahia Blanca
+  - Municipalidad de Cordoba
+  - Municipalidad de La Plata
+  - Municipalidad de Mar del Plata
+  - Municipalidad de Quilmes
+  - Municipalidad de Rosario
+  - Municipalidad de Tigre
+- name: banca_finanzas
+  label: Banca central y finanzas
+  critical: true
+  domains:
+  - bancociudad.com.ar
+  - bancogalicia.com.ar
+  - bancoprovincia.com.ar
+  - bbva.com.ar
+  - bcra.gob.ar
+  - bna.com.ar
+  - brubank.com
+  - cnv.gob.ar
+  - comafi.com.ar
+  - hsbc.com.ar
+  - macro.com.ar
+  - mercadolibre.com.ar
+  - mercadopago.com.ar
+  - santander.com.ar
+  - supervielle.com.ar
+  - ualaargentina.com.ar
+  - uif.gob.ar
+  keywords:
+  - Banco Central de la Republica Argentina
+  - Banco Ciudad
+  - Banco de la Nacion Argentina
+  - Banco Galicia
+  - Banco Macro
+  - Banco Provincia
+  - Banco Santander
+  - Banco Supervielle
+  - Comision Nacional de Valores
+  - Mercado Libre
+  - Mercado Pago
+  - Unidad de Informacion Financiera
+- name: justicia_seguridad
+  label: Justicia y seguridad
+  critical: true
+  domains:
+  - csjn.gov.ar
+  - fm.gob.ar
+  - gendarmeria.gob.ar
+  - minseg.gob.ar
+  - mpd.gov.ar
+  - mpf.gob.ar
+  - pjn.gov.ar
+  - scba.gov.ar
+  - policiafederal.gov.ar
+  - prefecturanaval.gob.ar
+  - spf.gob.ar
+  keywords:
+  - Corte Suprema de Justicia
+  - Gendarmeria Nacional
+  - Ministerio Publico de la Defensa
+  - Ministerio Publico Fiscal
+  - Poder Judicial de la Nacion
+  - Suprema Corte de Justicia de Buenos Aires
+  - Policia Federal
+  - Prefectura Naval
+  - Servicio Penitenciario Federal
+- name: ciencia_registros
+  label: Ciencia, registros y nuclear
+  critical: true
+  domains:
+  - cnea.gob.ar
+  - conae.gov.ar
+  - conicet.gov.ar
+  - ina.gob.ar
+  - inpres.gob.ar
+  - inta.gob.ar
+  - inti.gob.ar
+  - invap.com.ar
+  - iscamen.gov.ar
+  - nucleoelectrica.com.ar
+  - smn.gob.ar
+  keywords:
+  - Comision Nacional de Energia Atomica
+  - CONICET
+  - Instituto Nacional de Tecnologia Agropecuaria
+  - Instituto Nacional de Tecnologia Industrial
+  - INVAP
+  - Nucleoelectrica
+  - Servicio Meteorologico Nacional
+- name: universidades
+  label: Universidades nacionales
+  critical: false
+  domains:
+  - uba.ar
+  - unc.edu.ar
+  - uncuyo.edu.ar
+  - unl.edu.ar
+  - unlam.edu.ar
+  - unlp.edu.ar
+  - unlu.edu.ar
+  - unne.edu.ar
+  - unq.edu.ar
+  - unr.edu.ar
+  - uns.edu.ar
+  - unsam.edu.ar
+  - unsl.edu.ar
+  - unt.edu.ar
+  - untref.edu.ar
+  - utn.edu.ar
+  keywords:
+  - Universidad de Buenos Aires
+  - Universidad Nacional de Cordoba
+  - Universidad Nacional de La Plata
+  - Universidad Nacional de Rosario
+  - Universidad Nacional del Litoral
+  - Universidad Tecnologica Nacional
+- name: salud
+  label: Salud y obras sociales
+  critical: true
+  domains:
+  - galenoargentina.com.ar
+  - garrahan.gov.ar
+  - hospitalitaliano.org.ar
+  - iomaprovincia.gob.ar
+  - medife.com.ar
+  - omint.com.ar
+  - osde.com.ar
+  - ospe.com.ar
+  - sancorsalud.com.ar
+  - swissmedical.com.ar
+  keywords:
+  - Galeno Argentina
+  - Hospital Garrahan
+  - Hospital Italiano
+  - Medife
+  - OSDE
+  - Sancor Salud
+  - Swiss Medical
+- name: energia
+  label: Energía (infraestructura crítica)
+  critical: true
+  domains:
+  - cammesa.com
+  - camuzzigas.com.ar
+  - edelap.com.ar
+  - edenor.com
+  - edesa.com.ar
+  - edesur.com.ar
+  - enarsa.com.ar
+  - epec.com.ar
+  - metrogas.com.ar
+  - naturgy.com.ar
+  - transener.com.ar
+  - ypf.com
+  keywords:
+  - CAMMESA
+  - Camuzzi
+  - EDENOR
+  - EDESUR
+  - ENARSA
+  - EPEC
+  - Metrogas
+  - Naturgy
+  - Transener
+  - YPF
+- name: telecomunicaciones
+  label: Telecomunicaciones
+  critical: true
+  domains:
+  - arsat.com.ar
+  - claro.com.ar
+  - iplan.com.ar
+  - movistar.com.ar
+  - personal.com.ar
+  - telecentro.com.ar
+  - telecom.com.ar
+  keywords:
+  - ARSAT
+  - Claro Argentina
+  - Movistar Argentina
+  - Telecentro
+  - Telecom Argentina
+- name: agua_transporte
+  label: Agua, transporte y aeropuertos
+  critical: true
+  domains:
+  - aa2000.com.ar
+  - absa.com.ar
+  - aerolineas.com.ar
+  - aysa.com.ar
+  - cnrt.gob.ar
+  - puertobuenosaires.gob.ar
+  - sofse.gob.ar
+  - sube.gob.ar
+  - trenesargentinos.gob.ar
+  keywords:
+  - Aerolineas Argentinas
+  - Aeropuertos Argentina 2000
+  - AySA
+  - Comision Nacional de Regulacion del Transporte
+  - Puerto de Buenos Aires
+  - Trenes Argentinos
