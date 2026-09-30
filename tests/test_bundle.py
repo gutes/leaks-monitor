@@ -216,6 +216,36 @@ class TestImportar:
         finally:
             solo_lectura.chmod(0o755)
 
+    def test_el_error_nombra_las_dos_causas(self, entorno: dict[str, Path]) -> None:
+        """El mensaje tiene que distinguir `:ro` de un uid que no coincide.
+
+        Le pasó a quien recibió un traspaso en Linux: el montaje no era `:ro`,
+        el problema era que `data/` del host pertenece a su usuario y el
+        contenedor corre como uid 10001. El mensaje solo hablaba de `:ro`, que
+        manda a revisar justo lo que estaba bien.
+        """
+        paquete = self._paquete(entorno)
+        destino = entorno["raiz"] / "mensaje"
+        destino.mkdir()
+        solo_lectura = destino / "bloqueado"
+        solo_lectura.mkdir()
+        solo_lectura.chmod(0o555)
+
+        try:
+            with pytest.raises(BundleError) as error:
+                importar(
+                    paquete,
+                    database_url=f"sqlite:///{destino / 'leaks.db'}",
+                    watchlist_path=solo_lectura / "watchlist.yaml",
+                    regional_dir=destino / "regional",
+                )
+            texto = str(error.value)
+            assert ":ro" in texto, "tiene que mencionar el montaje de solo lectura"
+            assert "10001" in texto, "y el uid del contenedor"
+            assert "chown" in texto, "y cómo se arregla"
+        finally:
+            solo_lectura.chmod(0o755)
+
     def test_limpia_los_sidecar_del_wal(self, entorno: dict[str, Path]) -> None:
         """Un `-wal` viejo se aplicaría sobre una base que ya no es la suya."""
         paquete = self._paquete(entorno)

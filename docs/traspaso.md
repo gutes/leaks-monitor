@@ -520,6 +520,34 @@ pedidos. Se habilitan desde la pantalla de Telegram.
 
 ## Trampas conocidas
 
+### `/app/data no es escribible`
+
+Sale al importar, en Linux, y el mensaje viejo mandaba a revisar el montaje —que
+está bien—. La causa es de permisos: **un bind mount conserva el uid numérico**.
+El contenedor corre como `uid 10001` (`leaks`, definido en el `Dockerfile`),
+mientras que `data/` del host pertenece al usuario que clonó el repo (uid 1000
+normalmente). Adentro, ese directorio no es escribible.
+
+En macOS no pasa, porque Docker Desktop remapea la pertenencia de los archivos
+compartidos. Por eso el problema aparece recién del otro lado del traspaso.
+
+Se arregla dándole al directorio el grupo del contenedor, sin perder la
+propiedad del usuario:
+
+```bash
+sudo chown -R $USER:10001 data
+chmod -R g+rwX data
+```
+
+Así el usuario del host sigue pudiendo editar esos archivos y el contenedor
+puede escribirlos. Hace falta para `import-bundle`, y también para
+`export-bundle --out /app/data/…` y `export-watchlist --out /app/data/…`.
+
+**El atajo de correr como root** (`docker compose run --user root …`) desbloquea
+el import pero deja `watchlist.yaml` y las regionales pertenecientes a `root`:
+la próxima importación como usuario normal vuelve a fallar, y editarlas a mano
+pide `sudo`. Sirve para salir del paso, no como arreglo.
+
 **No descomentes las rutas en el `.env`.** `LEAKS_DATABASE_URL`,
 `LEAKS_ALEMBIC_DIR`, `LEAKS_FRONTEND_DIR` y `LEAKS_API_HOST` están comentadas a
 propósito: la imagen ya las fija a las de adentro del contenedor, y definirlas en

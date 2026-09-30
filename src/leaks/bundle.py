@@ -225,8 +225,14 @@ def _verificar_escribible(destino: Path, que: str) -> None:
     if not os.access(directorio, os.W_OK):
         raise BundleError(
             f"El directorio {directorio} no es escribible, y ahí va {que}.\n"
-            "Si estás en Docker, revisá que el montaje no sea de solo lectura "
-            "(`:ro` en docker-compose.yml)."
+            "Si estás en Docker hay dos causas posibles:\n"
+            "  1. El montaje es de solo lectura (`:ro` en docker-compose.yml).\n"
+            "  2. En Linux, el directorio del host pertenece a otro usuario que "
+            "el del contenedor (uid 10001): un bind mount conserva el uid "
+            "numérico, así que `data/` de tu usuario no es escribible adentro. "
+            "En macOS no pasa porque Docker Desktop remapea la pertenencia.\n"
+            "     Se arregla dando el grupo del contenedor al directorio:\n"
+            "       sudo chown -R $USER:10001 data && chmod -R g+rwX data"
         )
 
 
