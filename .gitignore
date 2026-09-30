@@ -20,6 +20,12 @@ data/*.tar.gz.age
 data/*.tar.gz.gpg
 !data/examples/
 
+# El `.env` operativo que se manda junto al paquete en un traspaso. No lleva
+# secretos —la clave del vault se saca a mano— pero sí los dominios de foro y
+# los fids que se están vigilando, que es config operativa y no va al repo.
+# `.env` a secas no lo cubre: el patrón matchea el nombre exacto, no el sufijo.
+data/*.env
+
 # El prompt fundacional: es del líder técnico y enumera los organismos a
 # vigilar, o sea la semilla de la watchlist. Se queda en el disco.
 bootstrap-prompt.md

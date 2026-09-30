@@ -74,6 +74,11 @@ desde otra máquina no se ve. Para exponerla en la red interna, en
 
 Para quien necesite correrlo o desarrollarlo.
 
+> Si el destinatario **no tiene el repositorio todavía**, mandale
+> [`traspaso.md`](traspaso.md) junto al paquete: es el mismo procedimiento como
+> checklist autocontenida, con la parte del `.env` y de la clave del vault que
+> acá no está.
+
 **Vos, una vez, generás el paquete:**
 
 ```bash

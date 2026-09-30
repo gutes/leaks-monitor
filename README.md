@@ -17,7 +17,9 @@ contraseñas, emails de personas ni contenido de dumps. Ver
 
 > Para repartirlo a un equipo —con los datos ya cargados— está
 > **[docs/instalacion.md](docs/instalacion.md)**: qué conviene mandar, cómo
-> empaquetar los datos y por qué no se reparte la imagen.
+> empaquetar los datos y por qué no se reparte la imagen. Para entregarle una
+> instalación a alguien que arranca de cero, la checklist paso a paso es
+> **[docs/traspaso.md](docs/traspaso.md)**.
 
 
 ```bash
