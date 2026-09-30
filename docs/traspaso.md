@@ -104,15 +104,124 @@ en el mismo chat). `data/*.tar.gz`, `data/*.gpg` y `data/*.env` están en
 
 ---
 
+## Acceso al repositorio: deploy key, no cuenta de GitHub
+
+El repositorio es privado y quien recibe necesita `git pull` para actualizar. No
+hace falta que tenga cuenta de GitHub: para eso existen las **deploy keys**, que
+son claves SSH atadas a **un solo repositorio** y que por defecto son de **solo
+lectura**.
+
+Cuándo *sí* conviene una cuenta en vez de una deploy key:
+
+| | deploy key | cuenta de GitHub |
+|---|---|---|
+| Un repo, solo `pull` | ✅ lo indicado | innecesario |
+| Va a escribir código y abrir PRs | ❌ no sirve (solo lectura) | ✅ |
+| Necesita varios repos | ❌ una clave por repo | ✅ |
+| Auditoría de quién hizo qué | ❌ es una máquina, no una persona | ✅ |
+
+Para entregar una instalación que solo se corre y se actualiza, la deploy key es
+la opción correcta: menos superficie, y se revoca borrando una línea sin tocar
+el acceso de nadie más.
+
+### El intercambio, en el orden que importa
+
+**La clave privada se genera en la máquina de quien recibe y no se mueve de
+ahí.** Solo viaja la pública. Quien entrega nunca tiene la privada, así que no
+puede perderla ni filtrarla.
+
+**1. Quien recibe genera el par y manda solo la pública:**
+
+```bash
+ssh-keygen -t ed25519 -C "leaks-monitor deploy $(hostname)" \
+    -f ~/.ssh/leaks_monitor_deploy
+cat ~/.ssh/leaks_monitor_deploy.pub    # esto es lo que se manda
+```
+
+La frase de paso es opcional: con una, cada `git pull` la pide (o hace falta un
+agente). Sin una, el archivo alcanza para leer el repo, así que vale lo mismo
+que el permiso de lectura.
+
+**2. Quien entrega la registra en GitHub**, en el repositorio —no en la cuenta—:
+
+> *Settings → Deploy keys → Add deploy key*. Un título que diga de qué máquina
+> es, el contenido del `.pub`, y **sin** tildar *Allow write access*.
+
+Si GitHub responde *"Key is already in use"*, esa clave ya está registrada en
+otro repositorio o como clave de usuario: una deploy key es única en todo
+GitHub. Se genera otra.
+
+**3. Quien recibe apunta el repo a esa clave.** En `~/.ssh/config`:
+
+```
+Host github-leaks-deploy
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/leaks_monitor_deploy
+  IdentitiesOnly yes
+```
+
+`IdentitiesOnly yes` no es decorativo: sin eso, en una máquina que ya tenga otra
+clave de GitHub, SSH ofrece todas y el servidor autentica con la primera que le
+sirva — que puede no ser esta. Es exactamente el problema por el que la máquina
+de origen usa el alias `github-leaks`.
+
+Probar antes de clonar:
+
+```bash
+ssh -T git@github-leaks-deploy
+```
+
+La respuesta dice con qué identidad autenticó, y son distintas:
+
+```
+Hi gutes/leaks-monitor!  ...   ← deploy key: está atada al REPOSITORIO
+Hi <usuario>!            ...   ← clave de usuario: es una persona
+```
+
+Si aparece un nombre de usuario, la clave que se usó no es la deploy key: casi
+siempre es `IdentitiesOnly` faltando y SSH ofreciendo otra clave de la máquina.
+
+**4. Clonar por el alias**, no por `git@github.com`:
+
+```bash
+git clone git@github-leaks-deploy:gutes/leaks-monitor.git && cd leaks-monitor
+```
+
+El `origin` queda con el alias, así que `git pull` funciona sin más
+configuración.
+
+### Dos cosas que no hay que hacer
+
+**No metas la clave en la imagen de Docker.** El repositorio se clona y se
+actualiza en el host; el contenedor se construye desde el checkout. Una clave
+dentro de una imagen queda en las capas y viaja con cada copia de la imagen.
+
+**No uses un token personal (PAT) para esto.** Un PAT es una credencial *de una
+persona*: aunque se limite a un repo, quien lo tiene actúa como el dueño. La
+deploy key es de la máquina y no representa a nadie.
+
+### Revocar
+
+*Settings → Deploy keys → borrar la fila.* El acceso de esa máquina se corta en
+el momento y no afecta a nadie más. Es el motivo principal para preferir esto a
+compartir una cuenta.
+
+---
+
 ## Parte 2 — Quien recibe (seis pasos)
 
-Hace falta: **Docker** con `compose`, **git**, y acceso al repositorio privado.
+Hace falta: **Docker** con `compose`, **git**, y acceso al repositorio privado
+(ver la sección anterior).
 
 ### 1. Clonar
 
 ```bash
-git clone git@github.com:gutes/leaks-monitor.git && cd leaks-monitor
+git clone git@github-leaks-deploy:gutes/leaks-monitor.git && cd leaks-monitor
 ```
+
+Si tenés cuenta de GitHub con acceso al repo en vez de una deploy key, el clon
+es por `git@github.com:gutes/leaks-monitor.git` y no hace falta el alias.
 
 ### 2. Poner la configuración
 
