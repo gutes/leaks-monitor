@@ -274,6 +274,75 @@ deploy key.
 
 ---
 
+### Borrar lo anterior y empezar de cero
+
+Cuando la instalación vieja no vale la pena arreglarla. El orden no es negociable:
+**el volumen se borra desde el directorio viejo**, porque Compose necesita ese
+contexto para saber de qué proyecto es.
+
+**0. Rescatar lo que no se puede volver a bajar.** Sacar de ahí el `.env` y el
+paquete antes de borrar nada:
+
+```bash
+mkdir -p ~/traspaso
+cp proyecto-viejo/.env ~/traspaso/env-viejo.txt   # por si hace falta comparar
+ls proyecto-viejo/data                            # ¿queda algo que rescatar?
+```
+
+**1. Parar y borrar contenedores y datos, desde el directorio viejo:**
+
+```bash
+cd proyecto-viejo
+docker compose ps
+docker compose down -v
+```
+
+El `-v` es lo que borra el volumen con la base. Es lo que se quiere: el paquete
+la va a reemplazar, y partir de un volumen vacío evita tener que usar `--force`
+al importar.
+
+**2. Comprobar que no quedó nada colgado.**
+
+El nombre del volumen se deriva del **nombre del directorio**
+(`<directorio>_leaks-data`). Si el clon nuevo va a un directorio con otro nombre,
+el volumen viejo sobrevive huérfano con los datos viejos adentro:
+
+```bash
+docker compose ls -a
+docker volume ls | grep leaks
+docker volume rm <nombre-del-volumen-viejo>   # si quedó alguno
+```
+
+**3. Borrar el código viejo.**
+
+```bash
+cd ..
+rm -rf proyecto-viejo
+```
+
+**4. Clon limpio, configuración, importación y arranque** — los pasos de la
+parte 2, en ese orden. El único cambio es que el paquete ya no está en el
+directorio del proyecto:
+
+```bash
+git clone git@github-leaks-deploy:gutes/leaks-monitor.git
+cd leaks-monitor
+cp ~/traspaso/traspaso-AAAA-MM-DD.env .env
+# + pegar la propia LEAKS_PII_ENCRYPTION_KEY, ver parte 2 paso 3
+
+docker compose run --rm -v "$HOME/traspaso:/entrada:ro" api \
+    leaks import-bundle /entrada/leaks-traspaso-AAAA-MM-DD.tar.gz
+
+docker compose up -d
+```
+
+`import-bundle` no siembra el esquema antes de restaurar, así que sobre un
+volumen recién borrado entra sin `--force` y sin preguntar nada.
+
+Verificar los conteos (parte 2, paso 5) **antes** de dar el arranque por bueno.
+
+---
+
 ## Parte 2 — Quien recibe (seis pasos)
 
 Hace falta: **Docker** con `compose`, **git**, y acceso al repositorio privado
