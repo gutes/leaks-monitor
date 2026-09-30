@@ -99,12 +99,20 @@ git clone git@github.com:gutes/leaks-monitor.git && cd leaks-monitor
 cp .env.example .env
 
 # 1) Restaurar los datos ANTES de levantar nada
-docker compose run --rm -v "$PWD:/entrada:ro" api \
-    leaks import-bundle /entrada/leaks-datos-AAAAMMDD.tar.gz
+cp /donde/lo/tengas/leaks-datos-AAAAMMDD.tar.gz data/
+docker compose run --rm --no-deps api \
+    leaks import-bundle /app/data/leaks-datos-AAAAMMDD.tar.gz
 
 # 2) Levantar
 docker compose up -d
 ```
+
+> **El path es el de adentro del contenedor, no el de tu máquina.** Es el error
+> más común de este paso: `leaks import-bundle ../paquete.tar.gz` falla con
+> `No existe ../paquete.tar.gz` aunque el archivo esté ahí, porque adentro el
+> directorio de trabajo es `/app` y tu `..` no existe. Lo más simple es dejar el
+> paquete en `./data/`, que el `docker-compose.yml` **ya monta** en `/app/data`
+> — la misma ruta que usa `export-bundle --out`.
 
 **El orden importa.** Si levantás el compose primero, la base se siembra con
 la watchlist de ejemplo y el import se va a negar a pisarla. No es grave: el

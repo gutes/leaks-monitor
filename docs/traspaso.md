@@ -242,8 +242,10 @@ que reapuntar. Lo limpio es clonar al lado y mudar los datos:
 ```bash
 git clone git@github-leaks-deploy:gutes/leaks-monitor.git leaks-monitor-nuevo
 cp copia-vieja/.env leaks-monitor-nuevo/.env
-cd leaks-monitor-nuevo && docker compose run --rm -v "$PWD/..:/entrada:ro" api \
-    leaks import-bundle /entrada/leaks-traspaso-AAAA-MM-DD.tar.gz
+cd leaks-monitor-nuevo
+cp ../leaks-traspaso-AAAA-MM-DD.tar.gz data/
+docker compose run --rm --no-deps api \
+    leaks import-bundle /app/data/leaks-traspaso-AAAA-MM-DD.tar.gz
 ```
 
 Si borrar la copia vieja no es una opción —porque ya está corriendo con datos—,
@@ -330,8 +332,9 @@ cd leaks-monitor
 cp ~/traspaso/traspaso-AAAA-MM-DD.env .env
 # + pegar la propia LEAKS_PII_ENCRYPTION_KEY (openssl, ver parte 2 paso 3)
 
-docker compose run --rm -v "$HOME/traspaso:/entrada:ro" api \
-    leaks import-bundle /entrada/leaks-traspaso-AAAA-MM-DD.tar.gz
+cp ~/traspaso/leaks-traspaso-AAAA-MM-DD.tar.gz data/
+docker compose run --rm --no-deps api \
+    leaks import-bundle /app/data/leaks-traspaso-AAAA-MM-DD.tar.gz
 
 docker compose up -d
 ```
@@ -408,9 +411,23 @@ hace falta clave.
 ### 4. Importar el paquete ANTES de levantar nada
 
 ```bash
-gpg --decrypt leaks-traspaso-AAAA-MM-DD.tar.gz.gpg > leaks-traspaso.tar.gz
+gpg --decrypt leaks-traspaso-AAAA-MM-DD.tar.gz.gpg > data/leaks-traspaso.tar.gz
 
-docker compose run --rm -v "$PWD:/entrada:ro" api \
+docker compose run --rm --no-deps api \
+    leaks import-bundle /app/data/leaks-traspaso.tar.gz
+```
+
+> **El path es el de adentro del contenedor, no el de tu máquina.** Es el error
+> más común de este paso: `leaks import-bundle ../paquete.tar.gz` falla con
+> `No existe ../paquete.tar.gz` aunque el archivo esté ahí, porque adentro el
+> directorio de trabajo es `/app` y tu `..` no existe. Lo más simple es dejar el
+> paquete en `./data/`, que el `docker-compose.yml` **ya monta** en `/app/data`
+> — la misma ruta que usa `export-bundle --out`.
+
+Si el paquete no se puede mover a `./data/`, se monta su directorio a mano:
+
+```bash
+docker compose run --rm --no-deps -v "/donde/esta:/entrada:ro" api \
     leaks import-bundle /entrada/leaks-traspaso.tar.gz
 ```
 
