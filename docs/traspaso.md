@@ -209,6 +209,71 @@ compartir una cuenta.
 
 ---
 
+### Si la copia no llegó por `git clone`
+
+Pasa: se manda el directorio del proyecto en un zip, o se copia por `scp`, y del
+otro lado queda una instalación que **no sabe de dónde actualizarse**. Hay dos
+casos y se arreglan distinto.
+
+> **Mejor no llegar acá.** Mandar el directorio de trabajo es mandar también el
+> `.env` —y ahí vive `LEAKS_PII_ENCRYPTION_KEY`—, la watchlist real y cualquier
+> paquete sin cifrar que haya quedado en `data/`. El repositorio se clona; los
+> datos van en el paquete. Ver `instalacion.md`.
+
+**Caso A — la copia trae `.git`.** El `origin` apunta al alias SSH de la máquina
+de origen, que del otro lado no existe:
+
+```
+ssh: Could not resolve hostname github-leaks: nodename nor servname provided
+fatal: Could not read from remote repository.
+```
+
+No falta la clave: falta el alias. Se reapunta al propio:
+
+```bash
+git remote set-url origin git@github-leaks-deploy:gutes/leaks-monitor.git
+git remote -v          # confirmar
+git pull
+```
+
+**Caso B — la copia no trae `.git`.** No es un repositorio, así que no hay nada
+que reapuntar. Lo limpio es clonar al lado y mudar los datos:
+
+```bash
+git clone git@github-leaks-deploy:gutes/leaks-monitor.git leaks-monitor-nuevo
+cp copia-vieja/.env leaks-monitor-nuevo/.env
+cd leaks-monitor-nuevo && docker compose run --rm -v "$PWD/..:/entrada:ro" api \
+    leaks import-bundle /entrada/leaks-traspaso-AAAA-MM-DD.tar.gz
+```
+
+Si borrar la copia vieja no es una opción —porque ya está corriendo con datos—,
+se le puede injertar el repositorio encima. **Verificado en un sandbox el
+2026-09-30**: el código del repo entra, y `.env` y `data/` sobreviven intactos
+porque no están versionados.
+
+```bash
+cd copia-vieja
+git init -b main .
+git remote add origin git@github-leaks-deploy:gutes/leaks-monitor.git
+git fetch origin main
+git reset --hard origin/main      # ⚠️ ver abajo
+git status                        # tiene que quedar limpio
+```
+
+**Lo que `git reset --hard` se lleva:** cualquier archivo **versionado** que esté
+modificado en la copia queda pisado por la versión del repositorio. Los que no
+están versionados —`.env`, `data/`, la base— no se tocan. Si se editó código en
+esa copia, respaldarlo antes:
+
+```bash
+cp -a copia-vieja copia-vieja.bak-$(date +%F)
+```
+
+Después de cualquiera de los dos casos, `git pull` funciona normalmente con la
+deploy key.
+
+---
+
 ## Parte 2 — Quien recibe (seis pasos)
 
 Hace falta: **Docker** con `compose`, **git**, y acceso al repositorio privado
