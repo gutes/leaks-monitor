@@ -487,6 +487,115 @@ print('permitido' if d.allowed else 'BLOQUEADO', '—', d.reason)"
 
 ---
 
+## Puesta en marcha: cadencia y avisos
+
+Las dos cosas que hay que configurar después de importar, y que el paquete no
+trae porque van por entorno.
+
+### La corrida periódica: no hay cron
+
+**Nada en el repositorio instala un crontab.** La corrida periódica la hace un
+proceso largo, `leaks schedule`, en el contenedor `scheduler` que el
+`docker-compose.yml` ya levanta. Con `docker compose up -d` queda andando.
+
+Se gobierna con cuatro variables:
+
+| Variable | Default | Qué hace |
+|---|---|---|
+| `TZ` | `America/Argentina/Buenos_Aires` | La hora del run es **local**. Sin esto el contenedor corre en UTC y las 03:00 caen a medianoche |
+| `LEAKS_DAILY_RUN_AT` | `03:00` | Hora de la corrida completa |
+| `LEAKS_RUN_ON_START` | `true` | Corre una vez al arrancar, sin esperar la hora |
+| `LEAKS_SCHEDULER_CATCHUP` | `true` | Si la máquina estaba suspendida a la hora del run, lo ejecuta al despertar |
+
+Las fuentes efímeras se sondean además cada tanto —los foros cada 120 minutos—
+y eso **no se configura por entorno**: vive en `poll_interval_minutes` del
+registro de feeds, porque depende de la ventana de cada fuente y no del gusto
+del operador. Ver `docs/arquitectura.md`, *Cadencia*.
+
+Comprobar que está corriendo:
+
+```bash
+docker compose logs --tail 20 scheduler
+curl -s http://127.0.0.1:8000/api/health   # last_run_at y last_full_run_at
+```
+
+`last_run_at` responde "¿está vivo?" y `last_full_run_at` "¿miró todo?": un
+sondeo de foros mueve el primero y no el segundo.
+
+### Si se prefiere el cron del sistema
+
+Es una opción válida en un servidor, y tiene un costo que conviene saber antes.
+
+**Primero apagar el scheduler**, o las dos corridas se pisan: el candado que
+evita solapamientos es **en proceso**, así que no ve al otro contenedor.
+
+```bash
+docker compose stop scheduler
+docker compose up -d api
+```
+
+Y el crontab, con rutas absolutas —cron no tiene el `PATH` de la sesión—:
+
+```cron
+0 3 * * * cd /home/usuario/leaks-monitor && /usr/bin/docker compose run --rm --no-deps api leaks run >> /var/log/leaks.log 2>&1
+```
+
+`leaks run` devuelve **1** si ninguna fuente respondió, así que el cron puede
+avisar por su cuenta.
+
+**Lo que se pierde:** cron no recupera una ejecución que no ocurrió. Si la
+máquina estaba apagada a las 03:00, ese día no hay corrida — es justo lo que
+`LEAKS_SCHEDULER_CATCHUP` resuelve en el scheduler. En un servidor que no se
+suspende da igual; en una notebook, no. Con systemd, un timer con
+`Persistent=true` recupera el disparo perdido y sería el equivalente.
+
+### Los avisos
+
+Dos canales, los dos por entorno y los dos opcionales:
+
+```bash
+# Webhook genérico: sirve para Slack, Discord, n8n o uno propio.
+LEAKS_ALERT_WEBHOOK_URL=
+
+# Telegram: hacen falta los dos.
+LEAKS_ALERT_TELEGRAM_TOKEN=
+LEAKS_ALERT_TELEGRAM_CHAT_ID=
+```
+
+Y los umbrales:
+
+| Variable | Default | Qué hace |
+|---|---|---|
+| `LEAKS_ALERT_MIN_SEVERITY` | `high` | Desde qué severidad se avisa |
+| `LEAKS_ALERT_MAX_AGE_DAYS` | `30` | No avisar de eventos más viejos que esto |
+| `LEAKS_ALERT_MAX_PER_RUN` | `50` | Tope por corrida |
+| `LEAKS_ALERT_DRY_RUN` | `false` | Ensaya sin enviar ni marcar |
+| `LEAKS_WATCHDOG_MAX_SILENCE_HOURS` | `26` | Avisa si una fuente se quedó muda. `0` lo apaga |
+
+**Sin canales configurados no es un error**: el pipeline corre igual y los avisos
+quedan pendientes. El riesgo es no darse cuenta, así que el estado se consulta:
+
+```bash
+curl -s http://127.0.0.1:8000/api/alerts
+```
+
+Dice cuántos hay pendientes, cuántos se enviaron, y —si falta un canal— **qué
+variable de entorno hay que setear**. Nunca devuelve el valor de un secreto,
+solo si está o no. Lo mismo se ve en la pantalla **Fuentes** de la UI.
+
+**Antes de enchufar un webhook por primera vez, ensayarlo.** Con
+`LEAKS_ALERT_DRY_RUN=true` se arma el aviso, queda en la consola de actividad qué
+se habría mandado y por qué canales, y no se envía ni se marca nada. Existe por
+un incidente real: verificar el cableado contra un webhook de terceros mandó
+metadata de 7 hallazgos afuera **y además los consumió**, porque quedaron
+marcados como avisados sin que nadie los hubiera recibido.
+
+Hay un tercer aviso, aparte: el **salto de score** de la adyacencia
+(`LEAKS_ADJACENCY_ALERT_JUMP`, `LEAKS_ADJACENCY_ALERT_MIN_SCORE`). Ver
+`docs/adyacencia.md`.
+
+---
+
 ## Qué reemplaza el paquete, y qué queda de la semilla
 
 Después de importar, **nada de la semilla de ejemplo sobrevive**: el import
