@@ -391,6 +391,9 @@ class AlertItemOut(BaseModel):
     #: Entró con la importación inicial de su fuente: histórico, no novedad.
     backfill: bool = False
     raw_ref: str | None = None
+    #: Slug de la taxonomía del CERT.ar. `None` en los hallazgos que entraron
+    #: antes de que existiera la clasificación y todavía no se reclasificaron.
+    taxonomy_type: str | None = None
 
 
 class AlertFeedOut(BaseModel):

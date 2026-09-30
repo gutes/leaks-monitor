@@ -419,6 +419,10 @@ class FindingQueryService:
             "notified": row.alerted_at is not None,
             "backfill": bool(row.backfill),
             "raw_ref": row.raw_ref,
+            #: Slug de la taxonomía del CERT.ar. Es lo que decide la
+            #: clasificación RSIT al exportar a IntelMQ, y de paso le sirve a
+            #: cualquier integrador que quiera filtrar por tipo de incidente.
+            "taxonomy_type": row.taxonomy_type,
         }
 
     def alert_status(self, *, min_severity: str, max_age_days: int | None = None) -> dict[str, Any]:

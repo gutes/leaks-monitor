@@ -975,3 +975,67 @@ class TestLeerCanalAhora:
         """Forzar a mano no puede saltear el control de IP."""
         with TestClient(create_app(settings, egress_guard=GuardBloqueante())) as c:  # type: ignore[arg-type]
             assert c.post("/api/telegram/1/fetch").status_code == 403
+
+
+class TestFeedIntelMQ:
+    """El feed en formato IntelMQ, para que lo consuma un CSIRT.
+
+    IntelMQ **tira** de una URL con su collector HTTP, así que el feed que ya
+    existía para integradores es el lugar natural: mismos filtros, misma
+    paginación, otra representación.
+    """
+
+    def test_devuelve_ndjson_armonizado(self, client: TestClient) -> None:
+        respuesta = client.get("/api/alerts/feed", params={"formato": "intelmq"})
+
+        assert respuesta.status_code == 200
+        assert respuesta.headers["content-type"].startswith("application/x-ndjson")
+
+        lineas = [x for x in respuesta.text.split("\n") if x.strip()]
+        assert lineas, "la base de prueba tiene hallazgos que llegan al umbral"
+        for linea in lineas:
+            evento = json.loads(linea)
+            # Los tres campos que hacen a un evento consumible.
+            assert evento["feed.name"]
+            assert evento["classification.taxonomy"]
+            assert evento["classification.type"]
+            assert evento["time.observation"]
+
+    def test_el_total_y_la_pagina_van_en_cabeceras(self, client: TestClient) -> None:
+        """NDJSON no tiene dónde poner el total, y un integrador lo necesita."""
+        respuesta = client.get("/api/alerts/feed", params={"formato": "intelmq", "limit": 1})
+
+        assert respuesta.headers["X-Limit"] == "1"
+        assert respuesta.headers["X-Offset"] == "0"
+        assert int(respuesta.headers["X-Total-Count"]) >= 1
+        assert len([x for x in respuesta.text.split("\n") if x.strip()]) == 1
+
+    def test_los_filtros_siguen_valiendo(self, client: TestClient) -> None:
+        json_total = client.get(
+            "/api/alerts/feed", params={"estado": "pendientes", "avisables": "true"}
+        ).json()["total"]
+        ndjson = client.get(
+            "/api/alerts/feed",
+            params={"estado": "pendientes", "avisables": "true", "formato": "intelmq"},
+        )
+
+        assert int(ndjson.headers["X-Total-Count"]) == json_total
+
+    def test_el_default_sigue_siendo_json(self, client: TestClient) -> None:
+        """No se cambia el contrato de quien ya consume el feed."""
+        respuesta = client.get("/api/alerts/feed")
+
+        assert respuesta.headers["content-type"].startswith("application/json")
+        assert "items" in respuesta.json()
+
+    def test_un_formato_desconocido_se_rechaza(self, client: TestClient) -> None:
+        assert client.get("/api/alerts/feed", params={"formato": "stix"}).status_code == 422
+
+    def test_no_se_filtra_pii_ni_el_campo_raw(self, client: TestClient) -> None:
+        """`raw` es base64 de la línea original, y la nuestra es un volcado."""
+        respuesta = client.get("/api/alerts/feed", params={"formato": "intelmq"})
+
+        for linea in [x for x in respuesta.text.split("\n") if x.strip()]:
+            evento = json.loads(linea)
+            assert "raw" not in evento
+            assert "description" not in evento

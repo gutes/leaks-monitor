@@ -366,6 +366,7 @@ en qué estado está y el consumidor decide.
 | `campo` | `first_seen` | Sobre qué fecha filtrar y ordenar |
 | `estado` | `todas` | `pendientes` o `enviadas` para acotar por despacho |
 | `min_severity` | el configurado | Bajar o subir el umbral para esta consulta |
+| `formato` | `json` | `intelmq` devuelve NDJSON armonizado al formato de IntelMQ |
 
 ```bash
 # Las últimas 20, sin importar si se despacharon
@@ -393,6 +394,17 @@ Cada ítem trae `dedup_hash` para deduplicar del lado del consumidor, y
 
 > **No hay autenticación.** Este endpoint está pensado para que lo consuma otro
 > software, así que si sale de loopback hace falta un proxy que autentique.
+
+**Para un CSIRT: `formato=intelmq`.** Devuelve NDJSON armonizado al formato de
+datos de IntelMQ, un evento por línea, con la clasificación traducida a RSIT
+—las dos taxonomías derivan de eCSIRT.net, así que el mapeo es exacto—. El total
+y la página van en `X-Total-Count`, `X-Limit` y `X-Offset`. Se consume tirando,
+que es como IntelMQ ingesta, y eso además evita mandarle metadata de organismos
+argentinos a un tercero. Ver `docs/taxonomia.md`.
+
+```bash
+curl 'localhost:8000/api/alerts/feed?formato=intelmq&limit=100'
+```
 
 ### Consola de actividad
 

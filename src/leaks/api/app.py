@@ -75,6 +75,7 @@ from leaks.bootstrap import build_application
 from leaks.config import Settings, get_settings
 from leaks.domain.models import ArMatchReason
 from leaks.export.coverage import relacionar
+from leaks.export.intelmq import to_ndjson
 from leaks.export.report import render_report, report_filename
 from leaks.export.watchlist_report import render_watchlist_report, watchlist_filename
 from leaks.pipeline.coordinator import RunCoordinator
@@ -991,8 +992,15 @@ def create_app(
         estado: Annotated[str, Query(pattern="^(todas|pendientes|enviadas)$")] = "todas",
         min_severity: Annotated[str | None, Query(pattern="^(low|medium|high|critical)$")] = None,
         avisables: bool = False,
-    ) -> AlertFeedOut:
+        formato: Annotated[str, Query(pattern="^(json|intelmq)$")] = "json",
+    ) -> AlertFeedOut | Response:
         """Alertas para que las consuma otro software.
+
+        `formato=intelmq` devuelve **NDJSON armonizado al formato de datos de
+        IntelMQ** (un evento por línea), para que un CERT lo consuma con su
+        collector HTTP sin escribir un parser. La paginación y los filtros son
+        los mismos; lo único que cambia es la representación. Ver
+        `docs/taxonomia.md`.
 
         Una «alerta» es un hallazgo que llega al umbral de severidad. Se
         devuelven **haya o no salido por los canales**: que se hayan despachado
@@ -1031,8 +1039,24 @@ def create_app(
             avisables=avisables,
             max_age_days=config.alert_max_age_days,
         )
+        items = [AlertItemOut.model_validate(i) for i in pagina.items]
+
+        if formato == "intelmq":
+            # NDJSON y no un array: se procesa línea por línea sin cargar el
+            # lote, y una línea malformada no invalida las demás. El total y la
+            # página van en cabeceras porque el cuerpo no tiene dónde.
+            return Response(
+                content=to_ndjson(items),
+                media_type="application/x-ndjson",
+                headers={
+                    "X-Total-Count": str(pagina.total),
+                    "X-Limit": str(pagina.limit),
+                    "X-Offset": str(pagina.offset),
+                },
+            )
+
         return AlertFeedOut(
-            items=[AlertItemOut.model_validate(i) for i in pagina.items],
+            items=items,
             total=pagina.total,
             limit=pagina.limit,
             offset=pagina.offset,
