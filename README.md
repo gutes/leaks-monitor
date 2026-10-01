@@ -362,7 +362,7 @@ en qué estado está y el consumidor decide.
 | Parámetro | Default | Para qué |
 |---|---|---|
 | `limit` / `offset` | 50 / 0 | Cuántas como máximo, y paginado |
-| `desde` / `hasta` | — | Rango ISO-8601. **Los dos opcionales e independientes** |
+| `desde` / `hasta` | — | Rango ISO-8601, **inclusivo**. Los dos opcionales e independientes |
 | `campo` | `first_seen` | Sobre qué fecha filtrar y ordenar |
 | `estado` | `todas` | `pendientes` o `enviadas` para acotar por despacho |
 | `min_severity` | el configurado | Bajar o subir el umbral para esta consulta |

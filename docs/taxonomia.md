@@ -136,7 +136,14 @@ curl "http://127.0.0.1:8000/api/alerts/feed?formato=intelmq&limit=100"
 Devuelve **NDJSON**: un evento por línea. El total y la página van en las
 cabeceras `X-Total-Count`, `X-Limit` y `X-Offset`, porque NDJSON no tiene dónde
 ponerlos. Para paginar incrementalmente vale lo mismo que para el feed JSON:
-`campo=first_seen` y guardar el más alto de la última página.
+`campo=first_seen` y guardar el `time.observation` más alto de la última página.
+
+**`desde` es inclusivo**, así que la pasada siguiente vuelve a traer el evento
+del borde. Se deduplica con `extra.dedup_hash`, que es estable. Es a propósito:
+un `desde` exclusivo se saltearía cualquier evento que comparta la marca con el
+último visto. Verificado desde el contenedor el 2026-10-01 — dos pasadas sobre
+55 eventos: 55 únicos sin duplicados por paginación, 1 repetido en el borde, y
+pidiendo desde la marca más vieja vuelven los 55 sin huecos.
 
 Que sea *pull* tiene una ventaja de OPSEC sobre un webhook: no hay metadata de
 organismos argentinos saliendo hacia un tercero. El CSIRT viene a buscarla.
