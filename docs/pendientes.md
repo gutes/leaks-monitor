@@ -1,6 +1,6 @@
 # Pendientes y decisiones abiertas
 
-Estado verificado contra el código el **2026-09-18**: 842 tests backend + 50
+Estado verificado contra el código el **2026-10-13**: 900 tests backend + 50
 frontend, imagen Docker corriendo, migración `0017` aplicada.
 
 > Este archivo se desactualizó una vez y decía cosas falsas («Alertas — no
@@ -9,7 +9,79 @@ frontend, imagen Docker corriendo, migración `0017` aplicada.
 
 ---
 
-## 0. Lo último que se hizo (sesión del 2026-09-18)
+## 0. Lo último que se hizo (sesiones del 2026-09-30 al 10-13)
+
+### Traspaso a otra persona — hecho, instalación del otro lado sin confirmar
+
+Se entregó una instalación completa: paquete de datos, `.env` operativo sin la
+clave del vault, y `docs/traspaso.md` como checklist autocontenida. El acceso al
+repo va por **deploy key de solo lectura**, no por cuenta de GitHub.
+
+Tres pasos del manual fallaron en la máquina de destino —**Linux, desde cero**—
+y los tres estaban escritos desde macOS con el venv armado. Corregidos en el
+manual, no sólo por chat:
+
+1. `python -c "from cryptography.fernet import Fernet…"` → la clave se genera con
+   `openssl rand -base64 32 | tr '+/' '-_'`.
+2. `import-bundle ../paquete.tar.gz` → el path se resuelve **dentro** del
+   contenedor; va en `./data`, que ya está montado en `/app/data`.
+3. `/app/data no es escribible` → un bind mount conserva el uid numérico y el
+   contenedor corre como uid 10001. El mensaje de error ahora lo explica y trae
+   el `chown`; antes mandaba a revisar el `:ro`, que estaba bien.
+
+**Pendiente:** no está confirmado que la instalación del otro lado haya quedado
+andando. Y quedó ofrecida, sin respuesta, una revisión del tramo completo
+(clonar → levantar) asumiendo Linux sin nada instalado.
+
+### Exportación a IntelMQ — hecha
+
+`/api/alerts/feed?formato=intelmq` devuelve NDJSON armonizado. **Pull, no push**:
+IntelMQ tira de una URL con su collector HTTP, y así no sale metadata de
+organismos argentinos hacia un tercero. Las 9 clasificaciones del CERT.ar mapean
+exacto contra RSIT; los 31 tipos tienen su par canónico, con tres casos que se
+corren a propósito —`ransomware` → `data-leak` el principal, decisión del líder
+técnico—. Ver `docs/taxonomia.md`.
+
+Verificado desde dentro de la red de Compose, incluida la paginación incremental:
+sin duplicados por offset, sin huecos, y el borde de `desde` se repite una vez
+porque es inclusivo.
+
+### PwnForums — analizado, NO implementado
+
+Re-sondeado el 2026-10-01: sigue devolviendo 403 con `cf-mitigated: challenge` en
+**todas** las rutas, `robots.txt` incluido, idéntico al 24-sep. No hay espejo.
+
+El adapter no es el problema: si el endpoint abriera, son ~15 líneas
+(`enables_with_setting`, igual que BreachForums). Lo que falta es un endpoint que
+responda.
+
+**Recomendación sobre la mesa, esperando decisión:** importar el Atom **a mano**.
+El investigador pasa el desafío en su navegador como persona, guarda el XML, y un
+`leaks import-forum-atom --feed pwnforums --file x.xml` lo mete por el pipeline
+completo. No es evasión —la herramienta no finge nada— y reusa `parse_atom` tal
+cual, así que es un adapter con transporte de archivo. Generaliza: cualquier foro
+que se meta detrás de un desafío pasa de perdido a importable.
+
+Tampoco se sabe si el foro **vale la pena**: nunca se obtuvo un 200, así que no
+está confirmado que sea MyBB ni que publique contenido argentino. La importación
+manual lo contesta en una corrida, antes de construir nada continuo.
+
+### Lo que queda abierto
+
+* **Ningún canal de aviso configurado, y ya hay 62 hallazgos esperando.**
+  `alerted_at` nulo en 62 de severidad alta o crítica, y **0 avisados en la
+  historia de la instalación**. No se pierden —se reintentan— pero nadie los
+  recibe. Se evaluaron las opciones (receptor propio, Telegram, Slack; Discord
+  **no funciona** porque manda `text` y Discord exige `content`) y quedó sin
+  elegir.
+* **La VPN estaba caída el 2026-10-13 a las 20:25 UTC**: el control de salida
+  bloqueaba la API con salida por AS7303 Telecom Argentina. Es el guard haciendo
+  su trabajo, pero mientras dure no se consulta ninguna fuente.
+* Los dos falsos positivos viejos (Indonesia, Perú) siguen en la base.
+
+---
+
+## Lo anterior (sesión del 2026-09-18)
 
 ### Telegram: canales privados y pagos — evaluado, no implementado
 
