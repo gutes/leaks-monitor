@@ -11,7 +11,7 @@ frontend, imagen Docker corriendo, migración `0017` aplicada.
 
 ## 0. Lo último que se hizo (sesiones del 2026-09-30 al 10-13)
 
-### Traspaso a otra persona — hecho, instalación del otro lado sin confirmar
+### Traspaso a otra persona — hecho y confirmado andando
 
 Se entregó una instalación completa: paquete de datos, `.env` operativo sin la
 clave del vault, y `docs/traspaso.md` como checklist autocontenida. El acceso al
@@ -29,9 +29,15 @@ manual, no sólo por chat:
    contenedor corre como uid 10001. El mensaje de error ahora lo explica y trae
    el `chown`; antes mandaba a revisar el `:ro`, que estaba bien.
 
-**Pendiente:** no está confirmado que la instalación del otro lado haya quedado
-andando. Y quedó ofrecida, sin respuesta, una revisión del tramo completo
-(clonar → levantar) asumiendo Linux sin nada instalado.
+**La instalación del otro lado quedó funcionando** (confirmado por el líder
+técnico el 2026-10-13), con el manual ya corregido. O sea que el tramo completo
+—deploy key, clon, `.env`, clave del vault, import del paquete, arranque— está
+**validado de punta a punta en Linux desde cero**, que es la única prueba que
+vale para este documento.
+
+Queda ofrecida, sin respuesta y ya sin urgencia, una revisión del tramo asumiendo
+ese entorno. Después de tres fallas corregidas y una instalación exitosa, el
+valor que queda es preventivo.
 
 ### Exportación a IntelMQ — hecha
 
